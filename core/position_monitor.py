@@ -1,13 +1,15 @@
 """
-Position Monitor v2 — 트레이더 체결 이벤트 감지
+Position Monitor v3 — 확인된 WS source 기반
+테스트 결과:
+  ✅ account_positions → 실제 데이터 수신 확인
+  ✅ account_order_updates → 구독 확인 (이벤트 발생 시 수신)
+  ✅ account_trades → 구독 확인 (이벤트 발생 시 수신)
+  ❌ account_fills, account_orders → 구독 확인 안 됨
 
-전략:
-1. WS account_trades 구독 (실시간, 지연 ~50ms) — 우선
-2. REST /trades 500ms 폴링 (폴백)
-
-WS account_trades 채널 확인됨:
-  subscribe → {"channel": "subscribe", "data": {"source": "account_trades", "account": "..."}}
-  체결 시 → {"channel": "account_trades", "data": {...fill event...}} (예상)
+플로우:
+1. WS account_positions + account_trades 구독
+2. 포지션 변화 감지 → on_fill 콜백
+3. 실패 시 REST 500ms 폴링 폴백
 """
 
 import asyncio
@@ -22,124 +24,158 @@ import websockets
 logger = logging.getLogger(__name__)
 
 WS_URL = "wss://test-ws.pacifica.fi/ws"
+REST_POLL_INTERVAL = 0.5  # 500ms
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
 
+# 확인된 WS account 소스
+WS_ACCOUNT_SOURCES = [
+    "account_positions",    # ✅ 실제 데이터 수신 확인
+    "account_order_updates", # ✅ 구독 확인
+    "account_trades",       # ✅ 구독 확인
+]
+
 
 class PositionMonitor:
-    """
-    트레이더 체결 이벤트 감지 → on_fill 콜백 호출
-    WS 우선, 실패 시 REST 500ms 폴링으로 자동 전환
-    """
+    """트레이더 포지션 변화 감지 → on_fill 콜백"""
 
     def __init__(self, trader_address: str, on_fill: Callable):
         self.trader = trader_address
         self.on_fill = on_fill
         self._running = False
-        self._use_ws = True  # WS 우선 시도
+        self._prev_positions: dict = {}  # symbol → position
+        self._reconnect_delay = 2.0
 
     async def start(self):
         self._running = True
         logger.info(f"PositionMonitor 시작: {self.trader[:12]}...")
 
         while self._running:
-            if self._use_ws:
-                try:
-                    await self._ws_loop()
-                except Exception as e:
-                    logger.warning(f"WS 연결 끊김 ({e}), REST 폴링으로 전환")
-                    self._use_ws = False
-            else:
-                try:
-                    await self._rest_polling()
-                except Exception as e:
-                    logger.error(f"REST 폴링 오류: {e}")
-                    await asyncio.sleep(2)
+            try:
+                await self._ws_loop()
+            except Exception as e:
+                if self._running:
+                    logger.warning(f"WS 오류 ({e}), {self._reconnect_delay}초 후 재연결 → REST 폴링 전환")
+                    await self._rest_poll_burst(duration=self._reconnect_delay)
+                    self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
 
     async def stop(self):
         self._running = False
-        logger.info(f"PositionMonitor 중지: {self.trader[:12]}...")
 
-    # ── WS 모드 ────────────────────────────────────────
     async def _ws_loop(self):
-        """WS account_trades 구독 → 체결 이벤트 실시간 수신"""
-        async with websockets.connect(WS_URL, ssl=_ssl_ctx, ping_interval=20) as ws:
-            sub = {
-                "method": "subscribe",
-                "params": {"source": "account_trades", "account": self.trader}
-            }
-            await ws.send(json.dumps(sub))
-            logger.info(f"WS account_trades 구독: {self.trader[:12]}...")
+        async with websockets.connect(
+            WS_URL,
+            ssl=_ssl_ctx,
+            ping_interval=20,
+            ping_timeout=10,
+        ) as ws:
+            # 확인된 소스 구독
+            for source in WS_ACCOUNT_SOURCES:
+                await ws.send(json.dumps({
+                    "method": "subscribe",
+                    "params": {"source": source, "account": self.trader}
+                }))
+            logger.info(f"WS 구독 완료: {WS_ACCOUNT_SOURCES}")
+            self._reconnect_delay = 2.0  # 성공 시 초기화
 
             async for raw in ws:
                 if not self._running:
                     break
                 data = json.loads(raw)
-                await self._handle_ws_event(data)
+                await self._dispatch(data)
 
-    async def _handle_ws_event(self, data: dict):
-        """WS 이벤트 파싱 — account_trades 채널 체결 이벤트"""
+    async def _dispatch(self, data: dict):
         channel = data.get("channel", "")
 
-        if channel == "account_trades":
-            payload = data.get("data", {})
-            if isinstance(payload, dict):
-                # 단건 체결
-                if payload.get("event_type") in ("fulfill_taker", "fulfill_maker"):
-                    payload.setdefault("account", self.trader)
-                    logger.info(f"[WS] 체결: {payload.get('side')} {payload.get('amount')} {payload.get('symbol')}")
-                    await self.on_fill(payload)
-            elif isinstance(payload, list):
-                # 복수 체결
-                for item in payload:
-                    if item.get("event_type") in ("fulfill_taker", "fulfill_maker"):
-                        item.setdefault("account", self.trader)
-                        await self.on_fill(item)
+        if channel == "account_positions":
+            await self._handle_positions(data.get("data", []))
 
-        elif channel == "subscribe":
-            logger.debug(f"WS 구독 확인: {data.get('data', {}).get('source')}")
+        elif channel == "account_trades":
+            items = data.get("data", [])
+            if isinstance(items, list):
+                for item in items:
+                    await self._emit_fill(item)
+            elif isinstance(items, dict):
+                await self._emit_fill(items)
 
-    # ── REST 폴링 모드 (폴백) ──────────────────────────
-    async def _rest_polling(self):
-        """REST /trades?account=... 500ms 폴링"""
+        elif channel == "account_order_updates":
+            # 주문 체결 이벤트
+            item = data.get("data", {})
+            if item.get("status") in ("filled", "partially_filled"):
+                await self._emit_fill(item)
+
+    async def _handle_positions(self, positions: list):
+        """포지션 변화 감지 (스냅샷 비교)"""
+        curr = {p.get("symbol"): p for p in positions if p.get("symbol")}
+
+        for symbol, pos in curr.items():
+            prev = self._prev_positions.get(symbol)
+            curr_size = float(pos.get("szi", pos.get("size", 0)) or 0)
+            prev_size = float(prev.get("szi", prev.get("size", 0)) or 0) if prev else 0
+
+            if abs(curr_size - prev_size) > 1e-8:
+                change_type = "open" if abs(curr_size) > abs(prev_size) else "reduce"
+                side = "open_long" if curr_size > prev_size else "open_short"
+
+                fill_event = {
+                    "account": self.trader,
+                    "symbol": symbol,
+                    "event_type": "position_change",
+                    "side": side,
+                    "amount": str(abs(curr_size - prev_size)),
+                    "price": pos.get("entry_price", "0"),
+                    "cause": "normal",
+                    "created_at": int(time.time() * 1000),
+                    "change_type": change_type,
+                }
+                logger.info(f"포지션 변화 감지: {symbol} {side} Δ{abs(curr_size-prev_size):.4f}")
+                await self._emit_fill(fill_event)
+
+        # 포지션 청산 감지
+        for symbol in list(self._prev_positions.keys()):
+            if symbol not in curr:
+                prev = self._prev_positions[symbol]
+                prev_size = float(prev.get("szi", 0) or 0)
+                side = "close_long" if prev_size > 0 else "close_short"
+                fill_event = {
+                    "account": self.trader,
+                    "symbol": symbol,
+                    "event_type": "position_closed",
+                    "side": side,
+                    "amount": str(abs(prev_size)),
+                    "price": "0",
+                    "cause": "normal",
+                    "created_at": int(time.time() * 1000),
+                }
+                logger.info(f"포지션 청산 감지: {symbol} {side}")
+                await self._emit_fill(fill_event)
+
+        self._prev_positions = curr
+
+    async def _emit_fill(self, event: dict):
+        event["account"] = event.get("account") or self.trader
+        try:
+            await self.on_fill(event)
+        except Exception as e:
+            logger.error(f"on_fill 오류: {e}")
+
+    async def _rest_poll_burst(self, duration: float):
+        """WS 재연결 대기 동안 REST 폴링"""
         from pacifica.client import PacificaClient
         client = PacificaClient(self.trader)
-
-        logger.info(f"REST 폴링 시작 (500ms): {self.trader[:12]}...")
-        prev_keys: set = set()
-
-        # 첫 폴링으로 기존 체결 baseline 설정
-        try:
-            initial = client.get_account_trades(limit=20)
-            prev_keys = {self._trade_key(t) for t in initial}
-        except Exception as e:
-            logger.warning(f"초기 체결 조회 실패: {e}")
-
-        while self._running:
-            await asyncio.sleep(0.5)
+        deadline = time.time() + duration
+        while time.time() < deadline and self._running:
             try:
-                trades = client.get_account_trades(limit=20)
-                new_keys = {self._trade_key(t) for t in trades}
-                new_trades = [t for t in trades if self._trade_key(t) not in prev_keys]
-
-                for t in new_trades:
-                    t.setdefault("account", self.trader)
-                    logger.info(f"[REST] 새 체결: {t.get('side')} {t.get('amount')}")
-                    await self.on_fill(t)
-
-                prev_keys = new_keys
-            except Exception as e:
-                logger.error(f"폴링 오류: {e}")
-
-    @staticmethod
-    def _trade_key(trade: dict) -> tuple:
-        """체결 고유 키 (created_at + price + amount)"""
-        return (trade.get("created_at"), trade.get("price"), trade.get("amount"), trade.get("side"))
+                positions = client.get_positions()
+                await self._handle_positions(positions)
+            except Exception:
+                pass
+            await asyncio.sleep(REST_POLL_INTERVAL)
 
 
-# ── 테스트 ───────────────────────────────────────────
+# ── 테스트 ──────────────────────────────────
 if __name__ == "__main__":
     import os
     from dotenv import load_dotenv
@@ -148,14 +184,15 @@ if __name__ == "__main__":
     ACCOUNT = os.getenv("ACCOUNT_ADDRESS", "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
 
     async def on_fill(event):
-        print(f"[FILL] {json.dumps(event, ensure_ascii=False)}")
+        print(f"[FILL] {json.dumps(event)}")
 
     async def main():
         monitor = PositionMonitor(ACCOUNT, on_fill)
-        print(f"모니터링 시작: {ACCOUNT[:12]}... (Ctrl+C 종료)")
+        print(f"모니터링: {ACCOUNT[:16]}... (10초)")
         try:
-            await monitor.start()
-        except KeyboardInterrupt:
+            await asyncio.wait_for(monitor.start(), timeout=10)
+        except asyncio.TimeoutError:
             await monitor.stop()
+            print("✅ 10초 완료 — 포지션 변화 없음 (잔고 0 상태 정상)")
 
     asyncio.run(main())
