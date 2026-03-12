@@ -1,105 +1,114 @@
 """
-Copy Engine — 트레이더 체결 이벤트 → 팔로워 자동 복사
+Copy Engine — 트레이더 포지션 변화 → 팔로워 자동 복사
 """
 import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
 
-from db.models import get_active_followers, save_copy_trade
-from pacifica.client import PacificaClient
-
 log = logging.getLogger(__name__)
-
-BUILDER_CODE = ""  # 환경변수로 주입
 
 
 @dataclass
-class FillEvent:
-    """트레이더 체결 이벤트"""
-    account: str      # 트레이더 주소
-    symbol: str       # BTC, ETH, SOL ...
-    side: str         # bid(롱) / ask(숏)
-    amount: str       # 체결 수량 (USD)
-    order_id: str
-    price: float
+class PositionChange:
+    type: str       # "open" / "reduce" / "close"
+    symbol: str
+    side: str       # "bid" / "ask"
+    size_delta: float
+    trader_id: str
 
 
 class CopyEngine:
     """
-    핵심 카피 로직
-    - 트레이더 체결 이벤트 수신
-    - 팔로워별 비율 계산
-    - Pacifica API로 자동 복사 주문 실행
+    트레이더 포지션 변화 감지 → 팔로워 자동 복사
     """
 
-    def __init__(self):
-        self._running = False
+    def __init__(self, db, pacifica_client_factory):
+        self.db = db
+        self.make_client = pacifica_client_factory  # fn(private_key) -> PacificaClient
 
-    async def on_fill(self, event: FillEvent):
-        """트레이더 체결 이벤트 처리"""
-        log.info(f"[FILL] trader={event.account} {event.side} {event.symbol} ${event.amount}")
+    async def on_position_change(self, change: dict, trader_id: str):
+        """포지션 변화 이벤트 수신"""
+        log.info(f"[CHANGE] trader={trader_id} type={change['type']} {change['side']} {change['symbol']} delta={change['size_delta']}")
 
-        followers = await get_active_followers(event.account)
+        followers = await self.db.get_active_followers(trader_id)
         if not followers:
             return
 
-        # 팔로워별 병렬 복사
-        tasks = [self._copy_for_follower(event, f) for f in followers]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [self._copy_for_follower(change, trader_id, f) for f in followers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _copy_for_follower(self, event: FillEvent, follower):
+        ok = sum(1 for r in results if not isinstance(r, Exception))
+        fail = len(results) - ok
+        log.info(f"[COPY DONE] trader={trader_id} followers={len(followers)} ok={ok} fail={fail}")
+
+    async def _copy_for_follower(self, change: dict, trader_id: str, follower: dict):
         follower_id = follower["id"]
-        copy_ratio = follower["copy_ratio"]
-        max_usd = follower["max_position_usd"]
+        copy_ratio = float(follower.get("copy_ratio", 1.0))
+        max_usd = float(follower.get("max_position_usd", 100))
+        private_key = follower.get("private_key")
+
+        if not private_key:
+            log.warning(f"팔로워 {follower_id} private_key 없음 — 스킵")
+            return
 
         try:
-            client = PacificaClient(account_address=follower_id)
+            client = self.make_client(private_key)
+            balance = client.get_balance()
 
-            # 잔고 조회
-            balance = await client.get_balance()
-            copy_amount = balance * copy_ratio
-            copy_amount = min(copy_amount, max_usd)
-
-            if copy_amount < 1.0:
-                log.warning(f"팔로워 {follower_id} 잔고 부족 — 복사 스킵")
+            if balance < 1.0:
+                log.warning(f"팔로워 {follower_id} 잔고 부족 (${balance:.2f}) — 스킵")
+                await self.db.save_copy_trade({
+                    "id": str(uuid.uuid4()),
+                    "trader_id": trader_id,
+                    "follower_id": follower_id,
+                    "symbol": change["symbol"],
+                    "side": change["side"],
+                    "trader_amount": change["size_delta"],
+                    "follower_amount": 0,
+                    "status": "skipped_insufficient_balance",
+                })
                 return
 
-            # 복사 주문 실행 (Builder Code 포함)
-            order = await client.market_order(
-                symbol=event.symbol,
-                side=event.side,
-                amount=str(round(copy_amount, 2)),
-                builder_code=BUILDER_CODE,
+            copy_amount = min(balance * copy_ratio, max_usd)
+            copy_amount = round(copy_amount, 2)
+
+            # close 타입이면 reduce_only=True
+            reduce_only = change["type"] == "close"
+
+            order = client.market_order(
+                symbol=change["symbol"],
+                side=change["side"],
+                amount=str(copy_amount),
+                reduce_only=reduce_only,
             )
 
-            log.info(f"[COPY] follower={follower_id} order={order.get('order_id')} amount={copy_amount}")
+            order_id = order.get("order_id") or order.get("data", {}).get("order_id")
+            status = "filled" if order_id else "failed"
 
-            # 거래 로그 저장
-            await save_copy_trade({
+            log.info(f"[COPY] follower={follower_id} order={order_id} ${copy_amount} status={status}")
+
+            await self.db.save_copy_trade({
                 "id": str(uuid.uuid4()),
-                "trader_id": event.account,
+                "trader_id": trader_id,
                 "follower_id": follower_id,
-                "original_order_id": event.order_id,
-                "copied_order_id": order.get("order_id"),
-                "symbol": event.symbol,
-                "side": event.side,
-                "trader_amount": float(event.amount),
+                "symbol": change["symbol"],
+                "side": change["side"],
+                "trader_amount": change["size_delta"],
                 "follower_amount": copy_amount,
-                "status": "filled" if order.get("order_id") else "failed",
+                "status": status,
+                "order_id": order_id,
             })
 
         except Exception as e:
-            log.error(f"[COPY FAILED] follower={follower_id} error={e}")
-            await save_copy_trade({
+            log.error(f"[COPY FAIL] follower={follower_id}: {e}")
+            await self.db.save_copy_trade({
                 "id": str(uuid.uuid4()),
-                "trader_id": event.account,
+                "trader_id": trader_id,
                 "follower_id": follower_id,
-                "original_order_id": event.order_id,
-                "copied_order_id": None,
-                "symbol": event.symbol,
-                "side": event.side,
-                "trader_amount": float(event.amount),
+                "symbol": change["symbol"],
+                "side": change["side"],
+                "trader_amount": change["size_delta"],
                 "follower_amount": 0,
-                "status": "failed",
+                "status": "error",
             })
