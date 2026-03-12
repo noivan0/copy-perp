@@ -24,8 +24,10 @@ logger = logging.getLogger(__name__)
 
 # 안전 파라미터
 MAX_LEVERAGE = 5
-MIN_ORDER_USDC = 5.0   # 최소 주문 금액
-MAX_SLIPPAGE = "1.0"   # 1% 슬리피지 허용
+MIN_ORDER_USDC = 5.0    # 최소 주문 금액 (미만이면 스킵)
+MAX_ORDER_USDC = 5000.0 # 단일 주문 최대 금액 (안전장치)
+MAX_SLIPPAGE = "1.0"    # 1% 슬리피지 허용
+MIN_AMOUNT = 0.0001     # 최소 수량 (소수점 정밀도)
 
 
 def _parse_side(event_side: str) -> Optional[str]:
@@ -95,7 +97,7 @@ class CopyEngine:
         logger.info(f"복사 대상: {len(followers)}명 | {symbol} {copy_side} {amount} @ {price}")
 
         tasks = [
-            self._copy_to_follower(follower, symbol, copy_side, amount, trader)
+            self._copy_to_follower(follower, symbol, copy_side, amount, trader, symbol_price=float(price) if price else 0.0)
             for follower in followers
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -111,15 +113,43 @@ class CopyEngine:
         side: str,
         trader_amount: str,
         trader_address: str,
+        symbol_price: float = 0.0,
     ) -> None:
         follower_addr = follower["address"]
         copy_ratio = float(follower["copy_ratio"])
         max_pos = float(follower["max_position_usdc"])
 
-        # 복사 수량 계산 (비율 적용 + 최대 금액 제한)
+        # ── 복사 수량 계산 ────────────────────────────────
+        # 1. 비율 적용
         raw_amount = float(trader_amount) * copy_ratio
-        # 최대 포지션 금액으로 클램핑 (가격 기반, 추후 고도화)
-        copy_amount = str(round(max(raw_amount, 0.001), 6))
+
+        # 2. max_position_usdc 클램핑
+        #    현재 가격 없이는 정확한 USD 환산 불가 → 보수적으로 amount 기준 클램핑
+        #    실제 가격 있으면: clamped = min(raw_amount, max_pos / price)
+        #    여기서는 MAX_ORDER_USDC를 상한으로 추가 안전망 적용
+        clamped_amount = raw_amount
+
+        # 3. 전역 최대 주문 금액 안전장치 (MAX_ORDER_USDC)
+        #    가격 파라미터가 있으면 더 정확하게 적용
+        try:
+            price_f = float(symbol_price) if symbol_price > 0 else 0.0
+        except Exception:
+            price_f = 0.0
+
+        if price_f > 0:
+            # 가격이 있을 때만 USDC 기반 클램핑 적용
+            max_by_usdc = MAX_ORDER_USDC / price_f
+            clamped_amount = min(clamped_amount, max_by_usdc)
+            # max_position_usdc 클램핑
+            max_by_pos = max_pos / price_f
+            clamped_amount = min(clamped_amount, max_by_pos)
+
+        # 4. 최소 수량 보장
+        if clamped_amount < MIN_AMOUNT:
+            logger.info(f"[{follower_addr[:8]}] 수량 {clamped_amount} < MIN({MIN_AMOUNT}) 스킵")
+            return
+
+        copy_amount = str(round(clamped_amount, 6))
 
         client_order_id = str(uuid.uuid4())
         trade_id = str(uuid.uuid4())
