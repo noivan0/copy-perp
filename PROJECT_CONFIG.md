@@ -1,58 +1,57 @@
-# Copy Perp — 프로젝트 설정
-**업데이트:** 2026-03-12
+# Copy Perp — Project Config
+**생성일:** 2026-03-12 | **트랙:** 3 (Social & Gamification)
 
 ---
 
 ## 계정 정보
 
 | 항목 | 값 |
-|---|---|
-| **구글 계정** | nothinkivan@gmail.com |
-| **Pacifica 테스트넷 지갑 주소** | `3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ` |
-| **연동 방식** | 구글 소셜 로그인 (Privy 지갑) |
-| **테스트넷 URL** | https://test-app.pacifica.fi |
+|------|-----|
+| 구글 계정 | nothinkivan@gmail.com |
+| 메인 지갑 주소 | `3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ` |
+| 연결 방식 | Privy (구글 소셜 로그인 → 지갑 자동 생성) |
+| Agent 주소 | `5RpcRYh1Xw9pMCuAQFdTGhocmeGsEbHg36jFP6nM8DU1` |
+| 네트워크 | 테스트넷 (3/16~4/16), 메인넷 (제출 시 전환) |
 
 ---
 
-## 즉시 처리 필요 (개발팀)
+## 테스트넷 엔드포인트
 
-### 1. 해커톤 공식 등록
-- URL: https://forms.gle/1FP2EuvZqYiP7Tiy7
-- **@nothink_ivan 직접 등록**
-
-### 2. Builder Code 신청
-- 이메일: ops@pacifica.fi
-- Discord: #builder-program
-- 신청 시 위 지갑 주소 사용: `3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ`
-- **3/16 개발 시작 전 신청 권장**
-
-### 3. Faucet 테스트 토큰 수령
-- URL: https://test-app.pacifica.fi/faucet
-- 위 지갑에 테스트 USDC 수령
+| | URL |
+|--|-----|
+| REST | `https://test-api.pacifica.fi/api/v1` |
+| WebSocket | `wss://test-ws.pacifica.fi/ws` |
+| 앱 | `https://test-app.pacifica.fi` |
+| Faucet | `https://test-app.pacifica.fi/faucet` |
 
 ---
 
-## SDK 연동 설정 (개발팀 참고)
+## 보안 규칙
 
-```python
-# pacifica/client.py 설정
-TESTNET_REST = "https://test-api.pacifica.fi/api/v1"
-TESTNET_WS   = "wss://test-ws.pacifica.fi/ws"
-
-# 트레이더 (Leader) 지갑
-LEADER_ADDRESS = "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ"
-
-# 주의: Private Key는 절대 여기 저장 금지 → .env 파일만 사용
-# LEADER_PRIVATE_KEY = os.getenv("LEADER_PRIVATE_KEY")
-```
+- ⚠️ Private Key는 절대 코드 하드코딩 금지
+- `.env` 파일만 사용 (`.gitignore`에 등록됨)
+- Agent Key = 서버 서명용 (메인 지갑 키와 별개)
 
 ---
 
-## 상태
+## 연동 현황
 
-- [x] Pacifica 테스트넷 접속 완료 (구글 로그인)
-- [x] 지갑 주소 확인: `3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ`
-- [ ] 해커톤 공식 등록 (@nothink_ivan)
-- [ ] Builder Code 신청 (ops@pacifica.fi)
-- [ ] Faucet 테스트 토큰 수령
-- [ ] Private Key .env 설정 (개발팀 — 별도 보안 채널로 전달)
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 테스트넷 REST 연결 | ✅ 완료 | 마켓 68개, 체결 이력 확인 |
+| Pacifica 클라이언트 코드 | ✅ 완료 | `pacifica/client.py` |
+| Agent Wallet 생성 | ✅ 완료 | `.env`에 저장 |
+| Agent 바인딩 (앱에서) | ⏳ 대기 | @nothink_ivan 직접 처리 필요 |
+| Faucet 수령 | ⏳ 대기 | test-app.pacifica.fi/faucet |
+| Builder Code 신청 | ⏳ 대기 | ops@pacifica.fi 또는 Discord |
+
+---
+
+## W1 (3/16~22) 개발 태스크
+
+- [ ] Agent 바인딩 확인
+- [ ] Faucet에서 테스트 토큰 수령
+- [ ] WebSocket account 이벤트 구독 방식 확인
+- [ ] FastAPI 라우터 구현 (traders, followers, stats)
+- [ ] Copy Engine E2E 테스트 (테스트넷)
+- [ ] Builder Code 연동
