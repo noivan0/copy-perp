@@ -22,7 +22,7 @@ import base58
 from pacifica.client import _ssl_ctx, REST_URL
 
 # 우리 Builder Code (임의 문자열, 팔로워가 approve해야 함)
-BUILDER_CODE = os.getenv("BUILDER_CODE", "copy-perp-v1")
+BUILDER_CODE = os.getenv("BUILDER_CODE", "copyperp")
 # 우리가 추가로 가져갈 수수료 비율 (0.001 = 0.1%)
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.0005")  # 0.05%
 
