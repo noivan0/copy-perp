@@ -147,6 +147,24 @@ def get_markets(symbol: Optional[str] = None):
     return {"data": items, "count": len(items)}
 
 
+# ── 시그널 ────────────────────────────────────────────
+@app.get("/signals")
+def get_signals(top_n: int = 5):
+    """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
+    items = list(_price_cache.values())
+    funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
+    divergence_top = sorted(
+        [m for m in items if float(m.get("oracle", 0)) > 0],
+        key=lambda x: abs(float(x.get("mark", 0)) - float(x.get("oracle", 0))) / float(x.get("oracle", 1)),
+        reverse=True
+    )[:top_n]
+    return {
+        "funding_extremes": funding_top,
+        "oracle_mark_divergence": divergence_top,
+        "source": "live" if _price_cache else "empty",
+    }
+
+
 # ── 팔로우 ────────────────────────────────────────────
 @app.post("/follow")
 async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks):
