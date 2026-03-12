@@ -103,3 +103,36 @@ class DB:
             )
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+    async def get_copy_trades_by_trader(self, trader_id: str) -> list:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT * FROM copy_trades WHERE trader_id=? ORDER BY created_at DESC",
+                (trader_id,)
+            )
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def get_copy_trades_by_follower(self, follower_id: str) -> list:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT * FROM copy_trades WHERE follower_id=? ORDER BY created_at DESC",
+                (follower_id,)
+            )
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def get_trader_leaderboard(self, limit: int = 20) -> list:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT t.id, t.alias, t.follower_count,
+                       COUNT(ct.id) as total_copies,
+                       SUM(ct.follower_amount) as total_volume
+                FROM traders t
+                LEFT JOIN copy_trades ct ON t.id = ct.trader_id AND ct.status='filled'
+                GROUP BY t.id
+                ORDER BY t.follower_count DESC, total_volume DESC
+                LIMIT ?
+            """, (limit,))
+            return [dict(r) for r in await cur.fetchall()]

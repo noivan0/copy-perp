@@ -43,7 +43,7 @@ def _load_keypair() -> Optional[Keypair]:
 def _sort_json_keys(value):
     """재귀적으로 JSON 키 알파벳 정렬 (SDK utils.py 동일 로직)"""
     if isinstance(value, dict):
-        return {k: _sort_json_keys(v) for k in sorted(value.keys())}
+        return {k: _sort_json_keys(value[k]) for k in sorted(value.keys())}
     elif isinstance(value, list):
         return [_sort_json_keys(i) for i in value]
     return value
