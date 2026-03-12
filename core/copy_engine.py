@@ -122,29 +122,31 @@ class CopyEngine:
         # ── 복사 수량 계산 ────────────────────────────────
         # 1. 비율 적용
         raw_amount = float(trader_amount) * copy_ratio
-
-        # 2. max_position_usdc 클램핑
-        #    현재 가격 없이는 정확한 USD 환산 불가 → 보수적으로 amount 기준 클램핑
-        #    실제 가격 있으면: clamped = min(raw_amount, max_pos / price)
-        #    여기서는 MAX_ORDER_USDC를 상한으로 추가 안전망 적용
         clamped_amount = raw_amount
 
-        # 3. 전역 최대 주문 금액 안전장치 (MAX_ORDER_USDC)
-        #    가격 파라미터가 있으면 더 정확하게 적용
+        # 2. USDC 기반 클램핑 (WS 캐시에서 심볼별 실제 가격 있을 때만 적용)
+        #    symbol_price는 이벤트 체결가가 아닌 현재 마크 가격이어야 정확함
+        #    → WS 캐시 연동 후 활성화 예정 (TODO: api/main.py _ws_cache 연동)
+        #    지금은 전역 MAX_ORDER_USDC만 적용 (symbol_price가 해당 심볼 가격일 때만)
         try:
             price_f = float(symbol_price) if symbol_price > 0 else 0.0
         except Exception:
             price_f = 0.0
 
-        if price_f > 0:
-            # 가격이 있을 때만 USDC 기반 클램핑 적용
-            max_by_usdc = MAX_ORDER_USDC / price_f
-            clamped_amount = min(clamped_amount, max_by_usdc)
-            # max_position_usdc 클램핑
-            max_by_pos = max_pos / price_f
-            clamped_amount = min(clamped_amount, max_by_pos)
+        if price_f > 0 and symbol_price > 0:
+            order_usdc = clamped_amount * price_f
 
-        # 4. 최소 수량 보장
+            # 전역 최대 주문 금액 안전장치 (MAX_ORDER_USDC 초과 시만 클램핑)
+            if order_usdc > MAX_ORDER_USDC:
+                clamped_amount = MAX_ORDER_USDC / price_f
+                logger.debug(f"[{follower_addr[:8]}] MAX_ORDER 클램핑: {order_usdc:.2f} → {MAX_ORDER_USDC} USDC")
+
+            # max_position_usdc: 단일 주문이 팔로워 최대 한도를 초과 시만 클램핑
+            if order_usdc > max_pos:
+                clamped_amount = max_pos / price_f
+                logger.debug(f"[{follower_addr[:8]}] max_pos 클램핑: {order_usdc:.2f} → {max_pos} USDC")
+
+        # 3. 최소 수량 보장
         if clamped_amount < MIN_AMOUNT:
             logger.info(f"[{follower_addr[:8]}] 수량 {clamped_amount} < MIN({MIN_AMOUNT}) 스킵")
             return

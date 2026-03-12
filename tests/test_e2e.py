@@ -31,12 +31,15 @@ async def db():
     await conn.close()
 
 
+SYMBOL_PRICES = {"BTC": "70000", "ETH": "2000", "SOL": "87", "SUI": "2.5"}
+
 def make_event(side="open_long", symbol="BTC", amount="0.01"):
+    price = SYMBOL_PRICES.get(symbol, "100")
     return {
         "account": TRADER,
         "symbol": symbol,
         "event_type": "fulfill_taker",
-        "price": "70000",
+        "price": price,
         "amount": amount,
         "side": side,
         "cause": "normal",
@@ -89,13 +92,19 @@ async def test_liquidation_skip(db):
 # ── TC-COPY-004: 비율 계산 ────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_copy_ratio(db):
-    """팔로워A copy_ratio=0.5 → 트레이더 amount의 50% 복사"""
+    """copy_ratio 적용 검증 — max_position_usdc 클램핑 포함
+    
+    fixture: FOLLOWER_A(ratio=0.5, max=100), FOLLOWER_B(ratio=0.25, max=50)
+    ETH price=2000, amount=0.1 ETH
+    - FOLLOWER_A: 0.1 * 0.5 = 0.05 ETH (10 USDC < max_pos=100 → 클램핑 없음)
+    - FOLLOWER_B: 0.1 * 0.25 = 0.025 ETH (5 USDC < max_pos=50 → 클램핑 없음)
+    """
     engine = CopyEngine(db, mock_mode=True)
-    await engine.on_fill(make_event("open_long", "ETH", "1.0"))
+    await engine.on_fill(make_event("open_long", "ETH", "0.1"))
     trades = await get_copy_trades(db, limit=10)
-    # 팔로워A: 1.0 * 0.5 = 0.5, 팔로워B: 1.0 * 0.25 = 0.25
     amounts = sorted([float(t["amount"]) for t in trades])
-    assert amounts == sorted([0.25, 0.5]), f"비율 계산 오류: {amounts}"
+    expected = sorted([0.025, 0.05])
+    assert amounts == pytest.approx(expected, abs=0.000001), f"비율 계산 오류: {amounts}"
     print(f"✅ TC-004: 비율 계산 정상 {amounts}")
 
 
