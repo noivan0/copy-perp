@@ -140,3 +140,15 @@ if __name__ == "__main__":
         print("✅ DB 정상")
 
     asyncio.run(main())
+
+async def get_copy_trades(conn, limit: int = 50, follower: str = None) -> list:
+    if follower:
+        async with conn.execute(
+            "SELECT * FROM copy_trades WHERE follower_address=? ORDER BY created_at DESC LIMIT ?",
+            (follower, limit)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+    async with conn.execute(
+        "SELECT * FROM copy_trades ORDER BY created_at DESC LIMIT ?", (limit,)
+    ) as cur:
+        return [dict(r) for r in await cur.fetchall()]
