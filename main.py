@@ -149,7 +149,7 @@ async def main():
     args = parser.parse_args()
 
     db = await init_db()
-    engine = CopyEngine(db)
+    engine = CopyEngine(db, mock_mode=args.mock)
 
     if args.mock:
         await run_mock_demo(db, engine)

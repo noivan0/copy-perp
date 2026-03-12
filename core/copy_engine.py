@@ -47,8 +47,9 @@ def _parse_side(event_side: str) -> Optional[str]:
 
 
 class CopyEngine:
-    def __init__(self, db: aiosqlite.Connection):
+    def __init__(self, db: aiosqlite.Connection, mock_mode: bool = False):
         self.db = db
+        self.mock_mode = mock_mode
         self._client_cache: dict[str, PacificaClient] = {}
 
     def _get_client(self, account: str) -> PacificaClient:
@@ -124,25 +125,25 @@ class CopyEngine:
         trade_id = str(uuid.uuid4())
 
         try:
-            # Builder Code 승인 여부 확인 (간소화 — 실제 운영 시 캐싱)
-            if not follower["builder_approved"]:
-                logger.warning(f"Builder Code 미승인: {follower_addr[:8]}... — Builder Code 없이 주문")
-                bc = ""
+            bc = BUILDER_CODE if follower["builder_approved"] else ""
+
+            if self.mock_mode:
+                # Mock 모드: 실제 API 호출 없이 80% 성공 시뮬레이션
+                import random
+                status = "filled" if random.random() > 0.2 else "failed"
+                logger.info(f"[MOCK][{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
             else:
-                bc = BUILDER_CODE
-
-            client = self._get_client(follower_addr)
-            result = client.market_order(
-                symbol=symbol,
-                side=side,
-                amount=copy_amount,
-                slippage_percent=MAX_SLIPPAGE,
-                builder_code=bc,
-                client_order_id=client_order_id,
-            )
-
-            status = "filled" if result.get("data") else "failed"
-            logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
+                client = self._get_client(follower_addr)
+                result = client.market_order(
+                    symbol=symbol,
+                    side=side,
+                    amount=copy_amount,
+                    slippage_percent=MAX_SLIPPAGE,
+                    builder_code=bc,
+                    client_order_id=client_order_id,
+                )
+                status = "filled" if result.get("data") else "failed"
+                logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
 
         except Exception as e:
             logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
