@@ -23,15 +23,23 @@ class TraderRegister(BaseModel):
 
 
 @router.get("")
-async def list_traders(limit: int = 20, mock: bool = True):
-    """리더보드 — PnL 기준 정렬 (mock=true: Mock 데이터)"""
+async def list_traders(limit: int = 20, mock: bool = False):
+    """리더보드 — PnL 기준 정렬
+    mock=true: Mock 데이터 강제 반환
+    mock=false (기본): DB 우선, 비어있으면 Mock 폴백
+    """
     if mock:
         sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
         return {"data": sorted_traders[:limit], "source": "mock", "count": len(sorted_traders[:limit])}
 
     from api.main import _db
     leaders = await get_leaderboard(_db, limit)
-    return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+    if leaders:
+        return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+
+    # DB 비어있으면 Mock 폴백
+    sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
+    return {"data": sorted_traders[:limit], "source": "mock_fallback", "count": len(sorted_traders[:limit])}
 
 
 @router.post("")
