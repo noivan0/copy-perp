@@ -1,134 +1,140 @@
 """
-Position Monitor — 트레이더 포지션 변화 감시
-전략: WebSocket account 이벤트 구독 (지원 시) / REST 폴링 (백업)
+Position Monitor — 트레이더 포지션 변화 감지
+WS 구독: {"method": "subscribe", "params": {"source": "prices"}} 확인됨
+account fill 이벤트: WS source 파라미터 미확인 → REST 500ms 폴링 병행
+
+실제 구조 (SDK ws/subscribe_prices.py 기반):
+  {"method": "subscribe", "params": {"source": "prices"}}
+  {"method": "subscribe", "params": {"source": "account", "account": "..."}} ← 시도
 """
+
 import asyncio
 import json
 import logging
-from typing import Callable
+import ssl
+import time
+from typing import Callable, Optional
 
 import websockets
 
-from core.copy_engine import CopyEngine, FillEvent
-from db.models import get_active_followers
+logger = logging.getLogger(__name__)
 
-log = logging.getLogger(__name__)
+WS_URL = "wss://test-ws.pacifica.fi/ws"
 
-WS_URL = "wss://test-ws.pacifica.fi/ws"  # 테스트넷
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
 
 
 class PositionMonitor:
     """
-    등록된 트레이더들의 포지션 변화 실시간 감시.
+    트레이더의 포지션 변화를 감지하고 콜백 호출
     
-    W1 Day 1 확인 필요:
-    - Pacifica WS에서 account_fills 구독 지원 여부
-    - 미지원 시 REST 폴링 (500ms) 으로 대체
+    우선: WS account 이벤트 구독 시도
+    폴백: REST 500ms 폴링
     """
 
-    def __init__(self, copy_engine: CopyEngine):
-        self.engine = copy_engine
-        self._traders: set[str] = set()
+    def __init__(self, trader_address: str, on_fill: Callable):
+        self.trader = trader_address
+        self.on_fill = on_fill  # async 콜백: on_fill(fill_event: dict)
         self._running = False
-        self._positions_cache: dict = {}  # trader_id → 마지막 포지션
-
-    def add_trader(self, trader_id: str):
-        self._traders.add(trader_id)
-        log.info(f"트레이더 모니터링 추가: {trader_id}")
+        self._positions_cache: dict = {}  # symbol → position snapshot
 
     async def start(self):
         self._running = True
-        # WebSocket 시도 → 실패 시 폴링으로 폴백
+        logger.info(f"PositionMonitor 시작: {self.trader[:8]}...")
+        
+        # WS 먼저 시도, 실패 시 REST 폴링
         try:
-            await self._watch_via_websocket()
+            await self._ws_subscribe()
         except Exception as e:
-            log.warning(f"WS 감시 실패({e}), REST 폴링으로 전환")
-            await self._watch_via_polling()
+            logger.warning(f"WS 구독 실패 ({e}), REST 폴링으로 전환")
+            await self._rest_polling()
 
-    async def _watch_via_websocket(self):
-        """
-        방식 1: WebSocket account_fills 구독
-        W1 Day 1에 실제 지원 여부 확인
-        """
-        async with websockets.connect(WS_URL, ping_interval=30) as ws:
-            for trader_id in self._traders:
-                await ws.send(json.dumps({
-                    "method": "subscribe",
-                    "params": {
-                        "source": "account_fills",  # 확인 필요
-                        "account": trader_id,
-                    }
-                }))
-            log.info(f"WS 감시 시작 — traders={len(self._traders)}")
+    async def stop(self):
+        self._running = False
+
+    async def _ws_subscribe(self):
+        """WS account 이벤트 구독 시도"""
+        async with websockets.connect(
+            WS_URL,
+            ping_interval=30,
+            ssl=_ssl_ctx
+        ) as ws:
+            # account source 구독 시도
+            sub_msg = {
+                "method": "subscribe",
+                "params": {
+                    "source": "account",
+                    "account": self.trader
+                }
+            }
+            await ws.send(json.dumps(sub_msg))
+            logger.info("WS account 구독 전송")
 
             async for raw in ws:
-                msg = json.loads(raw)
-                await self._handle_ws_event(msg)
+                if not self._running:
+                    break
+                data = json.loads(raw)
+                await self._handle_ws_event(data)
 
-    async def _watch_via_polling(self):
-        """
-        방식 2: REST 폴링 (WS 미지원 시 백업)
-        500ms 간격으로 포지션 변화 감지
-        """
+    async def _handle_ws_event(self, data: dict):
+        """WS 이벤트 처리"""
+        # fills 이벤트 감지
+        if data.get("type") in ("fill", "account_fill", "order_fill"):
+            logger.info(f"WS fill 이벤트: {data}")
+            await self.on_fill(data)
+        elif data.get("data"):
+            inner = data["data"]
+            if isinstance(inner, dict) and inner.get("event_type") in ("fulfill_taker", "fulfill_maker"):
+                await self.on_fill(inner)
+
+    async def _rest_polling(self):
+        """REST 500ms 폴링 (WS 실패 시 폴백)"""
         from pacifica.client import PacificaClient
+        client = PacificaClient(self.trader)
+        
+        logger.info("REST 폴링 시작 (500ms)")
+        prev_trades: list = []
 
-        log.info("REST 폴링 감시 시작")
         while self._running:
-            for trader_id in list(self._traders):
-                try:
-                    client = PacificaClient(account_address=trader_id)
-                    positions = await client.get_positions()
+            try:
+                trades = client.get_trades(limit=10)
+                
+                if prev_trades:
+                    # 새 체결 감지
+                    prev_ids = {(t.get("created_at"), t.get("price"), t.get("amount")) for t in prev_trades}
+                    for t in trades:
+                        key = (t.get("created_at"), t.get("price"), t.get("amount"))
+                        if key not in prev_ids:
+                            logger.info(f"새 체결 감지: {t}")
+                            await self.on_fill(t)
+                
+                prev_trades = trades
+            except Exception as e:
+                logger.error(f"REST 폴링 오류: {e}")
 
-                    prev = self._positions_cache.get(trader_id, {})
-                    changes = self._detect_changes(prev, positions)
+            await asyncio.sleep(0.5)
 
-                    for change in changes:
-                        event = FillEvent(
-                            account=trader_id,
-                            symbol=change["symbol"],
-                            side=change["side"],
-                            amount=change["amount"],
-                            order_id=change.get("order_id", "polling"),
-                            price=change.get("price", 0),
-                        )
-                        await self.engine.on_fill(event)
 
-                    self._positions_cache[trader_id] = positions
+# ── 테스트 ──────────────────────────────────
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
 
-                except Exception as e:
-                    log.error(f"폴링 오류 trader={trader_id}: {e}")
+    ACCOUNT = os.getenv("ACCOUNT_ADDRESS", "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
 
-            await asyncio.sleep(0.5)  # 500ms
+    async def on_fill(event):
+        print(f"[FILL] {json.dumps(event, indent=2)}")
 
-    def _detect_changes(self, prev: dict, curr: dict) -> list:
-        """이전/현재 포지션 비교 → 변화 감지"""
-        changes = []
-        for symbol, pos in curr.items():
-            prev_pos = prev.get(symbol, {})
-            if pos.get("size") != prev_pos.get("size"):
-                size_diff = float(pos.get("size", 0)) - float(prev_pos.get("size", 0))
-                if size_diff != 0:
-                    changes.append({
-                        "symbol": symbol,
-                        "side": "bid" if size_diff > 0 else "ask",
-                        "amount": str(abs(size_diff)),
-                        "price": pos.get("mark_price", 0),
-                    })
-        return changes
+    async def main():
+        monitor = PositionMonitor(ACCOUNT, on_fill)
+        print(f"모니터링 시작: {ACCOUNT}")
+        print("Ctrl+C로 종료")
+        try:
+            await monitor.start()
+        except KeyboardInterrupt:
+            await monitor.stop()
 
-    async def _handle_ws_event(self, msg: dict):
-        """WS 이벤트 파싱 → FillEvent 변환"""
-        # W1 Day 1: 실제 이벤트 구조 확인 후 파싱 로직 완성
-        if msg.get("type") == "fill":
-            event = FillEvent(
-                account=msg["account"],
-                symbol=msg["symbol"],
-                side=msg["side"],
-                amount=msg["amount"],
-                order_id=msg["order_id"],
-                price=msg.get("price", 0),
-            )
-            await self.engine.on_fill(event)
-
-    def stop(self):
-        self._running = False
+    asyncio.run(main())
