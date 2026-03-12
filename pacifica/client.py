@@ -206,3 +206,86 @@ if __name__ == "__main__":
         for t in trades[:2]:
             print(f"   {t.get('side')} {t.get('amount')} @ {t.get('price')} ({t.get('event_type')})")
     print(f"✅ Agent Key: {'설정됨' if client._kp else '미설정 (읽기전용 모드)'}")
+
+
+# ── WS 가격 스트림 ─────────────────────────────────────
+
+import asyncio as _asyncio
+import ssl as _ssl
+
+class PriceStream:
+    """실시간 가격 + 펀딩비 + OI (WS prices 채널)"""
+
+    def __init__(self, on_update=None):
+        self.on_update = on_update
+        self._running = False
+        self.latest: dict = {}
+
+    async def start(self):
+        self._running = True
+        ssl_ctx = _ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = _ssl.CERT_NONE
+        while self._running:
+            try:
+                import websockets as _ws
+                async with _ws.connect(WS_URL, ssl=ssl_ctx) as ws:
+                    await ws.send(json.dumps({"method": "subscribe", "params": {"source": "prices"}}))
+                    async for raw in ws:
+                        msg = json.loads(raw)
+                        if msg.get("channel") == "prices":
+                            for item in msg.get("data", []):
+                                self.latest[item["symbol"]] = item
+                            if self.on_update:
+                                await self.on_update(msg.get("data", []))
+            except Exception as e:
+                if self._running:
+                    await _asyncio.sleep(2)
+
+    def stop(self):
+        self._running = False
+
+
+class PositionPoller:
+    """트레이더 포지션 변화 감지 (REST 500ms 폴링)"""
+
+    def __init__(self, client, on_change=None):
+        self.client = client
+        self.on_change = on_change
+        self._prev: list = []
+        self._running = False
+
+    async def start(self, interval: float = 0.5):
+        self._running = True
+        while self._running:
+            try:
+                curr = self.client.get_positions()
+                for change in self._diff(self._prev, curr):
+                    if self.on_change:
+                        await self.on_change(change)
+                self._prev = curr
+            except Exception:
+                pass
+            await _asyncio.sleep(interval)
+
+    def _diff(self, prev, curr):
+        prev_map = {p.get("symbol"): p for p in prev}
+        curr_map = {p.get("symbol"): p for p in curr}
+        changes = []
+        for sym, pos in curr_map.items():
+            prev_pos = prev_map.get(sym, {})
+            ps = float(prev_pos.get("szi", 0)) if prev_pos else 0
+            cs = float(pos.get("szi", 0))
+            if cs != ps:
+                changes.append({"type": "open" if abs(cs) > abs(ps) else "reduce",
+                                 "symbol": sym, "side": "bid" if cs > 0 else "ask",
+                                 "size_delta": abs(cs - ps), "position": pos})
+        for sym in prev_map:
+            if sym not in curr_map:
+                changes.append({"type": "close", "symbol": sym,
+                                 "side": "ask" if float(prev_map[sym].get("szi", 0)) > 0 else "bid",
+                                 "size_delta": abs(float(prev_map[sym].get("szi", 0))), "position": None})
+        return changes
+
+    def stop(self):
+        self._running = False

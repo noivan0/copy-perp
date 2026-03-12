@@ -1,44 +1,78 @@
 """
-성과 통계 계산
-트레이더/팔로워 PnL, 승률, 카피 성과 집계
+성과 통계 계산 — aiosqlite 기반 (db.database 사용)
 """
-from typing import List, Dict
-from db.models import DB
+from typing import Optional
 
 
-class StatsEngine:
-    def __init__(self, db: DB):
-        self.db = db
+def compute_trader_stats(trades: list) -> dict:
+    """체결 내역 리스트로 통계 계산 (동기)"""
+    total = len(trades)
+    filled = [t for t in trades if t.get("status") == "filled"]
+    failed = [t for t in trades if t.get("status") in ("failed", "error")]
+    pnl_list = [t.get("pnl") or 0 for t in filled]
+    volume = sum(float(t.get("amount", 0)) for t in filled)
+    total_pnl = sum(pnl_list)
 
-    async def trader_stats(self, trader_id: str) -> dict:
-        """트레이더 성과 요약"""
-        trades = await self.db.get_copy_trades_by_trader(trader_id)
-        return self._calc_stats(trader_id, trades, role="trader")
+    wins = [p for p in pnl_list if p > 0]
+    losses = [p for p in pnl_list if p < 0]
 
-    async def follower_stats(self, follower_id: str) -> dict:
-        """팔로워 성과 요약"""
-        trades = await self.db.get_copy_trades_by_follower(follower_id)
-        return self._calc_stats(follower_id, trades, role="follower")
+    avg_win = sum(wins) / len(wins) if wins else 0
+    avg_loss = abs(sum(losses) / len(losses)) if losses else 0
+    profit_factor = avg_win / avg_loss if avg_loss else float("inf")
 
-    async def leaderboard(self, limit: int = 20) -> list:
-        """트레이더 리더보드 (팔로워 수 기준)"""
-        return await self.db.get_trader_leaderboard(limit)
+    return {
+        "total_trades": total,
+        "filled": len(filled),
+        "failed": len(failed),
+        "win_count": len(wins),
+        "loss_count": len(losses),
+        "win_rate": round(len(wins) / len(filled) * 100, 1) if filled else 0,
+        "success_rate": round(len(filled) / total * 100, 1) if total else 0,
+        "total_pnl": round(total_pnl, 4),
+        "volume_usd": round(volume, 4),
+        "avg_win": round(avg_win, 4),
+        "avg_loss": round(avg_loss, 4),
+        "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else None,
+    }
 
-    def _calc_stats(self, address: str, trades: list, role: str) -> dict:
-        total = len(trades)
-        filled = [t for t in trades if t["status"] == "filled"]
-        failed = [t for t in trades if t["status"] in ("failed", "error")]
-        skipped = [t for t in trades if t["status"] == "skipped_insufficient_balance"]
 
-        amount_key = "follower_amount" if role == "follower" else "trader_amount"
-        total_volume = sum(t.get(amount_key, 0) for t in filled)
+async def get_trader_stats(db, trader_address: str) -> dict:
+    """DB에서 트레이더 통계 계산"""
+    async with db.execute(
+        "SELECT * FROM copy_trades WHERE trader_address = ?", (trader_address,)
+    ) as cur:
+        trades = [dict(r) for r in await cur.fetchall()]
+    stats = compute_trader_stats(trades)
+    stats["trader_address"] = trader_address
+    return stats
 
-        return {
-            "address": address,
-            "total_copy_trades": total,
-            "filled": len(filled),
-            "failed": len(failed),
-            "skipped": len(skipped),
-            "success_rate": round(len(filled) / total * 100, 1) if total else 0,
-            "total_volume_usd": round(total_volume, 2),
-        }
+
+async def get_follower_stats(db, follower_address: str) -> dict:
+    """DB에서 팔로워 통계 계산"""
+    async with db.execute(
+        "SELECT * FROM copy_trades WHERE follower_address = ?", (follower_address,)
+    ) as cur:
+        trades = [dict(r) for r in await cur.fetchall()]
+    stats = compute_trader_stats(trades)
+    stats["follower_address"] = follower_address
+    return stats
+
+
+async def get_platform_stats(db) -> dict:
+    """플랫폼 전체 통계"""
+    async with db.execute("SELECT COUNT(*) as c FROM traders WHERE active=1") as cur:
+        traders = (await cur.fetchone())["c"]
+    async with db.execute("SELECT COUNT(*) as c FROM followers WHERE active=1") as cur:
+        followers = (await cur.fetchone())["c"]
+    async with db.execute(
+        "SELECT COUNT(*) as c, SUM(pnl) as pnl, SUM(CAST(amount AS REAL)) as vol FROM copy_trades WHERE status='filled'"
+    ) as cur:
+        row = await cur.fetchone()
+
+    return {
+        "active_traders": traders,
+        "active_followers": followers,
+        "total_trades_filled": row["c"] or 0,
+        "total_pnl_usdc": round(row["pnl"] or 0, 4),
+        "total_volume_usdc": round(row["vol"] or 0, 4),
+    }

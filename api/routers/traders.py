@@ -1,0 +1,85 @@
+"""
+트레이더 라우터
+GET  /traders                      — 리더보드
+POST /traders                      — 트레이더 등록
+GET  /traders/{address}            — 트레이더 상세 + 통계
+GET  /traders/{address}/trades     — 체결 이력
+GET  /traders/{address}/followers  — 팔로워 목록
+"""
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from typing import Optional
+
+from db.database import add_trader, get_leaderboard, get_followers
+from core.stats import compute_trader_stats, get_trader_stats
+from core.mock import MOCK_TRADERS, mock_fill_event
+
+router = APIRouter(prefix="/traders", tags=["traders"])
+
+
+class TraderRegister(BaseModel):
+    address: str
+    alias: Optional[str] = ""
+
+
+@router.get("")
+async def list_traders(limit: int = 20, mock: bool = True):
+    """리더보드 — PnL 기준 정렬 (mock=true: Mock 데이터)"""
+    if mock:
+        sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
+        return {"data": sorted_traders[:limit], "source": "mock", "count": len(sorted_traders[:limit])}
+
+    from api.main import _db
+    leaders = await get_leaderboard(_db, limit)
+    return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+
+
+@router.post("")
+async def register_trader(body: TraderRegister, background_tasks: BackgroundTasks):
+    from api.main import _db, _engine, _monitors
+    from core.position_monitor import PositionMonitor
+
+    await add_trader(_db, body.address, body.alias)
+
+    if body.address not in _monitors:
+        monitor = PositionMonitor(body.address, _engine.on_fill)
+        _monitors[body.address] = monitor
+        background_tasks.add_task(monitor.start)
+
+    return {"ok": True, "address": body.address, "alias": body.alias, "monitoring": True}
+
+
+@router.get("/{address}")
+async def get_trader(address: str):
+    """트레이더 상세 + 성과 통계"""
+    # Mock 데이터 먼저
+    mock = next((t for t in MOCK_TRADERS if t["address"] == address), None)
+    if mock:
+        return {"data": mock, "source": "mock"}
+
+    from api.main import _db
+    async with _db.execute("SELECT * FROM traders WHERE address = ?", (address,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, "트레이더를 찾을 수 없습니다")
+
+    stats = await get_trader_stats(_db, address)
+    return {"data": {**dict(row), **stats}, "source": "db"}
+
+
+@router.get("/{address}/trades")
+async def get_trader_trades(address: str, limit: int = 50):
+    from api.main import _db
+    async with _db.execute(
+        "SELECT * FROM copy_trades WHERE trader_address = ? ORDER BY created_at DESC LIMIT ?",
+        (address, limit)
+    ) as cur:
+        rows = await cur.fetchall()
+    return {"data": [dict(r) for r in rows], "count": len(rows)}
+
+
+@router.get("/{address}/followers")
+async def get_trader_followers(address: str):
+    from api.main import _db
+    rows = await get_followers(_db, address)
+    return {"data": [dict(r) for r in rows], "count": len(rows)}

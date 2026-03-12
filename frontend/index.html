@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Copy Perp — Decentralized Copy Trading on Pacifica</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0e1a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+
+    /* Header */
+    header { display: flex; align-items: center; justify-content: space-between;
+             padding: 16px 32px; border-bottom: 1px solid #1e2d4a; }
+    .logo { font-size: 20px; font-weight: 700; color: #00d4ff; }
+    .logo span { color: #fff; }
+    .connect-btn { background: #00d4ff; color: #0a0e1a; border: none; padding: 10px 20px;
+                   border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .connect-btn:hover { background: #00b8d9; }
+
+    /* Hero */
+    .hero { text-align: center; padding: 80px 32px 48px; }
+    .hero h1 { font-size: 48px; font-weight: 800; line-height: 1.2; margin-bottom: 16px; }
+    .hero h1 span { color: #00d4ff; }
+    .hero p { font-size: 18px; color: #94a3b8; max-width: 560px; margin: 0 auto 32px; }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; }
+    .btn-primary { background: #00d4ff; color: #0a0e1a; padding: 14px 28px;
+                   border-radius: 10px; font-weight: 700; cursor: pointer; border: none; font-size: 16px; }
+    .btn-secondary { background: transparent; color: #00d4ff; padding: 14px 28px;
+                     border-radius: 10px; font-weight: 700; cursor: pointer;
+                     border: 1px solid #00d4ff; font-size: 16px; }
+
+    /* Stats bar */
+    .stats-bar { display: flex; justify-content: center; gap: 48px; padding: 24px;
+                 background: #0f1629; border-top: 1px solid #1e2d4a; border-bottom: 1px solid #1e2d4a; }
+    .stat { text-align: center; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #00d4ff; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+    /* Main layout */
+    main { max-width: 1200px; margin: 0 auto; padding: 40px 32px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+    /* Cards */
+    .card { background: #0f1629; border: 1px solid #1e2d4a; border-radius: 16px; padding: 24px; }
+    .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .card h2 .badge { background: #00d4ff22; color: #00d4ff; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+
+    /* Leaderboard */
+    .leaderboard-row { display: flex; align-items: center; justify-content: space-between;
+                        padding: 12px 0; border-bottom: 1px solid #1e2d4a; }
+    .leaderboard-row:last-child { border-bottom: none; }
+    .rank { font-size: 14px; color: #64748b; width: 24px; }
+    .trader-info { flex: 1; margin: 0 12px; }
+    .trader-addr { font-size: 14px; font-weight: 500; }
+    .trader-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .pnl { font-size: 14px; font-weight: 600; }
+    .pnl.positive { color: #22c55e; }
+    .pnl.negative { color: #ef4444; }
+    .copy-btn { background: #00d4ff22; color: #00d4ff; border: 1px solid #00d4ff44;
+                padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .copy-btn:hover { background: #00d4ff33; }
+
+    /* Price ticker */
+    .ticker { display: flex; flex-direction: column; gap: 8px; }
+    .ticker-row { display: flex; justify-content: space-between; align-items: center;
+                   padding: 10px 14px; background: #0a0e1a; border-radius: 8px; }
+    .ticker-sym { font-weight: 600; font-size: 14px; }
+    .ticker-price { font-size: 14px; }
+    .ticker-funding { font-size: 12px; color: #94a3b8; }
+    .funding-pos { color: #22c55e; }
+    .funding-neg { color: #ef4444; }
+
+    /* Live indicator */
+    .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #22c55e; }
+    .live-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%;
+                animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* My copies */
+    .copy-row { display: flex; justify-content: space-between; padding: 10px 0;
+                border-bottom: 1px solid #1e2d4a; font-size: 14px; }
+    .copy-row:last-child { border-bottom: none; }
+
+    /* Form */
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    input, select { width: 100%; background: #0a0e1a; border: 1px solid #1e2d4a;
+                    color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #00d4ff; }
+    .submit-btn { width: 100%; background: #00d4ff; color: #0a0e1a; border: none;
+                  padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 15px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Copy<span>Perp</span></div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span class="live"><span class="live-dot"></span>LIVE</span>
+    <button class="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+</header>
+
+<!-- Stats bar -->
+<div class="stats-bar">
+  <div class="stat">
+    <div class="stat-value" id="stat-price">$—</div>
+    <div class="stat-label">BTC Price</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="stat-funding">—</div>
+    <div class="stat-label">BTC Funding</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="stat-oi">—</div>
+    <div class="stat-label">Open Interest</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="stat-traders">—</div>
+    <div class="stat-label">Active Traders</div>
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>Copy the Best Traders<br>on <span>Pacifica</span></h1>
+  <p>Follow top traders and automatically mirror their perpetual positions. Your funds stay in your wallet. Always.</p>
+  <div class="hero-btns">
+    <button class="btn-primary">Start Copying</button>
+    <button class="btn-secondary">Become a Trader</button>
+  </div>
+</div>
+
+<main>
+  <div class="grid">
+
+    <!-- 트레이더 리더보드 -->
+    <div class="card">
+      <h2>Top Traders <span class="badge">LIVE</span></h2>
+      <div id="leaderboard">
+        <!-- JS로 채움 -->
+        <div class="leaderboard-row">
+          <div class="rank">1</div>
+          <div class="trader-info">
+            <div class="trader-addr">EfZBDp...Kt4</div>
+            <div class="trader-meta">47 followers · 30d vol $128,400</div>
+          </div>
+          <div class="pnl positive">+34.2%</div>
+          <button class="copy-btn">Copy</button>
+        </div>
+        <div class="leaderboard-row">
+          <div class="rank">2</div>
+          <div class="trader-info">
+            <div class="trader-addr">5GCnPg...En</div>
+            <div class="trader-meta">31 followers · 30d vol $89,200</div>
+          </div>
+          <div class="pnl positive">+21.8%</div>
+          <button class="copy-btn">Copy</button>
+        </div>
+        <div class="leaderboard-row">
+          <div class="rank">3</div>
+          <div class="trader-info">
+            <div class="trader-addr">7KmNx...Rp2</div>
+            <div class="trader-meta">19 followers · 30d vol $54,100</div>
+          </div>
+          <div class="pnl positive">+18.5%</div>
+          <button class="copy-btn">Copy</button>
+        </div>
+        <div class="leaderboard-row">
+          <div class="rank">4</div>
+          <div class="trader-info">
+            <div class="trader-addr">9PqRt...Wz8</div>
+            <div class="trader-meta">12 followers · 30d vol $31,700</div>
+          </div>
+          <div class="pnl negative">-4.1%</div>
+          <button class="copy-btn">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 실시간 가격 -->
+    <div class="card">
+      <h2>Live Prices <span class="badge">WS</span></h2>
+      <div class="ticker" id="ticker">
+        <div style="color:#64748b;font-size:14px;">연결 중...</div>
+      </div>
+    </div>
+
+    <!-- 팔로워 등록 -->
+    <div class="card">
+      <h2>Start Copying</h2>
+      <div class="form-group">
+        <label>Trader Address</label>
+        <input type="text" id="trader-addr" placeholder="Trader wallet address..." />
+      </div>
+      <div class="form-group">
+        <label>Copy Ratio</label>
+        <select id="copy-ratio">
+          <option value="0.25">25% of balance</option>
+          <option value="0.5" selected>50% of balance</option>
+          <option value="0.75">75% of balance</option>
+          <option value="1.0">100% of balance</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Max Position Size (USD)</label>
+        <input type="number" id="max-usd" value="100" min="10" />
+      </div>
+      <button class="submit-btn" onclick="startCopying()">Start Copying →</button>
+    </div>
+
+    <!-- 내 카피 현황 -->
+    <div class="card">
+      <h2>My Copy Trades</h2>
+      <div id="my-trades">
+        <div class="copy-row">
+          <span style="color:#64748b">지갑 연결 후 표시됩니다</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  const API = 'http://localhost:8000';
+
+  // ─── 실시간 가격 (API 폴링) ───────────────────────
+  async function fetchPrices() {
+    try {
+      const r = await fetch(`${API}/prices`);
+      const data = await r.json();
+      const symbols = ['BTC','ETH','SOL','XAU','DOGE'];
+      const btc = data['BTC'] || {};
+
+      // Stats bar 업데이트
+      document.getElementById('stat-price').textContent =
+        btc.mark ? '$' + Number(btc.mark).toLocaleString('en', {maximumFractionDigits: 0}) : '$—';
+      document.getElementById('stat-funding').textContent =
+        btc.funding ? (Number(btc.funding) * 100).toFixed(4) + '%' : '—';
+      document.getElementById('stat-oi').textContent =
+        btc.open_interest ? '$' + (Number(btc.open_interest)/1000).toFixed(1) + 'K' : '—';
+
+      // 티커 업데이트
+      const ticker = document.getElementById('ticker');
+      ticker.innerHTML = symbols.map(sym => {
+        const d = data[sym] || {};
+        const funding = d.funding ? Number(d.funding) * 100 : null;
+        const fundingClass = funding > 0 ? 'funding-pos' : 'funding-neg';
+        const fundingStr = funding !== null ? (funding > 0 ? '+' : '') + funding.toFixed(4) + '%' : '—';
+        const price = d.mark ? '$' + Number(d.mark).toLocaleString('en', {maximumFractionDigits: 2}) : '—';
+        return `<div class="ticker-row">
+          <span class="ticker-sym">${sym}</span>
+          <span class="ticker-price">${price}</span>
+          <span class="ticker-funding ${fundingClass}">${fundingStr}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      console.log('API 연결 대기 중...', e.message);
+    }
+  }
+
+  // ─── 지갑 연결 ───────────────────────────────────
+  function connectWallet() {
+    alert('Privy 지갑 연동 예정 (개발 중)\nGoogle 계정으로 1클릭 로그인');
+  }
+
+  // ─── 카피 시작 ───────────────────────────────────
+  async function startCopying() {
+    const addr = document.getElementById('trader-addr').value;
+    const ratio = document.getElementById('copy-ratio').value;
+    const maxUsd = document.getElementById('max-usd').value;
+
+    if (!addr) { alert('트레이더 주소를 입력하세요'); return; }
+
+    alert(`Copy 등록 예정:\n트레이더: ${addr}\n비율: ${ratio * 100}%\n최대: $${maxUsd}\n\n(지갑 연결 후 실제 등록 가능)`);
+  }
+
+  // ─── 리더보드 로드 ───────────────────────────────
+  async function loadLeaderboard() {
+    try {
+      const r = await fetch(`${API}/leaderboard`);
+      // TODO: 실제 데이터로 교체
+    } catch(e) {}
+  }
+
+  // ─── Active Traders 카운트 ───────────────────────
+  async function loadStats() {
+    try {
+      const r = await fetch(`${API}/health`);
+      const d = await r.json();
+      // 연결 확인 후 통계 업데이트
+    } catch(e) {}
+    document.getElementById('stat-traders').textContent = '47'; // 더미
+  }
+
+  // ─── 초기화 + 폴링 ───────────────────────────────
+  fetchPrices();
+  loadStats();
+  setInterval(fetchPrices, 3000);  // 3초마다 갱신
+</script>
+</body>
+</html>

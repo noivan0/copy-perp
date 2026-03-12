@@ -1,85 +1,145 @@
 """
 Fuul 레퍼럴 연동
-https://docs.fuul.xyz
+https://www.fuul.xyz/
 
-Copy Perp에서 트레이더가 팔로워를 초대하면 → Fuul이 보상 자동 분배
+Fuul은 온체인 레퍼럴/포인트 시스템.
+Copy Perp에서:
+- 팔로워가 다른 사람을 초대 → 레퍼럴 포인트 적립
+- 트레이더가 팔로워를 유치 → 추가 보상
+
+현재 상태: Mock 구현 (Fuul API 키 미수령)
+실제 연동 시 FUUL_API_KEY 환경변수 설정 필요
 """
-import os
-import requests
-from typing import Optional
 
+import os
+import json
+import time
+import uuid
+import logging
+import urllib.request
+import urllib.error
+
+logger = logging.getLogger(__name__)
+
+FUUL_API_URL = os.getenv("FUUL_API_URL", "https://api.fuul.xyz")
 FUUL_API_KEY = os.getenv("FUUL_API_KEY", "")
 FUUL_PROJECT_ID = os.getenv("FUUL_PROJECT_ID", "")
-FUUL_BASE_URL = "https://api.fuul.xyz/v1"
+
+# Mock 모드 (API 키 없을 때)
+MOCK_MODE = not FUUL_API_KEY
 
 
-class FuulClient:
-    """
-    Fuul 레퍼럴 시스템 클라이언트
-    - 트레이더가 팔로워 초대 링크 생성
-    - 팔로워가 가입 시 트레이더에게 포인트 지급
-    """
+class FuulReferral:
+    """Fuul 레퍼럴 시스템 연동"""
 
     def __init__(self):
-        self.headers = {
-            "Authorization": f"Bearer {FUUL_API_KEY}",
-            "Content-Type": "application/json",
-        }
+        self.mock = MOCK_MODE
+        if self.mock:
+            logger.info("Fuul: Mock 모드 (FUUL_API_KEY 미설정)")
+        else:
+            logger.info(f"Fuul: 실제 연동 (project={FUUL_PROJECT_ID})")
 
-    def generate_referral_link(self, trader_address: str) -> str:
-        """
-        트레이더 레퍼럴 링크 생성
-        예: https://copy-perp.app/join?ref=<trader_address>
-        """
-        base_url = os.getenv("APP_BASE_URL", "https://copy-perp.pacifica.fi")
-        return f"{base_url}/join?ref={trader_address}"
+        # Mock 저장소
+        self._referrals: dict[str, str] = {}   # referee → referrer
+        self._points: dict[str, float] = {}     # address → points
 
-    def track_conversion(self, referrer: str, new_user: str, event: str = "signup") -> dict:
-        """
-        레퍼럴 전환 추적 (팔로워 가입 시 호출)
-        API 키 미설정 시 로컬 로깅만 수행
-        """
-        if not FUUL_API_KEY:
-            # API 키 없을 때 → 로컬 기록만
-            return {
-                "status": "local_only",
-                "referrer": referrer,
-                "new_user": new_user,
-                "event": event,
-            }
+    def generate_referral_link(self, address: str) -> str:
+        """팔로워/트레이더 레퍼럴 링크 생성"""
+        # ref 코드 = 주소 앞 8자
+        ref_code = address[:8]
+        base_url = os.getenv("APP_URL", "https://copy-perp.pacifica.fi")
+        return f"{base_url}?ref={ref_code}"
 
+    async def track_referral(self, referrer: str, referee: str) -> dict:
+        """레퍼럴 추적 (신규 팔로워 등록 시 호출)"""
+        if self.mock:
+            self._referrals[referee] = referrer
+            # 레퍼러에게 포인트 적립 (Mock)
+            self._points[referrer] = self._points.get(referrer, 0) + 10.0
+            logger.info(f"[Mock] 레퍼럴: {referee[:8]} ← {referrer[:8]} (+10pt)")
+            return {"ok": True, "mock": True, "points_awarded": 10.0}
+
+        # 실제 Fuul API 호출
         try:
-            payload = {
+            body = {
                 "project_id": FUUL_PROJECT_ID,
                 "referrer": referrer,
-                "user": new_user,
-                "event_name": event,
+                "referee": referee,
+                "timestamp": int(time.time()),
             }
-            r = requests.post(
-                f"{FUUL_BASE_URL}/conversions",
-                json=payload,
-                headers=self.headers,
-                timeout=5,
+            req = urllib.request.Request(
+                f"{FUUL_API_URL}/v1/referrals",
+                data=json.dumps(body).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {FUUL_API_KEY}",
+                },
+                method="POST"
             )
-            return r.json()
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.loads(r.read())
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            logger.error(f"Fuul API 오류: {e}")
+            return {"ok": False, "error": str(e)}
 
-    def get_referral_stats(self, trader_address: str) -> dict:
-        """트레이더 레퍼럴 통계"""
-        if not FUUL_API_KEY:
-            return {"referrer": trader_address, "total_referrals": 0, "status": "api_key_required"}
+    async def track_trade_volume(self, address: str, volume_usdc: float) -> dict:
+        """거래 볼륨 기반 포인트 적립"""
+        if self.mock:
+            pts = volume_usdc * 0.001  # 1 USDC당 0.001 포인트
+            self._points[address] = self._points.get(address, 0) + pts
+            return {"ok": True, "mock": True, "points": pts}
 
         try:
-            r = requests.get(
-                f"{FUUL_BASE_URL}/stats/{trader_address}",
-                headers=self.headers,
-                timeout=5,
+            body = {
+                "project_id": FUUL_PROJECT_ID,
+                "address": address,
+                "volume_usd": volume_usdc,
+                "event_type": "trade",
+            }
+            req = urllib.request.Request(
+                f"{FUUL_API_URL}/v1/events",
+                data=json.dumps(body).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {FUUL_API_KEY}",
+                },
+                method="POST"
             )
-            return r.json()
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.loads(r.read())
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            logger.error(f"Fuul 볼륨 추적 오류: {e}")
+            return {"ok": False, "error": str(e)}
+
+    def get_points(self, address: str) -> float:
+        """포인트 조회 (Mock)"""
+        return self._points.get(address, 0.0)
+
+    def get_leaderboard(self, limit: int = 10) -> list:
+        """포인트 리더보드 (Mock)"""
+        sorted_pts = sorted(self._points.items(), key=lambda x: x[1], reverse=True)
+        return [{"address": addr, "points": pts} for addr, pts in sorted_pts[:limit]]
 
 
 # 싱글턴
-fuul = FuulClient()
+fuul = FuulReferral()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def test():
+        f = FuulReferral()
+        link = f.generate_referral_link("3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
+        print(f"레퍼럴 링크: {link}")
+
+        r = await f.track_referral("TraderAAA...", "FollowerBBB...")
+        print(f"레퍼럴 추적: {r}")
+
+        r2 = await f.track_trade_volume("TraderAAA...", 500.0)
+        print(f"볼륨 적립: {r2}")
+
+        print(f"TraderAAA 포인트: {f.get_points('TraderAAA...')}")
+        print(f"리더보드: {f.get_leaderboard()}")
+
+    asyncio.run(test())
