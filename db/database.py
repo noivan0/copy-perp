@@ -106,10 +106,10 @@ async def record_copy_trade(conn, trade: dict) -> None:
     await conn.execute(
         """INSERT OR IGNORE INTO copy_trades
            (id, follower_address, trader_address, symbol, side, amount, price,
-            client_order_id, status, created_at)
+            client_order_id, status, pnl, created_at)
            VALUES (:id, :follower_address, :trader_address, :symbol, :side,
-                   :amount, :price, :client_order_id, :status, :created_at)""",
-        trade
+                   :amount, :price, :client_order_id, :status, :pnl, :created_at)""",
+        {**trade, "pnl": trade.get("pnl")}
     )
     await conn.commit()
 
