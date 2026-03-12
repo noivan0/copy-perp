@@ -19,6 +19,7 @@ import aiosqlite
 
 from pacifica.client import PacificaClient, BUILDER_CODE
 from db.database import get_followers, record_copy_trade
+from core.retry import retry_sync, is_retryable
 
 logger = logging.getLogger(__name__)
 
@@ -166,13 +167,17 @@ class CopyEngine:
                 logger.info(f"[MOCK][{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
             else:
                 client = self._get_client(follower_addr)
-                result = client.market_order(
+                result = retry_sync(
+                    client.market_order,
                     symbol=symbol,
                     side=side,
                     amount=copy_amount,
                     slippage_percent=MAX_SLIPPAGE,
                     builder_code=bc,
                     client_order_id=client_order_id,
+                    max_retries=2,
+                    base_delay=0.3,
+                    label=f"{follower_addr[:8]}/{symbol}",
                 )
                 status = "filled" if result.get("data") else "failed"
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")

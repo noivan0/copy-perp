@@ -408,12 +408,13 @@ async def test_server_500_error(db):
 
         await engine.on_fill(make_fill(trader, "ETH", amount="0.5", price="2000"))
 
-    # 현재 재시도 없음 — 1회만 호출되어야 함
-    assert call_count["n"] == 1, f"재시도 없어야 함 (호출: {call_count['n']}회)"
+    # retry 로직: 500은 재시도 가능 → max_retries=2+1 = 최대 3회 호출
+    assert call_count["n"] <= 3, f"재시도 최대 3회 이하여야 함 (호출: {call_count['n']}회)"
+    assert call_count["n"] >= 1, f"최소 1회 이상 시도해야 함"
     async with db.execute("SELECT status FROM copy_trades WHERE follower_address=?", (follower,)) as cur:
         row = await cur.fetchone()
     assert dict(row)["status"] == "failed"
-    print(f"✅ 서버 500: {call_count['n']}회 시도 → failed (재시도 없음, 추후 재시도 로직 추가 예정)")
+    print(f"✅ 서버 500: {call_count['n']}회 시도 (재시도 포함) → failed")
 
 
 @pytest.mark.asyncio
