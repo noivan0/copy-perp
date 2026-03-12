@@ -192,6 +192,32 @@ class PacificaClient:
     def cancel_all_orders(self) -> dict:
         return self._signed_post("orders/cancel_all", "cancel_all_orders", {})
 
+    def set_tpsl(self, symbol: str, take_profit: Optional[str] = None,
+                 stop_loss: Optional[str] = None,
+                 builder_code: str = BUILDER_CODE) -> dict:
+        """포지션 TP/SL 설정"""
+        payload: dict = {"symbol": symbol}
+        if take_profit:
+            payload["take_profit"] = {"trigger_price": take_profit, "reduce_only": True}
+        if stop_loss:
+            payload["stop_loss"] = {"trigger_price": stop_loss, "reduce_only": True}
+        if builder_code:
+            payload["builder_code"] = builder_code
+        return self._signed_post("positions/tpsl", "set_position_tpsl", payload)
+
+    def update_leverage(self, symbol: str, leverage: int) -> dict:
+        """레버리지 변경 (5x 하드캡)"""
+        lev = min(max(leverage, 1), 5)
+        return self._signed_post("account/leverage", "update_leverage",
+                                 {"symbol": symbol, "leverage": lev})
+
+    def get_leaderboard(self, limit: int = 20) -> list:
+        """Pacifica 온체인 리더보드 조회"""
+        try:
+            return _request("GET", f"leaderboard?limit={limit}").get("data", [])
+        except Exception:
+            return []
+
 
 # ── 빠른 연결 테스트 ──────────────────────────────────
 if __name__ == "__main__":

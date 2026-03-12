@@ -61,9 +61,10 @@ class PositionMonitor:
             ping_interval=30,
             ssl=_ssl_ctx
         ) as ws:
-            # prices 구독 확인됨: {"method":"subscribe","params":{"source":"prices"}}
-            # account fills 구독 시도 (source 파라미터 미확인)
-            for source in ["account_fills", "fills", "account"]:
+            # SDK 확인된 패턴: account_twap_orders, account_twap_order_updates
+            # fills 관련 유사 패턴 시도
+            for source in ["account_order_updates", "account_fills", "account_orders",
+                           "account_positions", "account_trades"]:
                 sub_msg = {
                     "method": "subscribe",
                     "params": {"source": source, "account": self.trader}
