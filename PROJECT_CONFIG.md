@@ -42,7 +42,8 @@
 | Pacifica 클라이언트 코드 | ✅ 완료 | `pacifica/client.py` |
 | Agent Wallet 생성 | ✅ 완료 | `.env`에 저장 |
 | Agent 바인딩 (앱에서) | ⏳ 대기 | @nothink_ivan 직접 처리 필요 |
-| Faucet 수령 | ⏳ 대기 | test-app.pacifica.fi/faucet |
+| 해커톤 공식 등록 | ✅ 완료 | 구글폼 2026-03-12 제출 완료 |
+| Faucet 수령 | ✅ 완료 | 2026-03-12 신청 완료 |
 | Builder Code 신청 | ⏳ 대기 | ops@pacifica.fi 또는 Discord |
 
 ---
@@ -50,7 +51,7 @@
 ## W1 (3/16~22) 개발 태스크
 
 - [ ] Agent 바인딩 확인
-- [ ] Faucet에서 테스트 토큰 수령
+- [x] Faucet에서 테스트 토큰 수령 (2026-03-12 완료)
 - [ ] WebSocket account 이벤트 구독 방식 확인
 - [ ] FastAPI 라우터 구현 (traders, followers, stats)
 - [ ] Copy Engine E2E 테스트 (테스트넷)
