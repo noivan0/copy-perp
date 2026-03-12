@@ -61,16 +61,16 @@ class PositionMonitor:
             ping_interval=30,
             ssl=_ssl_ctx
         ) as ws:
-            # account source 구독 시도
-            sub_msg = {
-                "method": "subscribe",
-                "params": {
-                    "source": "account",
-                    "account": self.trader
+            # prices 구독 확인됨: {"method":"subscribe","params":{"source":"prices"}}
+            # account fills 구독 시도 (source 파라미터 미확인)
+            for source in ["account_fills", "fills", "account"]:
+                sub_msg = {
+                    "method": "subscribe",
+                    "params": {"source": source, "account": self.trader}
                 }
-            }
-            await ws.send(json.dumps(sub_msg))
-            logger.info("WS account 구독 전송")
+                await ws.send(json.dumps(sub_msg))
+
+            logger.info("WS account 구독 전송 (fills/account 시도)")
 
             async for raw in ws:
                 if not self._running:
