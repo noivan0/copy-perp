@@ -270,7 +270,11 @@ async function fetchMarkets() {
   try {
     const r = await fetch(`${API}/markets`);
     const d = await r.json();
-    const items = d.data || {};
+    // API는 배열 반환 → symbol을 키로 맵 변환
+    const arr = d.data || [];
+    const items = Array.isArray(arr)
+      ? Object.fromEntries(arr.map(m => [m.symbol, m]))
+      : arr;
 
     // 티커 업데이트
     SYMBOLS.forEach(sym => {
@@ -287,14 +291,14 @@ async function fetchMarkets() {
     document.getElementById('market-list').innerHTML = top.map(m => `
       <div class="market-row">
         <span class="market-sym">${m.symbol}</span>
-        <span class="market-price">${fmt(m.mark, m.mark > 1 ? 2 : 4)}</span>
+        <span class="market-price">${fmt(m.mark, parseFloat(m.mark) > 1 ? 2 : 4)}</span>
         <span class="market-funding">${fmtFunding(m.funding)}<span style="color:var(--muted)"> funding</span></span>
       </div>
     `).join('');
 
     // Stats
     document.getElementById('s-symbols').textContent = Object.keys(items).length;
-  } catch(e) {}
+  } catch(e) { console.error('fetchMarkets:', e); }
 }
 
 // ── 트레이더 리더보드 ─────────────────────────────

@@ -51,20 +51,23 @@ async def register_trader(body: TraderRegister, background_tasks: BackgroundTask
 
 @router.get("/{address}")
 async def get_trader(address: str):
-    """트레이더 상세 + 성과 통계"""
-    # Mock 데이터 먼저
+    """트레이더 상세 + 성과 통계 — DB 우선, Mock 폴백"""
+    from api.main import _db
+
+    # DB 우선 조회
+    async with _db.execute("SELECT * FROM traders WHERE address = ?", (address,)) as cur:
+        row = await cur.fetchone()
+
+    if row:
+        stats = await get_trader_stats(_db, address)
+        return {"data": {**dict(row), **stats}, "source": "db"}
+
+    # DB에 없으면 Mock에서 찾기
     mock = next((t for t in MOCK_TRADERS if t["address"] == address), None)
     if mock:
         return {"data": mock, "source": "mock"}
 
-    from api.main import _db
-    async with _db.execute("SELECT * FROM traders WHERE address = ?", (address,)) as cur:
-        row = await cur.fetchone()
-    if not row:
-        raise HTTPException(404, "트레이더를 찾을 수 없습니다")
-
-    stats = await get_trader_stats(_db, address)
-    return {"data": {**dict(row), **stats}, "source": "db"}
+    raise HTTPException(404, "트레이더를 찾을 수 없습니다")
 
 
 @router.get("/{address}/trades")

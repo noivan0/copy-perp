@@ -224,22 +224,25 @@ async def get_stats():
 
 
 # ── 레퍼럴 ────────────────────────────────────────────
-@app.get("/referral/{address}")
-def get_referral(address: str):
-    link = _fuul.generate_referral_link(address)
-    points = _fuul.get_points(address)
-    return {"address": address, "referral_link": link, "points": points}
+@app.get("/fuul/leaderboard")
+def referral_leaderboard(limit: int = 10):
+    """레퍼럴 포인트 리더보드"""
+    return {"data": _fuul.get_leaderboard(limit)}
 
 
-@app.post("/referral/track")
+@app.post("/fuul/track")
 async def track_referral(body: ReferralTrackRequest):
+    """레퍼럴 추적"""
     result = await _fuul.track_referral(body.referrer, body.referee)
     return result
 
 
-@app.get("/referral/leaderboard")
-def referral_leaderboard(limit: int = 10):
-    return {"data": _fuul.get_leaderboard(limit)}
+@app.get("/referral/{address}")
+def get_referral(address: str):
+    """개별 레퍼럴 링크 + 포인트"""
+    link = _fuul.generate_referral_link(address)
+    points = _fuul.get_points(address)
+    return {"address": address, "referral_link": link, "points": points}
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────
