@@ -336,7 +336,7 @@ async function fetchLeaderboard() {
         </div>
       `;
     }).join('') || '<div style="color:var(--muted);padding:16px 0">트레이더 없음</div>';
-  } catch(e) {}
+  } catch(e) { console.error('fetchLeaderboard:', e); }
 }
 
 // ── 통계 ──────────────────────────────────────────
@@ -349,12 +349,26 @@ async function fetchStats() {
     document.getElementById('s-volume').textContent =
       d.total_volume_usdc ? '$' + (d.total_volume_usdc/1000).toFixed(1) + 'K' : '$0';
     document.getElementById('s-symbols').textContent = d.ws_symbols || '—';
-  } catch(e) {}
+  } catch(e) { console.error('fetchStats:', e); }
 }
 
 // ── 지갑 연결 ──────────────────────────────────────
+let _walletAddress = null;
+
 function connectWallet() {
+  // TODO: Privy SDK 연동 (Google/Twitter 소셜 로그인)
+  // 연동 전 임시: 데모 주소로 레퍼럴 링크 미리보기
   toast('🔗 Privy 지갑 연동 예정 (Google/Twitter 소셜 로그인)');
+}
+
+async function updateReferralLink(address) {
+  try {
+    const r = await fetch(`${API}/referral/${address}`);
+    const d = await r.json();
+    if (d.referral_link) {
+      document.getElementById('referral-link').textContent = d.referral_link;
+    }
+  } catch(e) { console.error('updateReferralLink:', e); }
 }
 
 // ── 팔로우 ────────────────────────────────────────
