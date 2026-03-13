@@ -124,15 +124,62 @@ def get_trader_stats(address: str, limit: int = 100) -> dict:
         return {"error": str(e), "total_trades": 0}
 
 
-def get_platform_stats(db) -> dict:
-    """플랫폼 전체 통계 (동기 호출용)"""
-    return {
-        "active_traders": 0,
-        "active_followers": 0,
-        "total_trades_filled": 0,
-        "total_pnl_usdc": 0,
-        "total_volume_usdc": 0,
-    }
+async def get_follower_stats(db, follower_address: str) -> dict:
+    """팔로워 통계 (비동기)"""
+    try:
+        from db.database import get_copy_trades_by_follower
+        trades = get_copy_trades_by_follower(db, follower_address, limit=500)
+        wins = [t for t in trades if float(t.get("pnl", 0) or 0) > 0]
+        losses = [t for t in trades if float(t.get("pnl", 0) or 0) < 0]
+        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in trades)
+        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in trades)
+        win_rate = len(wins) / len(trades) if trades else 0
+        return {
+            "address": follower_address,
+            "total_copy_trades": len(trades),
+            "win_count": len(wins),
+            "loss_count": len(losses),
+            "win_rate": win_rate,
+            "total_pnl_usdc": total_pnl,
+            "total_volume_usdc": total_vol,
+        }
+    except Exception as e:
+        logger.error(f"follower stats 조회 실패 {follower_address[:12]}: {e}")
+        return {
+            "address": follower_address,
+            "total_copy_trades": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate": 0,
+            "total_pnl_usdc": 0,
+            "total_volume_usdc": 0,
+        }
+
+
+async def get_platform_stats(db) -> dict:
+    """플랫폼 전체 통계 (비동기)"""
+    try:
+        from db.database import get_all_traders, get_all_followers, get_all_copy_trades
+        traders = get_all_traders(db)
+        followers = get_all_followers(db)
+        trades = get_all_copy_trades(db, limit=10000)
+        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in trades)
+        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in trades)
+        return {
+            "active_traders": len(traders),
+            "active_followers": len(followers),
+            "total_trades_filled": len(trades),
+            "total_pnl_usdc": total_pnl,
+            "total_volume_usdc": total_vol,
+        }
+    except Exception:
+        return {
+            "active_traders": 0,
+            "active_followers": 0,
+            "total_trades_filled": 0,
+            "total_pnl_usdc": 0,
+            "total_volume_usdc": 0,
+        }
 
 
 if __name__ == "__main__":

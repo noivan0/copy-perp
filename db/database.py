@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS traders (
     address     TEXT PRIMARY KEY,
     alias       TEXT,
     win_rate    REAL DEFAULT 0,
+    win_count   INTEGER DEFAULT 0,
+    lose_count  INTEGER DEFAULT 0,
+    last_synced INTEGER DEFAULT 0,
     total_pnl   REAL DEFAULT 0,
     followers   INTEGER DEFAULT 0,
     active      INTEGER DEFAULT 1,
@@ -77,6 +80,17 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
     await conn.executescript(CREATE_SQL)
+    # 마이그레이션: 기존 DB에 누락된 컬럼 추가
+    _migrations = [
+        "ALTER TABLE traders ADD COLUMN win_count INTEGER DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN lose_count INTEGER DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN last_synced INTEGER DEFAULT 0",
+    ]
+    for sql in _migrations:
+        try:
+            await conn.execute(sql)
+        except Exception:
+            pass  # 이미 컬럼 있으면 무시
     await conn.commit()
     return conn
 
