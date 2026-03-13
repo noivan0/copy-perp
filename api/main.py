@@ -181,13 +181,17 @@ async def startup():
 
 
 # QA팀 추천 TOP5 트레이더 (복합 스코어 + 백테스트 ROI 기준)
-TOP_TRADERS = [
-    "5C9GKLrKFUvLWZEbMZQC5mtkTdKxuUhCzVCXZQH4FmCw",  # ROI+24% MaxDD0.1%
-    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",  # ROI+10% PF1000
-    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # PnL$518k Win52%
-    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # Win100% PnL$242k
-    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # Win92% PnL$166k
-]
+# QA 추천 + 리서치팀 Tier A 통합 모니터링 목록 (중복 제거)
+TOP_TRADERS = list({
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # [Tier A w0.30] ROI82.5%
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # [Tier A w0.20] ROI58.4% Win100%
+    "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",   # [Tier A w0.20] ROI57.7%
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",   # [Tier A w0.15] ROI51.6%
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",   # [Tier A w0.15] ROI47.5%
+    "5C9GKLrKFUvLWZEbMZQC5mtkTdKxuUhCzVCXZQH4FmCw",  # [QA] ROI+24% MaxDD0.1%
+    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",  # [QA] ROI+10% PF1000
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # [QA] Win92% PnL$166k
+})
 
 async def _auto_monitor_top_traders():
     """QA 추천 TOP5 트레이더 자동 포지션 모니터링"""

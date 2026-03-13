@@ -30,6 +30,15 @@ MAX_ORDER_USDC = 5000.0 # 단일 주문 최대 금액 (안전장치)
 MAX_SLIPPAGE = "1.0"    # 1% 슬리피지 허용
 MIN_AMOUNT = 0.0001     # 최소 수량 (소수점 정밀도)
 
+# 리서치팀 확정 Tier A 트레이더 + 가중치 (copy_ratio 자동 조정)
+TIER_A_WEIGHTS: dict[str, float] = {
+    'EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu': 0.30,
+    '4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq':  0.20,
+    '7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd':  0.20,
+    '7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y':  0.15,
+    '3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe':  0.15,
+}
+
 
 def _parse_side(event_side: str) -> Optional[str]:
     """
@@ -119,6 +128,12 @@ class CopyEngine:
         follower_addr = follower["address"]
         copy_ratio = float(follower["copy_ratio"])
         max_pos = float(follower["max_position_usdc"])
+
+        # ── 리서치팀 가중치 적용 ──────────────────────────
+        # Tier A 트레이더는 사전 정의된 가중치로 copy_ratio 보정
+        tier_weight = TIER_A_WEIGHTS.get(trader_address)
+        if tier_weight is not None:
+            copy_ratio = copy_ratio * tier_weight  # 가중치만큼 실제 복사 비율 조정
 
         # ── 복사 수량 계산 ────────────────────────────────
         # 1. 비율 적용
