@@ -49,13 +49,15 @@ _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 
 def _load_keypair() -> Optional[Keypair]:
-    if not AGENT_PRIVATE_KEY:
+    # 모듈 로드 시점에 env가 비어있을 수 있으므로 매번 최신 env 재참조
+    pk = os.getenv("AGENT_PRIVATE_KEY", "") or AGENT_PRIVATE_KEY
+    if not pk:
         return None
     try:
-        seed = base58.b58decode(AGENT_PRIVATE_KEY)
+        seed = base58.b58decode(pk)
         return Keypair.from_seed(seed[:32])
     except Exception:
-        return Keypair.from_base58_string(AGENT_PRIVATE_KEY)
+        return Keypair.from_base58_string(pk)
 
 
 def _sort_json_keys(value):

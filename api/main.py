@@ -28,7 +28,9 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from dotenv import load_dotenv
-load_dotenv()
+# .env를 명시적 경로로 로드 (uvicorn 실행 위치와 무관하게 동작)
+_env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+load_dotenv(_env_path, override=True)
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware

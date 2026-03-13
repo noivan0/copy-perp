@@ -98,7 +98,7 @@ class CopyEngine:
         side_raw = event.get("side", "")
         amount = event.get("amount", "0")
         price = event.get("price", "0")
-        trader = event.get("account", "")
+        trader = event.get("account") or event.get("trader_address", "")
         cause = event.get("cause", "normal")
 
         # 청산 이벤트는 복사 안 함
@@ -153,13 +153,14 @@ class CopyEngine:
         clamped_amount = raw_amount
 
         # 2. USDC 기반 클램핑 (WS 캐시에서 심볼별 실제 가격 있을 때만 적용)
-        #    symbol_price는 이벤트 체결가가 아닌 현재 마크 가격이어야 정확함
-        #    → WS 캐시 연동 후 활성화 예정 (TODO: api/main.py _ws_cache 연동)
-        #    지금은 전역 MAX_ORDER_USDC만 적용 (symbol_price가 해당 심볼 가격일 때만)
+        #    DataCollector 캐시에서 현재 마크 가격 우선 사용, 없으면 이벤트 체결가
         try:
-            price_f = float(symbol_price) if symbol_price > 0 else 0.0
+            from core.data_collector import get_price_cache
+            cached = get_price_cache().get(symbol, {})
+            mark_price = float(cached.get("mark", 0) or 0)
+            price_f = mark_price if mark_price > 0 else float(symbol_price if symbol_price > 0 else 0)
         except Exception:
-            price_f = 0.0
+            price_f = float(symbol_price) if symbol_price > 0 else 0.0
 
         if price_f > 0 and symbol_price > 0:
             order_usdc = clamped_amount * price_f
