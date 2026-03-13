@@ -18,6 +18,7 @@ from typing import Optional
 import aiosqlite
 
 from pacifica.client import PacificaClient, BUILDER_CODE
+from core.alerting import get_alert_manager
 from db.database import get_followers, record_copy_trade
 from core.retry import retry_sync, is_retryable
 
@@ -205,16 +206,20 @@ class CopyEngine:
                     slippage_percent=MAX_SLIPPAGE,
                     builder_code=bc,
                     client_order_id=client_order_id,
-                    max_retries=2,
-                    base_delay=0.3,
+                    max_retries=3,          # 최소 3회 보장
+                    base_delay=0.5,
+                    alert_on_final_fail=True,
                     label=f"{follower_addr[:8]}/{symbol}",
                 )
                 status = "filled" if result.get("data") else "failed"
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
+                if status == "filled":
+                    get_alert_manager().order_success(follower_addr, symbol, side, copy_amount)
 
         except Exception as e:
             logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
             status = "failed"
+            get_alert_manager().order_failed(follower_addr, symbol, side, str(e))
 
         # Fuul copy_trade 이벤트 (체결 성공 시)
         if status == "filled":
