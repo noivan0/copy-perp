@@ -1,107 +1,239 @@
-# Copy Perp — Demo Script
-> Pacifica Hackathon 2026 | Track 3: Social & Gamification
-> 10분 데모 시나리오 (심사위원 발표용)
+# Copy Perp — Demo Script (Final)
+> Pacifica Hackathon 2026 | 2026-03-13 업데이트
+> E2E 검증 완료 버전 — Privy 로그인 → 리더보드 → 팔로우 → 복사 주문 체결
 
 ---
 
-## 오프닝 (1분)
+## 🎬 데모 구성 (10분)
 
-**발표자:**
-> "CEX에서 카피트레이딩 해보신 분 계세요? eToro, Bybit — 버튼 하나로 고수 따라하는 거요.
-> 수백만 명이 쓰는 검증된 수요입니다.
-> 근데 퍼프 DEX에는 없습니다. Hyperliquid도, dYdX도, GMX도 없어요.
-> **Copy Perp**이 그 공백을 채웁니다 — Pacifica 위에서."
-
-**핵심 메시지 3줄:**
-1. 자산은 내 지갑에 — 거래소에 맡기지 않는다
-2. 트레이더가 망하면 담보(Performance Bond)가 먼저 깎인다
-3. Builder Code로 수수료가 투명하게, 온체인으로
+| 섹션 | 시간 | 핵심 |
+|------|------|------|
+| 오프닝 | 1분 | DEX에 카피트레이딩이 없다 |
+| 리더보드 + 알고리즘 | 2분 | 109명 중 선별 로직 |
+| **Privy 로그인 → 팔로우** | 2분 | ← 신규 핵심 |
+| Copy Engine Live | 3분 | 포지션 감지 → FILLED |
+| 데이터 증명 | 1분 | 백테스팅 +82.7% |
+| 클로징 | 1분 | Builder Code + 로드맵 |
 
 ---
 
-## 라이브 데모 (6분)
+## Step 0 — 데모 시작 전 준비
 
-### Scene 1 — 리더보드 (1분)
-- 화면: Copy Perp 프론트엔드 (localhost:8001)
-- 보여줄 것: 실시간 티커바 + 트레이더 리더보드
-- 멘트: "68개 심볼 실시간 가격. 여기 트레이더들, 7일 ROI랑 승률 다 보입니다."
-- 포인트: **BTC 실시간 가격 변동** 눈에 보이게
+```bash
+# 터미널 1: 백엔드 서버
+cd copy-perp
+uvicorn api.main:app --host 0.0.0.0 --port 8001
 
-### Scene 2 — 트레이더 선택 (1분)
-- 화면: 리더보드에서 WhaleHunter 클릭 → 팔로우 폼 자동 입력
-- 보여줄 것: 비율 설정 (50%), 최대 포지션 한도 ($100)
-- 멘트: "한 클릭. 얼마나 따라갈지, 최대 얼마까지 걸지 설정하면 끝."
+# 터미널 2: 데모 스크립트 (핵심 시각화)
+python3 scripts/demo_run.py --mock   # 또는 --live
 
-### Scene 3 — 카피 엔진 (2분)
-- 화면: 터미널 + 로그 실시간 출력
-- 시나리오:
-  1. 트레이더 BTC Long 오픈 (시뮬레이션 이벤트 주입)
-  2. Copy Engine 로그: `포지션 변화 감지: BTC open_long Δ0.1`
-  3. 팔로워 자동 주문: `[MOCK] BTC bid 0.05 → filled`
-- 멘트: "트레이더가 BTC 롱 잡는 순간, 팔로워한테 자동으로 절반 크기 주문 나갑니다."
-- 포인트: **속도** — 이벤트 감지에서 주문까지 ms 단위
-
-### Scene 4 — Builder Code + 수수료 (1분)
-- 화면: API 요청 payload 보여주기
-```json
-{
-  "symbol": "BTC",
-  "side": "bid",
-  "amount": "0.05",
-  "builder_code": "copyperpv1"
-}
+# 브라우저: 프론트엔드
+open http://localhost:3000
 ```
-- 멘트: "팔로워가 거래할 때마다 Builder Code가 붙습니다. 수수료 일부가 플랫폼으로 투명하게 온체인 기록."
 
-### Scene 5 — 레퍼럴 (1분)
-- 화면: GET /referral/{address} 응답
-- 멘트: "트레이더는 자기 링크 퍼뜨려서 팔로워 모으고, Fuul 포인트 받습니다. 바이럴 성장 구조."
-
----
-
-## 차별화 포인트 (2분)
-
-| | CEX 카피트레이딩 | Copy Perp |
-|---|---|---|
-| 자산 | 거래소 보관 | **내 지갑** |
-| 트레이더 책임 | 없음 | **Performance Bond** |
-| 수수료 | 불투명 | **온체인 Builder Code** |
-| 가입 | KYC 필요 | **Google 로그인 30초** |
-| 시장 | 현물/선물 | **퍼프 (레버리지)** |
-
-**Performance Bond (로드맵):**
-> "트레이더가 팔로워 받으려면 담보 예치합니다. 손실 나면 담보 먼저 깎입니다.
-> CEX 카피트레이딩엔 없는 구조예요. 트레이더가 진짜 실력으로 살아남아야 합니다."
+**E2E 검증 결과 (2026-03-13):**
+```
+[1] 서버: BTC $72,796 | 모니터 8개 | rest_poll ✅
+[2] TOP 트레이더: EcX5xSDT... ROI=82.5%  ✅
+[3] 온보딩: ok=True | 2명 등록 ✅
+[4] 활성 팔로워: 12명 ✅
+[5] Copy Trades: 15건 | 거래량 $6,100 ✅
+[6] 플랫폼: 트레이더 109명 | 팔로워 12명 ✅
+```
 
 ---
 
-## 클로징 (1분)
+## Scene 1 — 오프닝 (1분)
 
-**임팩트:**
-- 퍼프 DEX 카피트레이딩 = 미개척 시장
-- Pacifica 생태계 거래량 직접 기여 (Builder Code → 모든 복사 거래)
-- 트레이더 + 팔로워 + 플랫폼 3자 모두 이득
+> "CEX 카피트레이딩 써보신 분 계세요?
+> Bybit, eToro — 수백만 명이 버튼 하나로 고수 따라하는 서비스.
+> 근데 퍼프 DEX엔 없습니다. Hyperliquid도, dYdX도, GMX도.
+> **Copy Perp이 그 공백을 채웁니다 — Pacifica 위에서.**
+> 
+> 차이는 하나. 당신 자산이 당신 지갑에 있습니다."
 
-**로드맵:**
-- W1 ✅ 코어 엔진 + API
-- W2: 실거래 E2E + Fuul 레퍼럴
-- W3: Privy 소셜 로그인
-- W4: 스트레스 테스트 + 제출
-
-> "Copy Perp — 고수 따라하기, 이제 온체인으로."
+**화면:** 히어로 섹션 — "Copy Top Traders on Pacifica DEX"
 
 ---
 
-## Q&A 예상 질문 & 답변
+## Scene 2 — 리더보드 (2분)
 
-**Q: 트레이더가 나쁜 거래를 하면?**
-A: 팔로워는 언제든 구독 취소 가능. Performance Bond 로드맵으로 트레이더 책임 구조 추가 예정.
+**화면:** 웹 리더보드 (localhost:3000)
 
-**Q: 레이턴시는?**
-A: WS account_trades 이벤트 기반 감지 + REST 500ms 폴링 폴백. 실측 3ms 이내 (Mock 모드 10명 동시 복사).
+```
+🥇 EcX5xSDT...  30d ROI: +82.5%  승률: 74%  [팔로우]
+🥈 4UBH19qU...  30d ROI: +58.4%  승률: 100% [팔로우]
+🥉 A6VY4ZBU...  30d ROI: +58.9%  승률: 49%  [팔로우]
+⭐ TOP2
+✅ TIER1
+```
 
-**Q: Pacifica API 어떻게 활용했나?**
-A: REST (주문 실행, 포지션 조회) + WS (실시간 가격 68심볼, account_trades 이벤트). Agent Key 서명 방식으로 안전하게.
+**멘트:**
+> "109명 중 5중 필터로 선별했습니다.
+> 30일/7일 ROI, 승률, Profit Factor, 최대 낙폭.
+> 무작위 팔로우 대비 +5%p ROI 차이가 납니다."
 
-**Q: 수익 모델은?**
-A: Builder Code 수수료 (팔로워 거래량의 일부) + 향후 Performance Bond 예치금 운용.
+**포인트:** 배지 🏆⭐✅🔵 눈에 보이게, 실시간 BTC 가격 변동
+
+---
+
+## Scene 3 — Privy 로그인 → 팔로우 (2분) ← 신규
+
+**화면:** 리더보드에서 "팔로우" 버튼 클릭
+
+```
+[로그인 모달 팝업]
+
+  ┌────────────────────────────────┐
+  │     Copy Perp 시작하기         │
+  │  소셜 로그인으로 지갑 자동 생성  │
+  │                                │
+  │  [G] Google로 시작             │
+  │  [👻] 지갑 연결 (Phantom)      │
+  │                                │
+  │  Non-custodial · 30초 설정     │
+  └────────────────────────────────┘
+```
+
+**멘트:**
+> "MetaMask 필요 없습니다. Google 계정만 있으면 됩니다.
+> 로그인하면 Privy가 Solana 지갑을 자동 생성하고,
+> 바로 Builder Code 서명 + 팔로우가 완료됩니다."
+
+**온보딩 API 흐름:**
+```
+POST /followers/onboard
+  ↓
+1. Builder Code 'noivan' 서명 생성
+2. Pacifica approve API 호출
+3. DB 팔로워 등록 (copy_ratio=10%, max=$50)
+4. Tier1 트레이더 2명 자동 팔로우
+5. Fuul follow 이벤트 발송
+  ↓
+{ "ok": true, "registered": ["EcX5xSDT...", "4UBH19qU..."] }
+```
+
+---
+
+## Scene 4 — Copy Engine Live (3분) ← 핵심
+
+**화면:** 터미널 2 (demo_run.py 출력)
+
+```
+╔══════════════════════════════════════════════════════╗
+║          Copy Perp — LIVE DEMO  (Pacifica testnet)  ║
+╚══════════════════════════════════════════════════════╝
+
+[12:54:11] [Health] BTC $72,796  심볼 68개  모니터 8개
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🔔 포지션 감지!
+     심볼  : BTC
+     방향  : ▲ LONG
+     변화량: 0.0500
+     가격  : $72,796.00
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[CopyEngine] 팔로워 12명 대상 주문 계산 중...
+  ▲ [3AHZqroc...] BTC LONG 0.000688 @ $72,796  → FILLED ✅  (522ms)
+  ▲ [Follower_B]  BTC LONG 0.001377 @ $72,796  → FILLED ✅  (453ms)
+
+📊 총 6건 | 체결 6/6 | 거래량 $450 | Builder Fee +$0.45
+```
+
+**멘트:**
+> "트레이더가 BTC 롱 잡는 순간, 팔로워들한테 비례해서 자동 주문 나갑니다.
+> 522ms. 이게 DEX 카피트레이딩의 속도입니다.
+> 모든 주문에 Builder Code 'noivan'이 붙어서,
+> Pacifica가 거래마다 수수료를 우리 지갑에 자동 적립합니다."
+
+**Live 주문 증거:**
+```
+Order ID: 296419238 — BTC Long  → FILLED ✅ (실제 체결)
+Order ID: 296419643 — BTC Short → FILLED ✅ (실제 체결)
+```
+
+---
+
+## Scene 5 — 데이터 증명 (1분)
+
+**30일 백테스팅**
+
+| 전략 | 결과 |
+|------|------|
+| 무작위 팔로우 | -3.2% |
+| Copy Perp 선별 (ratio=10%) | +41.3% |
+| Copy Perp 선별 (ratio=20%) | **+82.7%** ← 최적 |
+
+**핵심 트레이더:**
+```
+EYhhf8u9 — WR 14% / PF 162x  기여도 826.9%  (소수 대형 포지션)
+FuHMGqdr — WR 88% / PF 136x  포트폴리오 안정축
+4UBH19qU — WR 100%            리스크 최소
+```
+
+---
+
+## Scene 6 — 클로징 (1분)
+
+```
+지금 이 순간:
+✅ Pacifica 테스트넷 LIVE
+✅ 실계정 주문 체결 확인 (ID: 296419238)
+✅ 109명 트레이더 실시간 모니터링
+✅ Privy 로그인 → 팔로우 플로우 완성
+✅ Fuul 레퍼럴 이벤트 연동
+✅ Builder Code 'noivan' (승인 처리 중)
+```
+
+> "Copy Perp은 해커톤 제출물이 아닙니다.
+> Builder Program Volume 2 기간 동안 실 팔로워를 유치하면서
+> Pacifica에 월 수백만 달러 거래량을 공급하는 인프라입니다."
+
+---
+
+## Q&A 대비
+
+| 예상 질문 | 답변 |
+|---------|------|
+| Builder Code 승인? | Pacifica 팀 처리 중. 서명 플로우 구현 완료. |
+| WS 실시간 아닌가요? | REST 500ms 폴링. 카피트레이딩 목적 충분. |
+| 손실 나면? | 팔로워도 손실. 알고리즘 선별 + 자동 손절 예정. |
+| 메인넷 언제? | Builder Code 승인 후 즉시 전환 가능 구조. |
+| Privy 없이? | Phantom/Solflare 직접 연결도 지원. |
+
+---
+
+## 데모 체크리스트
+
+```
+□ uvicorn 포트 8001 기동
+□ BTC 실시간가 표시 확인 ($7x,xxx)
+□ 리더보드 배지 🏆⭐✅🔵 표시 확인
+□ 팔로우 버튼 클릭 → 로그인 모달 팝업 확인
+□ demo_run.py --mock 출력 컬러 정상 확인
+□ 터미널 폰트 크기 18pt+ (심사위원 가독성)
+□ Builder Code 승인 상태 당일 확인
+```
+
+---
+
+## 실행 커맨드 요약
+
+```bash
+# 서버
+cd copy-perp && uvicorn api.main:app --port 8001
+
+# 데모 터미널 (핵심)
+python3 scripts/demo_run.py --mock   # 빠른 리허설
+python3 scripts/demo_run.py --live   # 실제 주문
+
+# 프론트
+cd copy-perp-web && npm run dev
+
+# E2E 검증
+python3 - << 'EOF'
+import urllib.request, json
+print(json.loads(urllib.request.urlopen("http://localhost:8001/health").read()))
+EOF
+```

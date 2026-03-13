@@ -214,6 +214,22 @@ class CopyEngine:
             logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
             status = "failed"
 
+        # Fuul copy_trade 이벤트 (체결 성공 시)
+        if status == "filled":
+            try:
+                from fuul.referral import get_fuul
+                amount_usdc = float(copy_amount) * price_f if price_f > 0 else 0
+                get_fuul().track_copy_trade(
+                    follower_address=follower_addr,
+                    trader_address=trader_address,
+                    symbol=symbol,
+                    side=side,
+                    amount_usdc=amount_usdc,
+                    order_id=client_order_id,
+                )
+            except Exception:
+                pass
+
         # 기록
         await record_copy_trade(self.db, {
             "id": trade_id,
