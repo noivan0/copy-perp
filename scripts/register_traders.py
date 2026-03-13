@@ -1,127 +1,79 @@
+#!/usr/bin/env python3
 """
-scripts/register_traders.py
-백테스팅 결과 기반 Tier1 트레이더 자동 등록 스크립트
+Tier 1 트레이더 17명 자동 등록 스크립트
+POST /traders API로 등록 + PositionMonitor 자동 시작
 
-실행: python3 scripts/register_traders.py
+Usage:
+    python3 scripts/register_traders.py [--host http://localhost:8001]
 """
-import asyncio
-import json
-import os
-import sys
-import time
+import sys, json, time, argparse, urllib.request, ssl
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+TIER1 = [
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",
+    "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",
+    "E1vabqxiuUfB29BAwLppTLLNMAq6HJqp7gSz1NiYwWz7",
+    "9XCVb4SQeNMGT4bGR7cTPMGHF2i2SqEzk5KT6Hp48qen",
+    "5BPd5WYVvDE2kHMjzGmLHMaAorSm8bEfERcsycg5GCAD",
+    "7kDTQZPTnaCidXZwEhkoLSia5BKb7zhQ6CmBX2g1RiG3",
+    "8r5HRJeSScGX1TB9D2FZ45xEDspm1qfK4CTuaZvqe7en",
+    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",
+    "HcG1FFVf6bW5oEpkU8m3f2Ev2FzFPB5dkdPHFHQtieMQ",
+    "A4XbPsH59TWjp6vx3QnY8sCb26ew4pBYkYc8Vk4kpbqk",
+    "FuHMGqdrn77u944FSYvg9VTw3sD5RVeYS1ezLpGaFes7",
+    "DThxt2yhDvJv9KU9bPMuKsd7vcwdDtaRtuh4NvohutQi",
+    "AF5a28meHjecM4dNy8FssFHquWJVv4BK1e5Z8ipRkDgT",
+]
 
-from dotenv import load_dotenv
-load_dotenv()
+def register(host: str, addr: str) -> dict:
+    url = f"{host}/traders"
+    body = json.dumps({"address": addr, "alias": f"TIER1-{addr[:8]}"}).encode()
+    req = urllib.request.Request(
+        url, data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode()[:100]}"}
+    except Exception as e:
+        return {"error": str(e)}
 
-from db.database import init_db, add_trader
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="http://localhost:8001")
+    args = parser.parse_args()
 
+    print(f"=== Tier1 트레이더 {len(TIER1)}명 등록 → {args.host} ===\n")
+    ok = fail = 0
+    for i, addr in enumerate(TIER1, 1):
+        r = register(args.host, addr)
+        if "error" in r:
+            print(f"  [{i:2}] ❌ {addr[:16]}... {r['error']}")
+            fail += 1
+        else:
+            monitoring = "✅ 모니터링" if r.get("monitoring") else "⚠️  모니터없음"
+            print(f"  [{i:2}] ✅ {addr[:16]}... {monitoring}")
+            ok += 1
+        time.sleep(0.3)  # API rate limit 방지
 
-BACKTEST_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backtest_results.json")
-
-
-async def register_traders(db_path: str = "copy_perp.db", dry_run: bool = False):
-    """백테스팅 결과에서 Tier1/Tier2 트레이더를 DB에 등록"""
-    if not os.path.exists(BACKTEST_FILE):
-        print(f"❌ {BACKTEST_FILE} 없음 — 먼저 백테스팅 실행 필요")
-        return []
-
-    with open(BACKTEST_FILE) as f:
-        data = json.load(f)
-
-    tier1 = data.get("tier1", [])
-    tier2 = data.get("tier2", [])
-    all_traders = tier1 + tier2
-
-    print(f"등록 대상: Tier1={len(tier1)}명, Tier2={len(tier2)}명, 합계={len(all_traders)}명")
-
-    if dry_run:
-        print("[DRY RUN] 실제 DB 변경 없음")
-        for t in all_traders:
-            tier = "Tier1" if t in tier1 else "Tier2"
-            print(f"  [{tier}] {t['address'][:16]}... alias={t['alias']} roi={t.get('roi_raw', 0):.1f}%")
-        return all_traders
-
-    db = await init_db(db_path)
-    registered = []
-    skipped = []
-
-    for t in all_traders:
-        addr = t["address"]
-        alias = t.get("alias") or addr[:8]
-        tier = "Tier1" if t in tier1 else "Tier2"
-
-        try:
-            # 이미 존재하면 active=1 설정
-            existing = await db.execute_fetchone(
-                "SELECT address FROM traders WHERE address=?", (addr,)
-            ) if hasattr(db, 'execute_fetchone') else None
-
-            # aiosqlite 방식
-            async with db.execute("SELECT address FROM traders WHERE address=?", (addr,)) as cur:
-                existing = await cur.fetchone()
-
-            if existing:
-                await db.execute("UPDATE traders SET active=1 WHERE address=?", (addr,))
-                skipped.append(addr)
-                print(f"  [UPDATE] {tier} {alias} ({addr[:12]}...) — 이미 존재, active=1")
-            else:
-                await add_trader(db, addr, alias)
-                registered.append(addr)
-                print(f"  [NEW]    {tier} {alias} ({addr[:12]}...) roi={t.get('roi_raw', 0):.1f}%")
-
-        except Exception as e:
-            print(f"  [ERROR]  {addr[:12]}... — {e}")
-
-    await db.commit()
-    await db.close()
-
-    print()
-    print(f"✅ 등록 완료: 신규={len(registered)}명, 업데이트={len(skipped)}명")
-    return registered + skipped
-
-
-async def verify_registration(db_path: str = "copy_perp.db"):
-    """등록된 트레이더 수 검증"""
-    import aiosqlite
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT COUNT(*) as c FROM traders WHERE active=1"
-        ) as cur:
-            row = await cur.fetchone()
-        count = row["c"]
-
-        async with db.execute(
-            "SELECT address, alias, pnl_all_time FROM traders WHERE active=1 ORDER BY pnl_all_time DESC LIMIT 5"
-        ) as cur:
-            top5 = await cur.fetchall()
-
-    print(f"DB 활성 트레이더: {count}명")
-    print("TOP 5:")
-    for r in top5:
-        print(f"  {r['address'][:16]}... {r['alias']} pnl={float(r['pnl_all_time']):,.0f}")
-    return count
-
-
-async def main():
-    print("=" * 60)
-    print("트레이더 등록 스크립트 v1.0")
-    print("=" * 60)
-
-    # 1. 등록
-    registered = await register_traders(dry_run=False)
-
-    print()
-    print("=" * 60)
-    print("등록 검증")
-    print("=" * 60)
-    count = await verify_registration()
-
-    return count
-
+    print(f"\n등록 완료: {ok}명 성공 / {fail}명 실패")
+    
+    # 최종 상태 확인
+    try:
+        with urllib.request.urlopen(f"{args.host}/health", timeout=5) as r:
+            h = json.loads(r.read())
+            print(f"active_monitors: {h.get('active_monitors')}")
+    except Exception:
+        pass
 
 if __name__ == "__main__":
-    count = asyncio.run(main())
-    print(f"\n최종: {count}명 활성 트레이더 등록됨")
+    main()
