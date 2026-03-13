@@ -26,7 +26,7 @@ from scrapling import Fetcher as _Fetcher
 
 _fetcher = _Fetcher()
 
-REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
+REST_URL = os.getenv("PACIFICA_REST_URL", "https://do5jt23sqak4.cloudfront.net/api/v1")
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
@@ -34,13 +34,13 @@ AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 
 # HMG 웹필터 우회:
-#   GET  → allorigins.win / codetabs.com CORS 프록시
-#   POST → CloudFront 직접 IP + Host 헤더 스푸핑
-#          SNI = CF_SNI_HOST (HMG 필터 통과)
-#          Host 헤더 = 실제 Pacifica 도메인 (CloudFront 라우팅)
+#   CloudFront 도메인(do5jt23sqak4.cloudfront.net)은 HMG 필터 통과
+#   Host 헤더에 실제 Pacifica 도메인 지정 → CloudFront가 올바른 오리진으로 라우팅
 CORS_PROXY = "https://api.allorigins.win/raw?url="
-CF_SNI_HOST = os.getenv("PACIFICA_CF_SNI", "do5jt23sqak4.cloudfront.net")
-_PACIFICA_HOST = "test-api.pacifica.fi"  # REST_URL에서 파싱
+# CF 도메인 = REST_URL에서 파싱 (do5jt23sqak4.cloudfront.net)
+_CF_HOST = os.getenv("PACIFICA_CF_HOST", "do5jt23sqak4.cloudfront.net")
+_PACIFICA_HOST = "test-api.pacifica.fi"  # CloudFront origin Host 헤더
+CF_SNI_HOST = _CF_HOST  # SNI = CloudFront 도메인 (HMG 필터 통과)
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
@@ -133,10 +133,10 @@ POST_PROXY = "https://cors.bridged.cc/"  # POST 지원 CORS 프록시
 
 
 def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
-    """GET/POST — CloudFront SNI 스푸핑으로 HMG 웹필터 우회
+    """GET/POST — CloudFront 도메인으로 HMG 웹필터 우회
     
-    SNI = do5jt23sqak4.cloudfront.net (HMG 필터 통과)
-    Host = test-api.pacifica.fi (Pacifica 라우팅)
+    CloudFront 도메인(do5jt23sqak4.cloudfront.net)은 HMG 필터 통과
+    Host 헤더에 test-api.pacifica.fi 지정 → CloudFront가 Pacifica로 라우팅
     """
     # URL 경로 파싱
     url_path = f"/api/v1/{path}"
@@ -146,8 +146,8 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    s = socket.create_connection((CF_SNI_HOST, 443), timeout=15)
-    ss = ctx.wrap_socket(s, server_hostname=CF_SNI_HOST)
+    s = socket.create_connection((_CF_HOST, 443), timeout=15)
+    ss = ctx.wrap_socket(s, server_hostname=_CF_HOST)
 
     headers = (
         f"{method} {url_path} HTTP/1.1\r\n"
