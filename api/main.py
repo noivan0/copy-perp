@@ -341,6 +341,7 @@ def health():
 
     return {
         "status": "ok",
+        "network":        os.getenv("NETWORK", "testnet"),   # mainnet / testnet
         "data_connected": _dc_connected(),           # REST 폴링 연결 상태
         "ws_connected":   _dc_connected(),           # 하위 호환 (WS → REST 전환)
         "data_source":    "rest_poll",               # 데이터 소스 명시

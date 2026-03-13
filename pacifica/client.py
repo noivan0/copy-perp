@@ -40,14 +40,18 @@ AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 
 # HMG 웹필터 우회:
-#   CloudFront 도메인(do5jt23sqak4.cloudfront.net)은 HMG 필터 통과
-#   Host 헤더에 실제 Pacifica 도메인 지정 → CloudFront가 올바른 오리진으로 라우팅
+#   testnet: CloudFront 도메인(do5jt23sqak4.cloudfront.net) SNI + Host: test-api.pacifica.fi
+#   mainnet: IP 54.230.62.105 직접 접근 + Host: api.pacifica.fi (HMG 통과 확인됨)
 CORS_PROXY = "https://api.allorigins.win/raw?url="
-# CF 도메인 = REST_URL에서 파싱 (do5jt23sqak4.cloudfront.net)
+# CF 도메인 = testnet 접근용 (do5jt23sqak4.cloudfront.net)
 _CF_HOST = os.getenv("PACIFICA_CF_HOST", "do5jt23sqak4.cloudfront.net")
 # CloudFront origin Host 헤더 — PACIFICA_HOST 환경변수 우선, fallback은 NETWORK 기반 자동 선택
 _PACIFICA_HOST = os.getenv("PACIFICA_HOST", "api.pacifica.fi" if NETWORK == "mainnet" else "test-api.pacifica.fi")
 CF_SNI_HOST = _CF_HOST  # SNI = CloudFront 도메인 (HMG 필터 통과)
+
+# Mainnet 직접 접근 설정 (IP 직접 + Host 헤더)
+MAINNET_IP = os.getenv("PACIFICA_MAINNET_IP", "54.230.62.105")
+MAINNET_HOST = "api.pacifica.fi"
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
@@ -208,8 +212,85 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
     return result
 
 
+def _mainnet_request(method: str, path: str, body: Optional[dict] = None) -> dict:
+    """Mainnet 직접 접근 — IP 54.230.62.105 + Host: api.pacifica.fi (HMG 통과)"""
+    url_path = f"/api/v1/{path}"
+    body_bytes = json.dumps(body).encode() if body else None
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    raw = socket.create_connection((MAINNET_IP, 443), timeout=15)
+    s = ctx.wrap_socket(raw, server_hostname=MAINNET_HOST)
+
+    headers = (
+        f"{method} {url_path} HTTP/1.1\r\n"
+        f"Host: {MAINNET_HOST}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Accept: application/json\r\n"
+        f"Accept-Encoding: identity\r\n"
+        f"User-Agent: CopyPerp/1.0\r\n"
+    )
+    if body_bytes:
+        headers += f"Content-Length: {len(body_bytes)}\r\n"
+    headers += "Connection: close\r\n\r\n"
+
+    s.sendall(headers.encode() + (body_bytes or b""))
+
+    data = b""
+    s.settimeout(15)
+    try:
+        while True:
+            chunk = s.recv(8192)
+            if not chunk:
+                break
+            data += chunk
+    except Exception:
+        pass
+
+    if not data:
+        raise RuntimeError("Mainnet 빈 응답 — 연결 실패")
+
+    status_line = data.split(b"\r\n")[0].decode("utf-8", "ignore")
+    status_code = int(status_line.split()[1]) if len(status_line.split()) > 1 else 0
+
+    blocked = b"secinfo.hmg" in data or b"buychal" in data
+    if blocked:
+        raise RuntimeError("HMG 웹필터 차단 (mainnet)")
+
+    raw_body = data.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in data else b""
+    hdrs_raw = data.split(b"\r\n\r\n", 1)[0].decode("utf-8", "ignore")
+
+    # gzip 디코딩
+    for line in hdrs_raw.split("\r\n"):
+        if "content-encoding" in line.lower() and "gzip" in line.lower():
+            raw_body = gzip.decompress(raw_body)
+            break
+
+    result = json.loads(raw_body.decode("utf-8", "ignore"))
+
+    if status_code >= 400:
+        raise RuntimeError(f"HTTP {status_code}: {json.dumps(result)[:300]}")
+
+    return result
+
+
 def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
-    # GET: CloudFront SNI 우회 1차, scrapling 프록시 fallback
+    """NETWORK 환경변수 기반 자동 라우팅:
+    - mainnet: IP 직접 접근 (54.230.62.105)
+    - testnet: CloudFront SNI 우회 (do5jt23sqak4.cloudfront.net)
+    """
+    if NETWORK == "mainnet":
+        try:
+            return _mainnet_request(method, path, body)
+        except Exception as e:
+            # mainnet fallback: scrapling 프록시 (GET만)
+            if method == "GET":
+                return _proxy_get(path)
+            raise
+
+    # testnet: GET는 CloudFront SNI 1차, scrapling 프록시 fallback
     if method == "GET":
         try:
             return _cf_request("GET", path)
