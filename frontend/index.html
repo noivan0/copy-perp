@@ -317,8 +317,13 @@
 
 <div id="toast"></div>
 
+<!-- Privy 연동 모듈 -->
+<script src="privy.js"></script>
+
 <script>
 const API = location.hostname === 'localhost' ? 'http://localhost:8001' : '/api';
+// PRIVY_APP_ID: 실제 배포 시 서버에서 주입 또는 아래 직접 입력
+window.PRIVY_APP_ID = window.PRIVY_APP_ID || '';
 const SYMBOLS = ['BTC','ETH','SOL','SUI','DOGE','XAU','AVAX'];
 const RANK_LABELS = ['🥇','🥈','🥉'];
 
@@ -372,13 +377,16 @@ async function loginWith(provider) {
   closeLoginModal();
   toast(`⏳ ${provider} 로그인 중...`);
 
-  // Privy SDK 실제 연동 시 교체:
-  // const { login } = usePrivy();
-  // await login({ loginMethods: [provider] });
-  // const wallet = user.linkedAccounts.find(a => a.type === 'wallet' && a.chainType === 'solana');
+  // Privy 연동: App ID 있으면 실제 소셜 로그인, 없으면 데모 모달
+  if (window.PrivyIntegration) {
+    window.PrivyIntegration.login(provider, ({ address, provider: p }) => {
+      onWalletConnected(address, p || provider);
+    });
+    return;
+  }
 
-  // 데모 모드: 테스트 계정으로 시뮬레이션
-  await new Promise(r => setTimeout(r, 800));
+  // Privy 없으면 데모 fallback
+  await new Promise(r => setTimeout(r, 600));
   const demoAddr = '3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ';
   onWalletConnected(demoAddr, provider);
 }
