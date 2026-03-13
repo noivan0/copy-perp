@@ -179,7 +179,21 @@ class FuulReferral:
         self._points[referrer] = self._points.get(referrer, 0) + 10
         return result
 
-    def get_points(self, address: str) -> int:
+    async def track_trade_volume(self, address: str, volume_usdc: float) -> dict:
+        """거래 볼륨 기반 포인트 적립 (0.1% = 0.001 per USDC)"""
+        pts = volume_usdc * 0.001
+        self._points[address] = self._points.get(address, 0) + pts
+        event = self._make_event(
+            name="trade_volume",
+            user_address=address,
+            args={"volume_usdc": volume_usdc, "points_earned": pts},
+        )
+        result = self._post("events", event)
+        result["ok"] = True
+        result["points_earned"] = pts
+        return result
+
+    def get_points(self, address: str) -> float:
         """레퍼럴 포인트 조회 (in-memory, mock용)"""
         return self._points.get(address, 0)
 
