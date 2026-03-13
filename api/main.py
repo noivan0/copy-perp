@@ -255,7 +255,8 @@ def health():
     btc = _price_cache.get("BTC", {})
     return {
         "status": "ok",
-        "ws_connected": bool(btc),
+        "data_connected": bool(btc),
+        "ws_connected": bool(btc),  # 하위 호환
         "btc_mark": btc.get("mark"),
         "btc_funding": btc.get("funding"),
         "btc_oi": btc.get("open_interest"),
