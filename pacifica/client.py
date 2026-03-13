@@ -79,8 +79,8 @@ def _parse_json(text: str):
     raise RuntimeError(f"JSON 없음: {text[:100]}")
 
 
-def _unwrap(result) -> dict:
-    """allorigins 래핑 처리: {success, data} → data"""
+def _unwrap(result):
+    """allorigins 래핑 처리: {success, data} → data (dict or list 모두 처리)"""
     if isinstance(result, dict) and "success" in result:
         if result.get("success") is False:
             raise RuntimeError(f"Proxy error: {result.get('error')}")
@@ -89,6 +89,7 @@ def _unwrap(result) -> dict:
             return result
         if isinstance(inner, str):
             return json.loads(inner)
+        # list면 그대로, dict면 그대로 반환
         return inner
     return result
 
@@ -324,7 +325,13 @@ class PacificaClient:
     def get_leaderboard(self, limit: int = 20) -> list:
         """Pacifica 온체인 리더보드 조회"""
         try:
-            return _request("GET", f"leaderboard?limit={limit}").get("data", [])
+            result = _request("GET", f"leaderboard?limit={limit}")
+            # _proxy_get이 이미 _unwrap 처리 → list 반환하거나 {"data": [...]} 형태
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                return result.get("data", [])
+            return []
         except Exception:
             return []
 

@@ -93,12 +93,41 @@ async def _price_stream_loop():
 
 
 # ── 시작/종료 ─────────────────────────────────────────
+async def _rest_price_poll_loop():
+    """WS 차단 시 REST 폴링으로 가격 캐시 유지 (30초 주기)"""
+    from pacifica.client import PacificaClient
+    import asyncio
+    client = PacificaClient()
+    while True:
+        try:
+            prices = await asyncio.get_event_loop().run_in_executor(None, client.get_prices)
+            if isinstance(prices, list):
+                for item in prices:
+                    sym = item.get("symbol")
+                    if sym:
+                        # REST 응답 필드를 WS 포맷으로 정규화
+                        _price_cache[sym] = {
+                            "symbol": sym,
+                            "mark": item.get("mark", "0"),
+                            "oracle": item.get("oracle", "0"),
+                            "funding": item.get("funding", "0"),
+                            "open_interest": item.get("open_interest", "0"),
+                            "volume_24h": item.get("volume_24h", "0"),
+                            "mid": item.get("mid", "0"),
+                        }
+        except Exception as e:
+            pass
+        await asyncio.sleep(30)
+
+
 @app.on_event("startup")
 async def startup():
     global _db, _engine
     _db = await init_db()
     _engine = CopyEngine(_db)
     asyncio.create_task(_price_stream_loop())
+    # WS 차단 환경 대비 REST 폴링 폴백
+    asyncio.create_task(_rest_price_poll_loop())
 
 
 # ── 요청 모델 ─────────────────────────────────────────
