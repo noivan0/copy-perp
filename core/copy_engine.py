@@ -54,8 +54,20 @@ def _parse_side(event_side: str) -> Optional[str]:
         "close_short": "bid",
         "bid": "bid",
         "ask": "ask",
+        # position_change 이벤트 side
+        "long": "bid",
+        "short": "ask",
+        # position_closed 이벤트
+        "position_change": None,   # event_type만 있는 경우 → side로 재파싱 필요
     }
-    return mapping.get(event_side)
+    result = mapping.get(event_side)
+    # 매핑 없어도 None 반환 전에 partial match 시도
+    if result is None and event_side:
+        if "long" in event_side:
+            return "bid"
+        if "short" in event_side:
+            return "ask"
+    return result
 
 
 class CopyEngine:

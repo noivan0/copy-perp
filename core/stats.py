@@ -45,7 +45,10 @@ def compute_trader_stats(trades: list) -> dict:
     max_con_win = cur_win = 0
     max_con_lose = cur_lose = 0
 
-    for tr in trades:
+    filled_trades = [tr for tr in trades if tr.get("status") == "filled"]
+    failed_trades = [tr for tr in trades if tr.get("status") in ("failed", "error")]
+
+    for tr in filled_trades:
         pnl = float(tr.get("pnl", 0) or 0)
         if pnl == 0:
             continue
@@ -65,22 +68,31 @@ def compute_trader_stats(trades: list) -> dict:
             cur_win = 0
             max_con_lose = max(max_con_lose, cur_lose)
 
-    total = len(wins) + len(losses)
+    total_filled = len(wins) + len(losses)
+    total_all    = len(trades)
+    failed_count = len(failed_trades)
     gross_profit = sum(wins)
     gross_loss   = sum(losses)
     net_pnl      = gross_profit - gross_loss
-    win_rate     = len(wins) / total * 100 if total > 0 else 0
-    pf           = gross_profit / gross_loss if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
+    win_rate     = len(wins) / total_filled * 100 if total_filled > 0 else 0
+    success_rate = total_filled / total_all * 100 if total_all > 0 else 0
     avg_win      = sum(wins) / len(wins) if wins else 0
     avg_loss     = sum(losses) / len(losses) if losses else 0
+    pf           = avg_win / avg_loss if avg_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
     sharpe       = net_pnl / max_dd if max_dd > 0 else 0
     calmar       = net_pnl / (max_dd / 100 * 10000) if max_dd > 0 else 0
 
     return {
-        "total_trades":        total,
+        "total_trades":        total_all,
+        "filled":              total_filled,
+        "failed":              failed_count,
         "win_count":           len(wins),
-        "lose_count":          len(losses),
+        "loss_count":          len(losses),
+        "lose_count":          len(losses),   # 하위 호환
         "win_rate":            round(win_rate, 2),
+        "success_rate":        round(success_rate, 2),
+        "total_pnl":           round(net_pnl, 4),
+        "net_pnl":             round(net_pnl, 4),   # 하위 호환
         "profit_factor":       round(pf, 4),
         "avg_win":             round(avg_win, 4),
         "avg_loss":            round(avg_loss, 4),
@@ -88,7 +100,6 @@ def compute_trader_stats(trades: list) -> dict:
         "max_loss":            round(max(losses, default=0), 4),
         "gross_profit":        round(gross_profit, 4),
         "gross_loss":          round(gross_loss, 4),
-        "net_pnl":             round(net_pnl, 4),
         "sharpe_proxy":        round(sharpe, 4),
         "max_drawdown_pct":    round(max_dd, 4),
         "calmar_ratio":        round(calmar, 4),

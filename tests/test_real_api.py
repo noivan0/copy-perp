@@ -34,25 +34,54 @@ REAL_FOLLOWER = ACCOUNT_ADDRESS  # 테스트용 동일 계정
 # ─── 헬퍼 ──────────────────────────────────────────────────────────────
 
 def cf_get(path: str) -> dict:
-    """CloudFront SNI 직접 GET"""
+    """CloudFront SNI 직접 GET — gzip/chunked 처리 포함"""
+    import gzip
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    s = socket.create_connection((_CF_HOST, 443), timeout=12)
+    s = socket.create_connection((_CF_HOST, 443), timeout=15)
     ss = ctx.wrap_socket(s, server_hostname=_CF_HOST)
     req = (f"GET /api/v1/{path} HTTP/1.1\r\n"
-           f"Host: {_PACIFICA_HOST}\r\nConnection: close\r\n\r\n")
+           f"Host: {_PACIFICA_HOST}\r\n"
+           f"Accept-Encoding: identity\r\n"
+           f"Connection: close\r\n\r\n")
     ss.sendall(req.encode())
     data = b""
-    ss.settimeout(12)
+    ss.settimeout(15)
     try:
         while True:
-            c = ss.recv(8192)
-            if not c: break
+            c = ss.recv(16384)
+            if not c:
+                break
             data += c
     except Exception:
         pass
-    body = data.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in data else data
+
+    if b"\r\n\r\n" not in data:
+        raise RuntimeError(f"빈 응답 (수신={len(data)}바이트): {data[:80]}")
+
+    header_raw, body = data.split(b"\r\n\r\n", 1)
+    headers_str = header_raw.decode("utf-8", "ignore").lower()
+
+    # gzip 처리
+    if "content-encoding: gzip" in headers_str:
+        body = gzip.decompress(body)
+
+    # chunked 처리
+    if "transfer-encoding: chunked" in headers_str:
+        decoded = b""
+        while body:
+            nl = body.find(b"\r\n")
+            if nl < 0:
+                break
+            size = int(body[:nl].split(b";")[0].strip(), 16)
+            if size == 0:
+                break
+            chunk_start = nl + 2
+            decoded += body[chunk_start:chunk_start + size]
+            body = body[chunk_start + size + 2:]
+        body = decoded
+
     return json.loads(body.decode("utf-8", "ignore"))
 
 

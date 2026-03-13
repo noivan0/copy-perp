@@ -22,7 +22,19 @@ CREATE TABLE IF NOT EXISTS traders (
     total_pnl   REAL DEFAULT 0,
     followers   INTEGER DEFAULT 0,
     active      INTEGER DEFAULT 1,
-    created_at  INTEGER
+    created_at  INTEGER,
+    pnl_1d      REAL DEFAULT 0,
+    pnl_7d      REAL DEFAULT 0,
+    pnl_30d     REAL DEFAULT 0,
+    pnl_all_time REAL DEFAULT 0,
+    equity      REAL DEFAULT 0,
+    oi          REAL DEFAULT 0,
+    volume_7d   REAL DEFAULT 0,
+    volume_30d  REAL DEFAULT 0,
+    oi_current  REAL DEFAULT 0,
+    roi_30d     REAL DEFAULT 0,
+    sharpe      REAL DEFAULT 0,
+    tier        INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS followers (
@@ -119,13 +131,20 @@ async def get_leaderboard(conn, limit: int = 20) -> list:
     """복합 점수 기준 정렬: roi_30d*0.6 + roi_7d*0.3 + (1d 양수 보너스)
     전략팀 분석 기준: ROI 60% + 일관성 40%
     """
+    # pnl_1d/equity 컬럼이 없는 구형 DB와 호환되는 쿼리
     async with conn.execute(
         """SELECT address, alias, win_rate, total_pnl, followers,
-                  pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
-                  volume_7d, volume_30d, oi_current,
-                  CASE WHEN equity > 0
-                       THEN (pnl_30d/equity)*0.6 + (pnl_7d/equity)*0.3 + (CASE WHEN pnl_1d > 0 THEN 0.1 ELSE 0 END)
-                       ELSE 0
+                  COALESCE(pnl_1d, 0) as pnl_1d,
+                  COALESCE(pnl_7d, 0) as pnl_7d,
+                  COALESCE(pnl_30d, 0) as pnl_30d,
+                  COALESCE(pnl_all_time, 0) as pnl_all_time,
+                  COALESCE(equity, 0) as equity,
+                  COALESCE(volume_7d, 0) as volume_7d,
+                  COALESCE(volume_30d, 0) as volume_30d,
+                  COALESCE(oi_current, 0) as oi_current,
+                  CASE WHEN COALESCE(equity, 0) > 0
+                       THEN (COALESCE(pnl_30d,0)/equity)*0.6 + (COALESCE(pnl_7d,0)/equity)*0.3 + (CASE WHEN COALESCE(pnl_1d,0) > 0 THEN 0.1 ELSE 0 END)
+                       ELSE total_pnl
                   END AS composite_score
            FROM traders WHERE active = 1
            ORDER BY composite_score DESC LIMIT ?""",

@@ -91,7 +91,13 @@ class PositionMonitor:
         channel = data.get("channel", "")
 
         if channel == "account_positions":
-            await self._handle_positions(data.get("data", []))
+            raw = data.get("data", [])
+            # data가 dict인 경우 (단일 포지션) → list로 변환
+            if isinstance(raw, dict):
+                raw = [raw]
+            elif not isinstance(raw, list):
+                raw = []
+            await self._handle_positions(raw)
 
         elif channel == "account_trades":
             items = data.get("data", [])
