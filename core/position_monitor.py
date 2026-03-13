@@ -287,9 +287,19 @@ class RestPositionMonitor(PositionMonitor):
                         f"[REST] {self.trader[:12]} 연속 {self._fail_count}회 실패 — "
                         f"60초 대기 후 재시작"
                     )
+                    try:
+                        from core.alerting import get_alert_manager
+                        get_alert_manager().monitor_disconnected(self.trader, str(e))
+                    except Exception:
+                        pass
                     await asyncio.sleep(60)
                     self._fail_count = 0
                     client = PacificaClient(self.trader)  # 클라이언트 재생성
                     logger.info(f"[REST] {self.trader[:12]} 재시작")
+                    try:
+                        from core.alerting import get_alert_manager
+                        get_alert_manager().monitor_restored(self.trader)
+                    except Exception:
+                        pass
                     continue
             await asyncio.sleep(2.0)  # 2초 간격 폴링
