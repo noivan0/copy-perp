@@ -1,222 +1,116 @@
+#!/usr/bin/env python3
 """
 Copy Perp 백테스팅 스크립트
-실제 Pacifica 리더보드 데이터로 팔로우 전략 시뮬레이션
+과거 거래 내역 기반 Copy Trading 수익 시뮬레이션
 
-실행: python3 scripts/backtest.py
+사용법:
+    python3 scripts/backtest.py [--ratio 0.1] [--capital 10000] [--max-per-trade 500]
 """
-
-import os, sys, json, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import sys, json, time, argparse
+sys.path.insert(0, '.')
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv('.env')
+from pacifica.client import _cf_request
 
-from pacifica.client import _proxy_get
-import warnings
-warnings.filterwarnings("ignore")
-
-
-# ── 설정 ────────────────────────────────────────────
-INITIAL_CAPITAL = 10_000.0   # 팔로워 초기 자금 ($)
-COPY_RATIO      = 0.10       # 복사 비율 (10%)
-MAX_PER_TRADER  = 0.30       # 단일 트레이더 최대 비중 (30%)
-MIN_TIER1_PNL30 = 50_000     # Tier1: 30d PnL 기준
-MIN_TIER2_PNL30 = 10_000     # Tier2: 30d PnL 기준
-COPY_DELAY_SEC  = 1.0        # 복사 지연 (슬리피지 반영)
-SLIPPAGE_PCT    = 0.05       # 슬리피지 0.05%
-
-
-def fetch_leaderboard(limit=100):
-    data = _proxy_get(f"leaderboard?limit={limit}")
-    return data if isinstance(data, list) else data.get("data", [])
+TRADERS = [
+    ("EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu", "ROI#1-82.5%"),
+    ("4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",  "ROI#2-68.8%"),
+    ("A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",  "ROI#3-60.2%"),
+    ("7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",  "ROI#4-59.7%"),
+    ("7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",  "ROI#5-55.1%"),
+    ("FuHMGqdrn77u944FSYvg9VTw3sD5RVeYS1ezLpGaFes7",  "Win88%+PF18"),
+    ("EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",  "PF-1000"),
+    ("3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",  "ROI-42%"),
+    ("E1vabqxiuUfB29BAwLppTLLNMAq6HJqp7gSz1NiYwWz7",  "ROI-42%b"),
+    ("AF5a28meHjecM4dNy8FssFHquWJVv4BK1e5Z8ipRkDgT",   "ROI-44%"),
+]
 
 
-def analyze_traders(traders: list) -> list:
-    """트레이더 분석 및 점수 계산"""
-    results = []
-    for t in traders:
-        pnl_at  = float(t.get("pnl_all_time", 0) or 0)
-        pnl_30d = float(t.get("pnl_30d", 0) or 0)
-        pnl_7d  = float(t.get("pnl_7d", 0) or 0)
-        pnl_1d  = float(t.get("pnl_1d", 0) or 0)
-        vol_at  = max(float(t.get("volume_all_time", 1) or 1), 1)
-        vol_30d = max(float(t.get("volume_30d", 1) or 1), 1)
-        vol_7d  = max(float(t.get("volume_7d", 1) or 1), 1)
-        equity  = float(t.get("equity_current", 0) or 0)
-        oi      = float(t.get("oi_current", 0) or 0)
+def run_backtest(addr: str, label: str, capital: float, ratio: float, max_per_trade: float):
+    try:
+        r = _cf_request("GET", f"trades/history?account={addr}&limit=100")
+        trades = r.get("data", []) if isinstance(r, dict) else r
+        if not isinstance(trades, list) or not trades:
+            return None
+    except Exception as e:
+        print(f"  {label}: 조회 실패 — {e}")
+        return None
 
-        # equity 기반 ROI (volume이 비정상 소수인 경우 방지)
-        eq_base = max(equity, 1_000)  # 최소 $1000 기준
-        roi_at  = pnl_at  / eq_base * 100
-        roi_30d = pnl_30d / eq_base * 100
-        roi_7d  = pnl_7d  / eq_base * 100
+    equity = capital
+    peak = equity
+    max_dd = 0.0
+    wins = losses = 0
+    gross_profit = gross_loss = 0.0
 
-        consistency = sum([
-            pnl_7d  > 0,
-            pnl_30d > 0,
-            pnl_at  > 0,
-            pnl_1d  > 0,
-        ])
-
-        # Tier 분류
-        if pnl_at > 0 and pnl_7d > 0 and pnl_30d >= MIN_TIER1_PNL30 and consistency == 4:
-            tier = 1
-        elif pnl_at > 0 and pnl_7d > 0 and pnl_30d >= MIN_TIER2_PNL30 and consistency >= 3:
-            tier = 2
-        elif pnl_at > 0 and pnl_7d > 0 and consistency >= 3:
-            tier = 3
+    for tr in reversed(trades):
+        pnl = float(tr.get("pnl", 0))
+        if pnl == 0:
+            continue
+        copy_pnl = min(abs(pnl) * ratio, max_per_trade)
+        copy_pnl = copy_pnl if pnl > 0 else -copy_pnl
+        equity += copy_pnl
+        peak = max(peak, equity)
+        dd = (peak - equity) / peak * 100
+        max_dd = max(max_dd, dd)
+        if copy_pnl > 0:
+            wins += 1
+            gross_profit += copy_pnl
         else:
-            tier = 0  # 팔로우 제외
+            losses += 1
+            gross_loss += abs(copy_pnl)
 
-        # OI 과도 레버리지 필터
-        if oi > 500_000:
-            tier = max(tier - 1, 0)
-
-        # 종합 점수 (tier 보정)
-        score = (roi_30d * 0.5 + roi_7d * 0.3 + roi_at * 0.2) * (consistency / 4)
-
-        results.append({
-            "address":    t["address"],
-            "pnl_all_time": round(pnl_at, 0),
-            "pnl_30d":    round(pnl_30d, 0),
-            "pnl_7d":     round(pnl_7d, 0),
-            "pnl_1d":     round(pnl_1d, 0),
-            "roi_at":     round(roi_at, 4),
-            "roi_30d":    round(roi_30d, 4),
-            "roi_7d":     round(roi_7d, 4),
-            "equity":     round(equity, 0),
-            "oi":         round(oi, 0),
-            "consistency": consistency,
-            "tier":       tier,
-            "score":      round(score, 4),
-        })
-
-    return sorted(results, key=lambda x: (x["tier"], x["score"]), reverse=True)
-
-
-def backtest_portfolio(analyzed: list, capital: float = INITIAL_CAPITAL) -> dict:
-    """
-    백테스팅: 7일 PnL 기반 시뮬레이션
-    - Tier 1/2 트레이더를 copy_ratio 비율로 팔로우
-    - 슬리피지 + 수수료 반영
-    """
-    tier1 = [t for t in analyzed if t["tier"] == 1]
-    tier2 = [t for t in analyzed if t["tier"] == 2]
-    selected = (tier1 + tier2)[:10]  # 최대 10명
-
-    if not selected:
-        return {"error": "팔로우 대상 없음"}
-
-    # 포트폴리오 배분 (동일 비중)
-    alloc_per_trader = min(capital * MAX_PER_TRADER, capital / len(selected))
-    taker_fee = 0.0004  # 0.04% taker fee
-
-    results = []
-    total_pnl_sim = 0.0
-    total_fee = 0.0
-
-    for t in selected:
-        # 7일 ROI를 copy_ratio에 적용
-        trader_roi_7d = t["roi_7d"] / 100  # 비율로 변환
-
-        # 슬리피지 및 수수료 차감
-        copy_pnl = alloc_per_trader * trader_roi_7d * COPY_RATIO
-        slippage_cost = abs(copy_pnl) * (SLIPPAGE_PCT / 100)
-        fee_cost = alloc_per_trader * taker_fee * 2  # 진입+청산
-
-        net_pnl = copy_pnl - slippage_cost - fee_cost
-        total_pnl_sim += net_pnl
-        total_fee += fee_cost + slippage_cost
-
-        results.append({
-            "address":       t["address"],
-            "tier":          t["tier"],
-            "alloc_usd":     round(alloc_per_trader, 2),
-            "trader_roi_7d": round(t["roi_7d"], 4),
-            "copy_pnl":      round(copy_pnl, 2),
-            "fee+slip":      round(fee_cost + slippage_cost, 2),
-            "net_pnl":       round(net_pnl, 2),
-        })
-
-    final_capital = capital + total_pnl_sim
-    roi_7d = (total_pnl_sim / capital) * 100
+    total = wins + losses
+    winrate = wins / total * 100 if total > 0 else 0
+    roi = (equity - capital) / capital * 100
+    pf = gross_profit / gross_loss if gross_loss > 0 else 999.0
 
     return {
-        "initial_capital":  capital,
-        "final_capital":    round(final_capital, 2),
-        "total_pnl_7d":    round(total_pnl_sim, 2),
-        "roi_7d_pct":      round(roi_7d, 4),
-        "total_fees":      round(total_fee, 2),
-        "traders_followed": len(selected),
-        "portfolio":        results,
+        "addr": addr, "label": label,
+        "final": equity, "roi": roi, "max_dd": max_dd,
+        "winrate": winrate, "pf": pf,
+        "wins": wins, "losses": losses,
     }
-
-
-def print_report(analyzed: list, backtest: dict):
-    """결과 리포트 출력"""
-    tier_counts = {1: 0, 2: 0, 3: 0, 0: 0}
-    for t in analyzed:
-        tier_counts[t["tier"]] += 1
-
-    print("=" * 60)
-    print("  Copy Perp 백테스팅 리포트")
-    print("=" * 60)
-    print(f"  분석 트레이더: {len(analyzed)}명")
-    print(f"  Tier 1 (즉시 팔로우): {tier_counts[1]}명")
-    print(f"  Tier 2 (조건부):      {tier_counts[2]}명")
-    print(f"  Tier 3 (관망):        {tier_counts[3]}명")
-    print(f"  제외:                 {tier_counts[0]}명")
-    print()
-
-    print("── Tier 1 트레이더 ─────────────────────────────")
-    tier1 = [t for t in analyzed if t["tier"] == 1]
-    for i, t in enumerate(tier1[:5], 1):
-        addr = t["address"][:8] + "..." + t["address"][-6:]
-        print(f"  {i}. {addr}")
-        print(f"     PnL: AT={t['pnl_all_time']:+,.0f} | 30d={t['pnl_30d']:+,.0f} | 7d={t['pnl_7d']:+,.0f}")
-        print(f"     ROI: 30d={t['roi_30d']}% | 7d={t['roi_7d']}% | 일관성={t['consistency']}/4")
-    print()
-
-    print("── 백테스팅 결과 (7일, 초기자금 $10,000) ────────")
-    if "error" not in backtest:
-        print(f"  팔로우한 트레이더: {backtest['traders_followed']}명")
-        print(f"  7일 순수익:       ${backtest['total_pnl_7d']:+,.2f}")
-        print(f"  7일 ROI:          {backtest['roi_7d_pct']:+.4f}%")
-        print(f"  최종 자산:        ${backtest['final_capital']:,.2f}")
-        print(f"  총 수수료+슬리피지: ${backtest['total_fees']:,.2f}")
-        print()
-        print("  트레이더별 기여:")
-        for p in backtest["portfolio"]:
-            addr = p["address"][:8] + "..." + p["address"][-6:]
-            print(f"    [{p['tier']}] {addr}  net={p['net_pnl']:+.2f}")
-    print()
-    print("=" * 60)
 
 
 def main():
-    print("Pacifica 리더보드 로딩 중...")
-    traders = fetch_leaderboard(100)
-    print(f"✅ {len(traders)}명 데이터 수집")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ratio", type=float, default=0.1)
+    parser.add_argument("--capital", type=float, default=10000)
+    parser.add_argument("--max-per-trade", type=float, default=500)
+    args = parser.parse_args()
 
-    analyzed = analyze_traders(traders)
-    backtest = backtest_portfolio(analyzed)
+    print("=" * 70)
+    print(f"Copy Perp 백테스팅 | 자본 ${args.capital:,} | 복사비율 {args.ratio*100:.0f}% | 건당최대 ${args.max_per_trade}")
+    print("=" * 70)
 
-    print_report(analyzed, backtest)
+    results = []
+    for addr, label in TRADERS:
+        r = run_backtest(addr, label, args.capital, args.ratio, args.max_per_trade)
+        if r:
+            results.append(r)
+        time.sleep(0.3)
 
-    # 결과 저장
-    output = {
-        "timestamp": int(time.time()),
-        "traders":   analyzed,
-        "backtest":  backtest,
-        "follow_list": {
-            "tier1": [t["address"] for t in analyzed if t["tier"] == 1],
-            "tier2": [t["address"] for t in analyzed if t["tier"] == 2],
-        }
-    }
-    with open("backtest_result.json", "w") as f:
-        json.dump(output, f, indent=2, ensure_ascii=False)
-    print("✅ backtest_result.json 저장 완료")
+    # Risk-Adjusted: ROI - MaxDD*0.3
+    results.sort(key=lambda x: -(x['roi'] - x['max_dd'] * 0.3))
+
+    print(f"\n{'':2} {'레이블':16} {'최종자산':>10} {'ROI':>7} {'MaxDD':>7} {'Win률':>7} {'PF':>6} {'거래':>5}")
+    print("-" * 70)
+    medals = ["🥇", "🥈", "🥉"] + ["  "] * 20
+    for i, r in enumerate(results):
+        print(f"{medals[i]} {r['label']:14} ${r['final']:>9,.0f} {r['roi']:>6.1f}% {r['max_dd']:>6.1f}% "
+              f"{r['winrate']:>6.1f}% {r['pf']:>5.1f}x {r['wins']+r['losses']:>4}")
+
+    print("\n" + "=" * 70)
+    print("최적 팔로우 전략 TOP 3")
+    print("=" * 70)
+    for i, r in enumerate(results[:3]):
+        profit = r['final'] - args.capital
+        print(f"\n#{i+1} [{r['label']}]")
+        print(f"   주소: {r['addr']}")
+        print(f"   ROI: {r['roi']:.1f}% | MaxDD: {r['max_dd']:.1f}% | Win: {r['winrate']:.0f}% | PF: {r['pf']:.2f}x")
+        print(f"   ${args.capital:,} 복사 → 예상 수익: ${profit:,.0f}")
+
+    print(f"\n권장 설정: copy_ratio={args.ratio}, max_per_trade=${args.max_per_trade}")
 
 
 if __name__ == "__main__":

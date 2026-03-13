@@ -320,7 +320,7 @@ class PacificaClient:
         side: str,           # "bid" (롱) / "ask" (숏)
         amount: str,
         slippage_percent: str = "0.5",
-        builder_code: str = BUILDER_CODE,
+        builder_code: Optional[str] = None,  # 승인 전까지 기본 None
         client_order_id: Optional[str] = None,
     ) -> dict:
         payload = {

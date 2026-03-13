@@ -36,7 +36,7 @@ from typing import Optional
 from db.database import init_db, add_trader, add_follower, get_followers, get_leaderboard
 from pacifica.client import PacificaClient
 from core.copy_engine import CopyEngine
-from core.position_monitor import PositionMonitor
+from core.position_monitor import PositionMonitor, RestPositionMonitor
 from core.stats import get_platform_stats
 from fuul.referral import FuulReferral
 from api.routers.traders import router as traders_router
@@ -252,7 +252,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks):
 
     # 모니터 시작
     if body.trader_address not in _monitors:
-        monitor = PositionMonitor(body.trader_address, _engine.on_fill)
+        monitor = RestPositionMonitor(body.trader_address, _engine.on_fill)  # WS 차단 환경 → REST 폴링
         _monitors[body.trader_address] = monitor
         background_tasks.add_task(monitor.start)
 

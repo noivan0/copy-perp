@@ -197,3 +197,27 @@ if __name__ == "__main__":
             print("✅ 10초 완료 — 포지션 변화 없음 (잔고 0 상태 정상)")
 
     asyncio.run(main())
+
+
+class RestPositionMonitor(PositionMonitor):
+    """REST 폴링 전용 PositionMonitor (WS 차단 환경용)
+    
+    WS 연결을 시도하지 않고 REST 폴링만 사용.
+    HMG 웹필터 환경에서 안정적으로 동작.
+    """
+
+    async def start(self):
+        self._running = True
+        logger.info(f"[REST] PositionMonitor 시작: {self.trader[:12]}...")
+        from pacifica.client import PacificaClient
+        client = PacificaClient(self.trader)
+
+        while self._running:
+            try:
+                positions = await asyncio.get_event_loop().run_in_executor(
+                    None, client.get_positions
+                )
+                await self._handle_positions(positions)
+            except Exception as e:
+                logger.debug(f"REST 폴링 오류: {e}")
+            await asyncio.sleep(2.0)  # 2초 간격 폴링
