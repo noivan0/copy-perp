@@ -144,6 +144,11 @@
                padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .pos-row:last-child { border-bottom:none; }
   </style>
+  <!-- Solana Web3.js -->
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+  <!-- TweetNaCl for signing -->
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
 </head>
 <body>
 
@@ -380,10 +385,110 @@ async function loginWith(provider) {
 
 async function loginWithWallet() {
   closeLoginModal();
-  toast('⏳ 지갑 연결 중...');
-  await new Promise(r => setTimeout(r, 600));
-  const demoAddr = '3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ';
-  onWalletConnected(demoAddr, 'wallet');
+  
+  // 실제 Solana 지갑 연결 (Phantom, Backpack, Solflare 등)
+  if (window.solana && window.solana.isPhantom) {
+    toast('⏳ Phantom 지갑 연결 중...');
+    try {
+      const resp = await window.solana.connect();
+      const address = resp.publicKey.toString();
+      onWalletConnected(address, 'phantom');
+      return;
+    } catch(e) {
+      toast('❌ Phantom 연결 실패: ' + e.message);
+      return;
+    }
+  } else if (window.backpack) {
+    toast('⏳ Backpack 지갑 연결 중...');
+    try {
+      await window.backpack.connect();
+      const address = window.backpack.publicKey.toString();
+      onWalletConnected(address, 'backpack');
+      return;
+    } catch(e) {
+      toast('❌ Backpack 연결 실패: ' + e.message);
+      return;
+    }
+  } else if (window.solana) {
+    toast('⏳ 지갑 연결 중...');
+    try {
+      const resp = await window.solana.connect();
+      const address = resp.publicKey.toString();
+      onWalletConnected(address, 'solana');
+      return;
+    } catch(e) {
+      toast('❌ 지갑 연결 실패: ' + e.message);
+      return;
+    }
+  } else {
+    // 지갑 없으면 설치 안내
+    toast('💡 Phantom 또는 Backpack 지갑을 설치해주세요');
+    window.open('https://phantom.app', '_blank');
+  }
+}
+
+// Builder Code 서명 (Pacifica approve_builder_code)
+async function signBuilderCodeApproval(builderCode = 'noivan', maxFeeRate = '0.001') {
+  if (!window.solana) { toast('❌ 지갑 없음'); return null; }
+  
+  const payload = {
+    data: { builder_code: builderCode, max_fee_rate: maxFeeRate },
+    expiry_window: 5000,
+    timestamp: Date.now(),
+    type: 'approve_builder_code',
+  };
+  
+  // 알파벳순 정렬 후 컴팩트 JSON
+  function sortKeys(obj) {
+    if (typeof obj !== 'object' || obj === null) return obj;
+    if (Array.isArray(obj)) return obj.map(sortKeys);
+    return Object.keys(obj).sort().reduce((acc, k) => { acc[k] = sortKeys(obj[k]); return acc; }, {});
+  }
+  
+  const msgStr = JSON.stringify(sortKeys(payload));
+  const msgBytes = new TextEncoder().encode(msgStr);
+  
+  try {
+    const { signature } = await window.solana.signMessage(msgBytes, 'utf8');
+    // Base58 인코딩
+    const bs58 = (arr) => {
+      const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let d = [], s = '', i, j, c, n;
+      for(i=0; i<arr.length; i++) {
+        j=0; c=arr[i];
+        s += c===0&&s.length===0?'1':'';
+        while(j<d.length||c) { n=d[j]; n=n?n*256+c:c; d[j]=n%58; c=n/58|0; j++; }
+      }
+      while(j--) s+=ALPHABET[d[j]];
+      return s;
+    };
+    const sigBase58 = bs58(new Uint8Array(signature));
+    
+    // API 전송
+    const body = {
+      ...payload,
+      account: _walletAddress,
+      signature: sigBase58,
+      builder_code: builderCode,
+      max_fee_rate: maxFeeRate,
+    };
+    const r = await fetch(`${API}/builder/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.ok || d.success) {
+      toast('✅ Builder Code 승인 완료!');
+      return sigBase58;
+    } else {
+      toast(`⚠️ Builder Code: ${d.error || '승인 실패'}`);
+      return null;
+    }
+  } catch(e) {
+    toast('❌ 서명 오류: ' + e.message);
+    return null;
+  }
 }
 
 function onWalletConnected(address, provider) {

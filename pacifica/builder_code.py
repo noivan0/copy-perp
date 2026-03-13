@@ -260,3 +260,63 @@ if __name__ == "__main__":
                 print("→ 테스트넷의 경우 @PacificaTGPortalBot에 문의.")
             else:
                 print(f"❌ 승인 실패: {err}")
+
+
+def approve_builder_code(
+    account_address: str,
+    builder_code: str = BUILDER_CODE,
+    max_fee_rate: str = BUILDER_FEE_RATE,
+    external_signature: str = None,
+    timestamp: int = None,
+) -> dict:
+    """
+    Builder Code 승인 — 프론트 서명 또는 서버 키패어 서명 지원
+    
+    external_signature: 프론트에서 받은 Base58 서명 (있으면 서버 서명 스킵)
+    """
+    if external_signature:
+        # 프론트에서 이미 서명한 경우
+        ts = timestamp or int(time.time() * 1000)
+        request_body = {
+            "timestamp": ts,
+            "expiry_window": 5000,
+            "type": "approve_builder_code",
+            "account": account_address,
+            "signature": external_signature,
+            "builder_code": builder_code,
+            "max_fee_rate": max_fee_rate,
+        }
+    else:
+        # 서버 키패어로 서명
+        from pacifica.client import _load_keypair
+        kp = _load_keypair()
+        if not kp:
+            return {"ok": False, "error": "AGENT_PRIVATE_KEY 미설정"}
+        sign_payload = build_approve_payload(builder_code, max_fee_rate)
+        sig = create_signature(sign_payload, kp)
+        request_body = {
+            "timestamp": sign_payload["timestamp"],
+            "expiry_window": sign_payload["expiry_window"],
+            "type": sign_payload["type"],
+            "account": account_address,
+            "signature": sig,
+            "builder_code": builder_code,
+            "max_fee_rate": max_fee_rate,
+        }
+    
+    status, resp = _post_cf("/api/v1/account/builder_codes/approve", request_body)
+    if status in (200, 201):
+        return {"ok": True, "status": status, "data": resp}
+    else:
+        err = resp.get("error", str(resp)) if isinstance(resp, dict) else str(resp)
+        return {"ok": False, "status": status, "error": err}
+
+
+def check_builder_approvals(account_address: str) -> list:
+    """Builder Code 승인 목록 조회"""
+    try:
+        result = _get_cf(f"/api/v1/account/builder_codes/approvals?account={account_address}")
+        return result.get("data", []) or []
+    except Exception as e:
+        return []
+

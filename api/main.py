@@ -206,6 +206,17 @@ async def startup():
     global _db, _engine
     _db = await init_db()
     _engine = CopyEngine(_db)
+
+    # ── 현재 NETWORK 환경 로깅 ──────────────────────────
+    _network = os.getenv("NETWORK", "testnet")
+    _rest_url = os.getenv("PACIFICA_REST_URL", "")
+    _db_path = os.getenv("DB_PATH", "copy_perp.db")
+    logger.info(f"🌐 NETWORK={_network} | REST={_rest_url} | DB={_db_path}")
+    if _network == "mainnet":
+        logger.info("🚀 MAINNET MODE: IP 54.230.62.105 직접 접근 (Host: api.pacifica.fi)")
+    else:
+        logger.info("🧪 TESTNET MODE: CloudFront SNI 우회 (do5jt23sqak4.cloudfront.net)")
+
     # DataCollector REST 폴링 (WS 완전 대체 — HMG 차단)
     asyncio.create_task(_dc_start(interval=30))
     # 실제 Pacifica 리더보드 동기화
@@ -524,6 +535,116 @@ def get_referral(address: str):
     points = _fuul.get_points(address)
     return {"address": address, "referral_link": link, "points": points}
 
+@app.get("/health/detailed")
+async def health_detailed():
+    """상세 헬스 체크 — 모니터 상태, DB, 환경"""
+    import os, time
+    from core.data_collector import get_price_cache, _last_poll_ts as _lpt
+    
+    db = await get_db()
+    try:
+        async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as c:
+            trader_count = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as c:
+            follower_count = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as c:
+            filled_count = (await c.fetchone())[0]
+        async with db.execute("SELECT COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END),0) FROM copy_trades WHERE status='filled'") as c:
+            total_pnl = (await c.fetchone())[0]
+        db_ok = True
+    except Exception as e:
+        db_ok = False
+        trader_count = follower_count = filled_count = 0
+        total_pnl = 0
+
+    # 모니터 상태
+    monitor_status = {}
+    for addr, mon in _monitors.items():
+        monitor_status[addr[:12]] = {
+            "running": getattr(mon, "_running", True),
+            "last_poll": getattr(mon, "_last_poll", None),
+        }
+    
+    # 데이터 수신 상태
+    now = time.time()
+    last_poll = _lpt
+    
+    return {
+        "status": "ok",
+        "network": os.getenv("NETWORK", "testnet"),
+        "db": {
+            "ok": db_ok,
+            "traders": trader_count,
+            "followers": follower_count,
+            "filled_trades": filled_count,
+            "total_pnl_usdc": round(total_pnl, 4),
+        },
+        "data_collector": {
+            "connected": _dc_connected(),
+            "symbols_cached": len(get_price_cache()),
+            "source": "rest_poll",
+        },
+        "monitors": {
+            "count": len(_monitors),
+            "addresses": list(monitor_status.keys()),
+        },
+        "environment": {
+            "builder_code": BUILDER_CODE,
+            "network": os.getenv("NETWORK", "testnet"),
+        }
+    }
+
+
+
+
+
+
+# ── Builder Code 승인 (프론트에서 서명) ──────────────────
+class BuilderApproveRequest(BaseModel):
+    account: str
+    signature: str
+    builder_code: str = BUILDER_CODE
+    max_fee_rate: str = "0.001"
+    timestamp: int = 0
+    expiry_window: int = 5000
+    type: str = "approve_builder_code"
+    data: Optional[dict] = None
+
+
+@app.post("/builder/approve")
+async def builder_approve(body: BuilderApproveRequest):
+    """Builder Code 승인 — 프론트에서 서명 후 서버가 Pacifica API에 전달"""
+    from pacifica.builder_code import approve_builder_code
+    result = approve_builder_code(
+        account_address=body.account,
+        builder_code=body.builder_code,
+        max_fee_rate=body.max_fee_rate,
+        external_signature=body.signature,
+        timestamp=body.timestamp or int(time.time() * 1000),
+    )
+    if result.get("ok"):
+        # DB에 승인 상태 업데이트
+        db = await get_db()
+        await db.execute(
+            "UPDATE followers SET builder_code_approved=1 WHERE address=?",
+            (body.account,)
+        )
+        await db.commit()
+    return result
+
+
+@app.get("/builder/status/{address}")
+async def builder_status(address: str):
+    """Builder Code 승인 상태 조회"""
+    from pacifica.builder_code import check_builder_approvals
+    approvals = check_builder_approvals(address)
+    approved = any(a.get("builder_code") == BUILDER_CODE for a in approvals)
+    return {
+        "address": address,
+        "builder_code": BUILDER_CODE,
+        "approved": approved,
+        "approvals": approvals,
+    }
 
 # ── 팔로워 온보딩 (프론트엔드 호환) ─────────────────────
 class OnboardRequest(BaseModel):

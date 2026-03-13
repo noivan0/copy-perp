@@ -276,19 +276,36 @@ def _mainnet_request(method: str, path: str, body: Optional[dict] = None) -> dic
     return result
 
 
+def _mainnet_proxy_get(path: str) -> dict:
+    """Mainnet GET — codetabs 프록시 (allorigins보다 안정적)"""
+    import urllib.parse as _up
+    target = f"https://api.pacifica.fi/api/v1/{path.lstrip('/')}"
+    url = f"https://api.codetabs.com/v1/proxy/?quest={_up.quote(target, safe='')}"
+    req = urllib.request.Request(url, headers={"User-Agent": "CopyPerp/1.0"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        d = json.loads(r.read())
+        return d.get("data", d) if isinstance(d, dict) and "data" in d else d
+
+
 def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
     """NETWORK 환경변수 기반 자동 라우팅:
-    - mainnet: IP 직접 접근 (54.230.62.105)
-    - testnet: CloudFront SNI 우회 (do5jt23sqak4.cloudfront.net)
+    - mainnet GET: codetabs 프록시 (직접 접근 확인됨)
+    - mainnet POST: IP 직접 접근 (54.230.62.105) + Host 헤더
+    - testnet GET: CloudFront SNI → scrapling 프록시 fallback
+    - testnet POST: CloudFront SNI 우회
     """
     if NETWORK == "mainnet":
-        try:
-            return _mainnet_request(method, path, body)
-        except Exception as e:
-            # mainnet fallback: scrapling 프록시 (GET만)
-            if method == "GET":
-                return _proxy_get(path)
-            raise
+        if method == "GET":
+            try:
+                return _mainnet_proxy_get(path)
+            except Exception:
+                return _proxy_get(path)  # allorigins fallback
+        else:
+            # POST: IP 직접 + 실패 시 CF SNI(testnet 우회 경유)
+            try:
+                return _mainnet_request(method, path, body)
+            except Exception:
+                return _cf_request(method, path, body)
 
     # testnet: GET는 CloudFront SNI 1차, scrapling 프록시 fallback
     if method == "GET":

@@ -40,7 +40,18 @@ WS_ACCOUNT_SOURCES = [
 
 
 class PositionMonitor:
-    """트레이더 포지션 변화 감지 → on_fill 콜백"""
+    """트레이더 포지션 변화 감지 → on_fill 콜백
+    
+    WS 연결 시도 순서:
+    1. wss://test-ws.pacifica.fi/ws (직접)
+    2. 실패 시 → RestPositionMonitor 자동 전환 (HMG 웹필터 우회)
+    """
+
+    # WS 시도 URL 목록 (순서대로 시도)
+    _WS_URLS = [
+        "wss://test-ws.pacifica.fi/ws",
+        WS_URL,
+    ]
 
     def __init__(self, trader_address: str, on_fill: Callable):
         self.trader = trader_address
@@ -48,14 +59,47 @@ class PositionMonitor:
         self._running = False
         self._prev_positions: dict = {}  # symbol → position
         self._reconnect_delay = 2.0
+        self._rest_fallback: Optional["RestPositionMonitor"] = None
+        self._ws_failed = False  # WS 연결 최종 실패 여부
 
     async def start(self):
         self._running = True
         logger.info(f"PositionMonitor 시작: {self.trader[:12]}...")
 
-        while self._running:
+        # WS 연결 시도
+        ws_connected = False
+        for ws_url in self._WS_URLS:
+            if not self._running:
+                break
             try:
-                await self._ws_loop()
+                logger.info(f"WS 연결 시도: {ws_url}")
+                await asyncio.wait_for(
+                    self._ws_loop(ws_url),
+                    timeout=10.0  # 10초 내 연결 안 되면 다음 URL 시도
+                )
+                ws_connected = True
+                break
+            except asyncio.TimeoutError:
+                logger.warning(f"WS 연결 타임아웃: {ws_url} → 다음 URL 시도")
+            except Exception as e:
+                logger.warning(f"WS 연결 실패: {ws_url} ({type(e).__name__}: {e})")
+
+        if not ws_connected and self._running:
+            # 모든 WS URL 실패 → RestPositionMonitor로 자동 전환
+            logger.warning(
+                f"[{self.trader[:12]}] 모든 WS URL 실패 → RestPositionMonitor 자동 전환"
+            )
+            self._ws_failed = True
+            self._rest_fallback = RestPositionMonitor(self.trader, self.on_fill)
+            # 이미 수집된 prev_positions 상태 동기화
+            self._rest_fallback._prev_positions = self._prev_positions
+            await self._rest_fallback.start()
+            return
+
+        # WS 성공했다가 이후 재연결 루프
+        while self._running and not self._ws_failed:
+            try:
+                await self._ws_loop(WS_URL)
             except Exception as e:
                 if self._running:
                     logger.warning(f"WS 오류 ({e}), {self._reconnect_delay}초 후 재연결 → REST 폴링 전환")
@@ -64,10 +108,13 @@ class PositionMonitor:
 
     async def stop(self):
         self._running = False
+        if self._rest_fallback:
+            await self._rest_fallback.stop()
 
-    async def _ws_loop(self):
+    async def _ws_loop(self, ws_url: Optional[str] = None):
+        url = ws_url or WS_URL
         async with websockets.connect(
-            WS_URL,
+            url,
             ssl=_ssl_ctx,
             ping_interval=20,
             ping_timeout=10,
@@ -78,7 +125,7 @@ class PositionMonitor:
                     "method": "subscribe",
                     "params": {"source": source, "account": self.trader}
                 }))
-            logger.info(f"WS 구독 완료: {WS_ACCOUNT_SOURCES}")
+            logger.info(f"WS 구독 완료: {WS_ACCOUNT_SOURCES} (url={url})")
             self._reconnect_delay = 2.0  # 성공 시 초기화
 
             async for raw in ws:

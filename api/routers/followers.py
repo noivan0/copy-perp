@@ -13,13 +13,16 @@ POST /followers/list     — 팔로워 목록 조회
 DELETE /followers/{addr} — 팔로워 해지
 """
 import os
+import re
 import time
 import json
 import base64
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+import base58 as _base58
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,85 @@ DEFAULT_MAX_POS_USDC  = 50.0  # $50
 
 
 # ── 요청 모델 ─────────────────────────────────────────
+
+# ── Solana 주소 검증 ──────────────────────────────────
+
+# Solana 주소: base58 문자셋, 32-44자
+_BASE58_CHARS = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+_SOLANA_ADDR_RE = re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
+
+
+def _validate_solana_address(address: str, field_name: str = "address") -> None:
+    """Solana 주소 검증:
+    1. 문자열 + 비어있지 않은지 확인
+    2. base58 문자셋 + 32-44자 regex 검증
+    3. base58 디코딩 + 32바이트 (Ed25519 공개키) 확인
+    실패 시 HTTPException(422) 발생
+    """
+    if not address or not isinstance(address, str):
+        raise HTTPException(422, f"{field_name}가 필요합니다")
+
+    # 1차: regex 형식 검증
+    if not _SOLANA_ADDR_RE.match(address):
+        raise HTTPException(
+            422,
+            f"유효하지 않은 Solana 주소 형식: '{address[:20]}...' "
+            f"(base58 문자셋, 32-44자 필요)"
+        )
+
+    # 2차: base58 디코딩 + 32바이트 확인
+    try:
+        decoded = _base58.b58decode(address)
+        if len(decoded) != 32:
+            raise HTTPException(
+                422,
+                f"유효하지 않은 Solana 주소: base58 디코딩 결과가 {len(decoded)}바이트 "
+                f"(32바이트 Ed25519 공개키 필요)"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            422,
+            f"유효하지 않은 Solana 주소: base58 디코딩 실패 — {e}"
+        )
+
+
+def _verify_privy_jwt(token: str) -> Optional[str]:
+    """
+    Privy JWT 토큰 검증 (선택적).
+    반환: privy_user_id (str) 또는 None (검증 실패)
+    
+    실제 환경에서는 Privy의 공개키로 JWT를 검증해야 함.
+    현재는 JWT 구조 파싱 + did:privy: prefix 확인으로 기본 검증.
+    """
+    try:
+        import base64 as _b64
+        # JWT = header.payload.signature
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        # payload 디코딩 (base64url)
+        payload_b64 = parts[1]
+        # padding 추가
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += "=" * padding
+        payload_bytes = _b64.urlsafe_b64decode(payload_b64)
+        payload = json.loads(payload_bytes.decode("utf-8"))
+        # sub 필드: "did:privy:..." 형식
+        sub = payload.get("sub", "")
+        if sub.startswith("did:privy:"):
+            return sub  # privy_user_id로 사용
+        # 또는 user_id 필드 직접 확인
+        user_id = payload.get("user_id") or payload.get("userId")
+        if user_id:
+            return str(user_id)
+        return sub if sub else None
+    except Exception as e:
+        logger.debug(f"Privy JWT 파싱 실패: {e}")
+        return None
+
 
 class OnboardRequest(BaseModel):
     """팔로워 온보딩 요청"""
@@ -102,18 +184,52 @@ def _approve_builder_code_api(account: str, signature: str, timestamp: int,
 # ── 엔드포인트 ────────────────────────────────────────
 
 @router.post("/onboard")
-async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTasks):
+async def onboard_follower(
+    body: OnboardRequest,
+    background_tasks: BackgroundTasks,
+    x_privy_token: Optional[str] = Header(None, alias="X-Privy-Token"),
+):
     """
     팔로워 온보딩 전체 플로우:
-    1. Builder Code 승인 서명 자동 생성
-    2. Pacifica API approve 호출
-    3. DB 팔로워 등록
-    4. Tier1 트레이더 자동 팔로우 + 모니터링 시작
+    1. Solana 주소 형식 검증 (base58, 32-44자)
+    2. Privy JWT 선택적 검증 (헤더 있으면 검증)
+    3. Builder Code 승인 서명 자동 생성
+    4. Pacifica API approve 호출
+    5. DB 팔로워 등록 (privy_user_id 포함)
+    6. Tier1 트레이더 자동 팔로우 + 모니터링 시작
     """
     from api.main import _db, _engine, _monitors
     from core.position_monitor import RestPositionMonitor
     from db.database import add_follower
     from fuul.referral import FuulReferral
+
+    # ── 입력 검증 ────────────────────────────────────────
+    # Step 0a: 팔로워 Solana 주소 검증 (base58 디코딩 + 32바이트 확인)
+    _validate_solana_address(body.follower_address, field_name="follower_address")
+
+    # 트레이더 주소 검증 (지정된 경우)
+    if body.traders:
+        for idx, trader_addr in enumerate(body.traders):
+            try:
+                _validate_solana_address(str(trader_addr), field_name=f"traders[{idx}]")
+            except HTTPException as e:
+                raise HTTPException(422, f"traders[{idx}] 주소 오류: {e.detail}")
+
+    # referrer 주소 검증 (지정된 경우)
+    if body.referrer_address:
+        try:
+            _validate_solana_address(body.referrer_address, field_name="referrer_address")
+        except HTTPException as e:
+            raise HTTPException(422, f"referrer_address 오류: {e.detail}")
+
+    # Step 0b: Privy JWT 선택적 검증
+    privy_user_id: Optional[str] = None
+    if x_privy_token:
+        privy_user_id = _verify_privy_jwt(x_privy_token)
+        if privy_user_id:
+            logger.info(f"Privy 검증 성공: user_id={privy_user_id}")
+        else:
+            logger.warning("Privy JWT 검증 실패 — 토큰 무시하고 계속 진행")
 
     follower = body.follower_address
     traders = body.traders or DEFAULT_TIER1
@@ -182,6 +298,16 @@ async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTas
                         "UPDATE followers SET builder_code_approved=1 WHERE address=?",
                         (follower,)
                     )
+                # privy_user_id 저장 (있을 경우)
+                if privy_user_id:
+                    try:
+                        await _db.execute(
+                            "UPDATE followers SET privy_user_id=? WHERE address=?",
+                            (privy_user_id, follower)
+                        )
+                        logger.info(f"privy_user_id 저장: {follower[:12]}... → {privy_user_id}")
+                    except Exception as e:
+                        logger.debug(f"privy_user_id 저장 실패 (컬럼 없을 수 있음): {e}")
                 await _db.commit()
                 result["followers_registered"].append(trader_addr)
                 logger.info(f"팔로워 등록: {follower[:12]}... → {trader_addr[:12]}...")
@@ -211,6 +337,8 @@ async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTas
     result["note"] = (
         f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else '미승인 (주문은 가능, 수수료 수취 비활성)'}"
     )
+    if privy_user_id:
+        result["privy_user_id"] = privy_user_id
     return result
 
 

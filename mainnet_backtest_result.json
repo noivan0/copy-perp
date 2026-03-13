@@ -1,0 +1,38 @@
+{
+  "network": "mainnet",
+  "initial_capital": 10000,
+  "copy_ratio": 0.1,
+  "traders_used": 5,
+  "tier1_total": 5,
+  "tier2_total": 19,
+  "7day_pnl": 249.66,
+  "7day_roi_pct": 2.4966,
+  "final_equity": 10249.66,
+  "top_traders": [
+    {
+      "address": "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+      "roi_30d": 13.22,
+      "pnl_30d": 126301.05
+    },
+    {
+      "address": "GTU92nBC8LMyt9W4Qqc319BFR1vpkNNPAbt4QCnX7kZ6",
+      "roi_30d": 15.07,
+      "pnl_30d": 77086.58
+    },
+    {
+      "address": "5RmsTTwkXQgKcTv5BK6CZEjHQMBVLVQVt8po3h5cQabB",
+      "roi_30d": 79.41,
+      "pnl_30d": 73284.29
+    },
+    {
+      "address": "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV",
+      "roi_30d": 54.67,
+      "pnl_30d": 52175.53
+    },
+    {
+      "address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+      "roi_30d": 30.36,
+      "pnl_30d": 51806.92
+    }
+  ]
+}

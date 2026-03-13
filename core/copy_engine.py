@@ -74,6 +74,8 @@ class CopyEngine:
     def __init__(self, db: aiosqlite.Connection, mock_mode: bool = False):
         self.db = db
         self.mock_mode = mock_mode
+        # 팔로워 포지션 추적: {follower: {symbol: {entry_price, size, side}}}
+        self._positions: dict[str, dict[str, dict]] = {}
         self._client_cache: dict[str, PacificaClient] = {}
 
     def _get_client(self, account: str) -> PacificaClient:
@@ -230,6 +232,34 @@ class CopyEngine:
             except Exception:
                 pass
 
+        # PnL 계산 (청산 이벤트 시)
+        realized_pnl = None
+        exec_price = price_f if price_f > 0 else 0.0
+        if status == "filled" and exec_price > 0:
+            pos_key = symbol
+            follower_positions = self._positions.setdefault(follower_addr, {})
+            
+            if side in ("bid",):  # 롱 진입 또는 숏 청산
+                if pos_key in follower_positions and follower_positions[pos_key].get("side") == "ask":
+                    # 숏 포지션 청산 → PnL = (진입가 - 청산가) * size
+                    entry = follower_positions[pos_key]["entry_price"]
+                    size = float(copy_amount)
+                    realized_pnl = (entry - exec_price) * size
+                    del follower_positions[pos_key]
+                else:
+                    # 롱 포지션 진입
+                    follower_positions[pos_key] = {"entry_price": exec_price, "size": float(copy_amount), "side": "bid"}
+            elif side in ("ask",):  # 숏 진입 또는 롱 청산
+                if pos_key in follower_positions and follower_positions[pos_key].get("side") == "bid":
+                    # 롱 포지션 청산 → PnL = (청산가 - 진입가) * size
+                    entry = follower_positions[pos_key]["entry_price"]
+                    size = float(copy_amount)
+                    realized_pnl = (exec_price - entry) * size
+                    del follower_positions[pos_key]
+                else:
+                    # 숏 포지션 진입
+                    follower_positions[pos_key] = {"entry_price": exec_price, "size": float(copy_amount), "side": "ask"}
+
         # 기록
         await record_copy_trade(self.db, {
             "id": trade_id,
@@ -238,9 +268,10 @@ class CopyEngine:
             "symbol": symbol,
             "side": side,
             "amount": copy_amount,
-            "price": "0",  # 시장가 — 체결가는 콜백으로 업데이트
+            "price": str(exec_price) if exec_price > 0 else "0",
             "client_order_id": client_order_id,
             "status": status,
+            "pnl": realized_pnl,
             "created_at": int(time.time() * 1000),
         })
 

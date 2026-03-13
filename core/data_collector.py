@@ -18,6 +18,7 @@ STALE_THRESHOLD = 90        # 초 이상 업데이트 없으면 disconnected 처
 RETRY_INTERVAL  = 5         # 오류 시 재시도 간격
 
 _price_cache: dict = {}
+_last_poll_ts: float = 0.0
 _last_updated: float = 0.0
 _data_connected: bool = False
 

@@ -89,6 +89,10 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE traders ADD COLUMN lose_count INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN last_synced INTEGER DEFAULT 0",
         "ALTER TABLE followers ADD COLUMN builder_code_approved INTEGER DEFAULT 0",
+        # Privy 연동: privy_user_id 저장
+        "ALTER TABLE followers ADD COLUMN privy_user_id TEXT",
+        # Copy trade 실패 원인 기록
+        "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
     ]
     for sql in _migrations:
         try:
@@ -137,10 +141,11 @@ async def record_copy_trade(conn, trade: dict) -> None:
     await conn.execute(
         """INSERT OR IGNORE INTO copy_trades
            (id, follower_address, trader_address, symbol, side, amount, price,
-            client_order_id, status, pnl, created_at)
+            client_order_id, status, pnl, created_at, error_msg)
            VALUES (:id, :follower_address, :trader_address, :symbol, :side,
-                   :amount, :price, :client_order_id, :status, :pnl, :created_at)""",
-        {**trade, "pnl": trade.get("pnl")}
+                   :amount, :price, :client_order_id, :status, :pnl, :created_at,
+                   :error_msg)""",
+        {**trade, "pnl": trade.get("pnl"), "error_msg": trade.get("error_msg")}
     )
     await conn.commit()
 
