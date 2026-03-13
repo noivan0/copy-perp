@@ -310,6 +310,22 @@ class FuulReferral:
         """레퍼럴 포인트 조회 (in-memory, mock용)"""
         return self._points.get(address, 0)
 
+
+    def send_batch_events(self, events: list) -> dict:
+        """배치 이벤트 전송 (API 호출 횟수 절감)
+        
+        Args:
+            events: 이벤트 딕셔너리 리스트
+        Returns:
+            API 응답
+        """
+        if self.mock:
+            logger.info("Fuul [MOCK] batch: %d events", len(events))
+            return {"ok": True, "mock": True, "count": len(events)}
+        result = self._post("events/batch", events)
+        logger.info("Fuul batch: %d events → %s", len(events), result)
+        return result
+
     def get_leaderboard(self, limit: int = 10) -> list:
         """포인트 리더보드 (in-memory)"""
         sorted_pts = sorted(self._points.items(), key=lambda x: x[1], reverse=True)

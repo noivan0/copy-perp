@@ -1,59 +1,69 @@
 # Fuul 레퍼럴 연동 완전 스펙
 
 **작성일:** 2026-03-14  
-**대상:** Copy Perp 개발팀  
+**버전:** v2 (scrapling 실문서 기반)  
 **참조:** https://docs.fuul.xyz  
+**SDK 버전:** @fuul/sdk 7.18.0  
 **현재 구현:** `fuul/referral.py` (HTTP 직접 호출, SDK 없음)
 
 ---
 
 ## 1. 개요
 
-Fuul은 Web3 레퍼럴/인센티브 프로그램 플랫폼입니다.
+Fuul = Web3 레퍼럴/인센티브 플랫폼. 레퍼럴 추적, 포인트 지급, 리더보드를 제공한다.
 
-### Copy Perp에서의 역할
-| 이벤트 | 시점 | 목적 |
-|--------|------|------|
-| `connect_wallet` | 지갑 연결 시 | 유저 추적 세션 시작 |
-| `follow` | 트레이더 팔로우 시 | 레퍼럴 전환 기록 |
-| `copy_trade` | 복사 주문 체결 시 | 거래 볼륨 기록 |
-| `trade_volume` | 거래량 누적 시 | 포인트 보상 계산 |
+### Copy Perp 적용 이벤트 흐름
 
----
-
-## 2. API 키 발급
-
-### 2-1. 발급 절차
-1. https://app.fuul.xyz 접속 (계정 생성 필요)
-2. **Settings > New API Key** 클릭
-3. Key 타입 선택 (아래 표 참조)
-4. 이름 입력 후 **Create**
-5. 키 복사 → `.env`에 입력 (재확인 불가)
-
-### 2-2. API 키 타입
-
-| 키 타입 | 사용 위치 | 권한 | Copy Perp 용도 |
-|---------|----------|------|----------------|
-| `read-only` | 프론트엔드 | 읽기만 | 리더보드 표시 |
-| `send:tracking_event` | 프론트엔드 | 읽기 + 트래킹 | 지갑 연결 추적 |
-| `send:trigger_event` | **백엔드 전용** | 읽기 + 커스텀 이벤트 | follow/copy_trade 이벤트 |
-| `service_role` | **백엔드 전용** | 전체 권한 | 어디언스 관리 |
-
-> ⚠️ `send:trigger_event`와 `service_role`은 절대 프론트엔드 노출 금지
-
-### 2-3. 환경변수 설정
-
-```env
-# .env
-FUUL_API_KEY=ft_send_trigger_xxxxxxxxxxxxx  # send:trigger_event 키
-FUUL_PROJECT_ID=proj_xxxxxxxx              # 프로젝트 ID (대시보드에서 확인)
-FUUL_API_URL=https://api.fuul.xyz/api/v1   # 기본값
-APP_BASE_URL=https://copy-perp.vercel.app  # 레퍼럴 링크 기본 URL
+```
+유저 클릭 레퍼럴 링크
+    ↓
+sendPageview()  ← URL에서 ?referrer=CODE 자동 캡처
+    ↓
+지갑 연결 → identifyUser() (connect_wallet 이벤트)
+    ↓
+트레이더 팔로우 → follow 이벤트
+    ↓
+복사 주문 체결 → copy_trade 이벤트 (거래량 기록)
+    ↓
+레퍼러에게 포인트 지급
 ```
 
 ---
 
-## 3. 이벤트 스키마
+## 2. API 키 발급 절차
+
+### 2-1. 계정 생성 및 키 발급
+1. https://app.fuul.xyz 접속 → 계정 생성
+2. 인센티브 프로그램 생성 (Copy Perp)
+3. **Settings > New API Key** 클릭
+4. 키 타입 선택 (아래 표 참조)
+5. 이름 입력 → **Create** → 키 복사 (재확인 불가)
+6. `.env`에 입력
+
+### 2-2. API 키 4종
+
+| 키 타입 | 위치 | 권한 | Copy Perp 용도 |
+|---------|------|------|----------------|
+| `read-only` | 프론트엔드 | 읽기 전용 | 리더보드/포인트 표시 |
+| `send:tracking_event` | 프론트엔드 | 읽기 + 트래킹 | pageview, connect_wallet |
+| **`send:trigger_event`** | **백엔드 전용** | 읽기 + 커스텀 이벤트 | follow, copy_trade ← 핵심 |
+| `service_role` | 백엔드 전용 | 전체 권한 | 어디언스 관리 |
+
+> ⚠️ `send:trigger_event` / `service_role`은 **절대 프론트 노출 금지**
+
+### 2-3. 환경변수
+
+```env
+FUUL_API_KEY=ft_send_trigger_xxxxxxxxxxxxx    # send:trigger_event (백엔드용 핵심 키)
+FUUL_TRACKING_KEY=ft_tracking_xxxxxxxxxx      # send:tracking_event (프론트용)
+FUUL_PROJECT_ID=proj_xxxxxxxx                 # 대시보드에서 확인
+FUUL_API_URL=https://api.fuul.xyz/api/v1      # 기본값
+APP_BASE_URL=https://copy-perp.vercel.app     # 레퍼럴 링크 베이스
+```
+
+---
+
+## 3. 이벤트 스키마 (공식 문서 기반)
 
 ### 3-1. 기본 이벤트 구조
 
@@ -66,9 +76,64 @@ APP_BASE_URL=https://copy-perp.vercel.app  # 레퍼럴 링크 기본 URL
   },
   "args": {
     "value": {
+      "amount": "금액_최소단위",
+      "currency": {
+        "name": "POINT"
+      }
+    }
+  },
+  "metadata": {
+    "tracking_id": "uuid-v4",
+    "project_id": "proj_xxxxxxxx"
+  }
+}
+```
+
+**`identifier_type` 가능값:** `evm_address` | `solana_address` | `xrpl_address`
+
+**`amount` 단위:**
+- ERC-20: WEI (6자리 소수 = $1 USDC → `"1000000"`)
+- POINT: 1 포인트 = `"1000000"` (내부 단위)
+- USD: 1달러 = `"1000000"` (6자리)
+
+### 3-2. connect_wallet 이벤트 (HTTP 직접 방식)
+
+```python
+# POST https://api.fuul.xyz/api/v1/events
+# Authorization: Bearer {send:trigger_event 키}
+
+payload = {
+    "metadata": {
+        "tracking_id": "uuid-v4"
+    },
+    "name": "connect_wallet",
+    "user": {
+        "identifier": "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ",
+        "identifier_type": "solana_address"
+    },
+    "signature": "서명값",              # 선택사항 (Solana: signMessage 서명)
+    "signature_message": "Sign to verify your identity"
+}
+```
+
+> **서명 없이도 동작**: signature 필드 생략 가능. 단, 레퍼럴 귀속 정확도 낮아짐.
+
+### 3-3. follow 이벤트
+
+```json
+{
+  "name": "follow",
+  "user": {
+    "identifier": "팔로워_주소",
+    "identifier_type": "solana_address"
+  },
+  "args": {
+    "value": {
       "amount": "1000000",
       "currency": { "name": "POINT" }
-    }
+    },
+    "trader": "트레이더_주소",
+    "timestamp": 1741924800
   },
   "metadata": {
     "tracking_id": "uuid-v4",
@@ -78,46 +143,8 @@ APP_BASE_URL=https://copy-perp.vercel.app  # 레퍼럴 링크 기본 URL
 }
 ```
 
-### 3-2. Copy Perp 이벤트 정의
+### 3-4. copy_trade 이벤트
 
-#### `connect_wallet` — 지갑 연결 이벤트
-```json
-{
-  "name": "connect_wallet",
-  "user": {
-    "identifier": "3AHZqroc...주소",
-    "identifier_type": "solana_address"
-  },
-  "args": {
-    "page": "/",
-    "locationOrigin": "https://copy-perp.vercel.app"
-  },
-  "metadata": {
-    "tracking_id": "uuid-v4"
-  }
-}
-```
-
-#### `follow` — 트레이더 팔로우 이벤트
-```json
-{
-  "name": "follow",
-  "user": {
-    "identifier": "팔로워_주소",
-    "identifier_type": "solana_address"
-  },
-  "args": {
-    "trader": "트레이더_주소",
-    "timestamp": 1741924800
-  },
-  "metadata": {
-    "tracking_id": "uuid-v4",
-    "referrer": "레퍼러_주소"
-  }
-}
-```
-
-#### `copy_trade` — 복사 주문 체결 이벤트
 ```json
 {
   "name": "copy_trade",
@@ -136,166 +163,223 @@ APP_BASE_URL=https://copy-perp.vercel.app  # 레퍼럴 링크 기본 URL
     "order_id": "uuid"
   },
   "metadata": {
-    "tracking_id": "uuid-v4"
-  }
-}
-```
-> ⚠️ `amount`는 최소 단위(USD의 경우 소수점 6자리 = $1.50 → `1500000`)
-
-#### `trade_volume` — 거래 볼륨 누적 이벤트
-```json
-{
-  "name": "trade_volume",
-  "user": {
-    "identifier": "팔로워_주소",
-    "identifier_type": "solana_address"
-  },
-  "args": {
-    "value": {
-      "amount": "50000000",
-      "currency": { "name": "USD" }
-    },
-    "period_7d": true,
-    "symbol": "BTC"
-  },
-  "metadata": {
-    "tracking_id": "uuid-v4"
+    "tracking_id": "uuid-v4",
+    "project_id": "proj_xxxxxxxx"
   }
 }
 ```
 
----
+> `amount = USD 금액 × 1,000,000` → $1,500 거래 = `"1500000000"`
 
-## 4. API 엔드포인트
-
-### 4-1. 단건 이벤트 전송
-
-```
-POST https://api.fuul.xyz/api/v1/events
-Authorization: Bearer {send:trigger_event 키}
-Content-Type: application/json
-
-{body: 위 이벤트 스키마}
-```
-
-### 4-2. 배치 이벤트 전송 (권장)
+### 3-5. 배치 이벤트 (권장 — API 호출 횟수 절감)
 
 ```
 POST https://api.fuul.xyz/api/v1/events/batch
 Authorization: Bearer {send:trigger_event 키}
-Content-Type: application/json
 
 [이벤트1, 이벤트2, ...]
 ```
 
-### 4-3. 포인트 리더보드 조회
+---
+
+## 4. 레퍼럴 추적 흐름 (공식 문서 상세)
+
+### 4-1. 귀속 작동 원리
 
 ```
-GET https://api.fuul.xyz/api/v1/payouts/leaderboard/points
-Authorization: Bearer {read-only 키}
-
-응답: 상위 100명의 포인트 순위
+유저 클릭 ?referrer=CODE → sendPageview() 자동 캡처
+    ↓
+localStorage에 tracking_id 저장
+    ↓
+지갑 연결 → identifyUser()/connect_wallet 이벤트
+    ↓
+이후 전환(follow/trade) → 자동으로 레퍼러 귀속
 ```
 
-### 4-4. 개별 유저 포인트 조회
+### 4-2. pageview 이벤트 (SDK)
 
+```javascript
+import { Fuul } from '@fuul/sdk';
+Fuul.init({ apiKey: 'send:tracking_event 키' });
+
+// 모든 페이지 로드 시 호출
+await Fuul.sendPageview();
+// URL의 ?referrer=CODE 자동 캡처
 ```
-GET https://api.fuul.xyz/api/v1/payouts/leaderboard/points?user_identifier={주소}&identifier_type=solana_address
-Authorization: Bearer {read-only 키}
+
+### 4-3. identifyUser (SDK — connect_wallet과 동일)
+
+```javascript
+// Solana 지갑 연결 후 호출
+await Fuul.identifyUser({
+  identifier: '3AHZqroc...',
+  identifierType: 'solana_address',
+  signature: '서명값',                       // signMessage 결과
+  message: 'Sign to verify your identity',   // 서명한 메시지
+});
+```
+
+### 4-4. identifyUser HTTP 직접 호출 (현재 fuul/referral.py 방식)
+
+```python
+import requests
+
+url = "https://api.fuul.xyz/api/v1/events"
+payload = {
+    "metadata": { "tracking_id": "uuid-v4" },
+    "name": "connect_wallet",
+    "user": {
+        "identifier": "3AHZqroc...",
+        "identifier_type": "solana_address"
+    },
+    "signature": "sig_optional",
+    "signature_message": "Sign to verify your identity"
+}
+headers = {
+    "content-type": "application/json",
+    "authorization": "Bearer ft_send_trigger_xxxx"
+}
+response = requests.post(url, json=payload, headers=headers)
 ```
 
 ---
 
 ## 5. 레퍼럴 코드 생성/관리
 
-### 5-1. 레퍼럴 코드 생성
-
-SDK (`@fuul/sdk`) 기준:
-```ts
-const result = await Fuul.listReferralCodes({ user_identifier: '주소' });
-// 없으면 자동 생성됨
-```
-
-### 5-2. 레퍼럴 코드 수락
-
-유저가 `?referrer=CODE` URL로 방문 → SDK `sendPageview()` → 레퍼럴 자동 귀속
-
-코드 직접 수락 (서명 필요):
-```ts
-await Fuul.useReferralCode({
-  code: 'abc1234',
-  user_identifier: '주소',
-  user_identifier_type: 'solana_address',
-  signature: '서명값',
-  signature_message: 'I am using invite code abc1234',  // 고정 포맷
-});
-```
-
-### 5-3. 레퍼럴 링크 생성
+### 5-1. 레퍼럴 링크 (URL 방식)
 
 ```
-https://copy-perp.vercel.app/?referrer={레퍼럴_코드}
+https://copy-perp.vercel.app/?referrer={CODE}
 ```
 
-Copy Perp에서는 지갑 주소 앞 8자리를 코드로 사용:
+Copy Perp 구현: 지갑 주소 앞 8자리를 코드로 사용
 ```
 https://copy-perp.vercel.app/?ref=3AHZqroc
 ```
 
----
+### 5-2. SDK 레퍼럴 코드 목록 조회
 
-## 6. 현재 구현 상태
-
-`fuul/referral.py` — HTTP 직접 호출 방식 (React SDK 없음):
-
-```python
-from fuul.referral import get_fuul
-
-fuul = get_fuul()
-
-# 지갑 연결 추적
-await fuul.track_connect_wallet(address)
-
-# 팔로우 이벤트
-await fuul.track_follow(follower_address, trader_address, referrer)
-
-# 복사 주문 이벤트
-fuul.track_copy_trade(
-    follower_address=follower,
-    trader_address=trader,
-    symbol='BTC',
-    side='bid',
-    amount_usdc=1500.0,
-    order_id='uuid'
-)
-
-# 포인트 조회
-points = fuul.get_points(address)
-leaderboard = fuul.get_leaderboard(limit=10)
-
-# 레퍼럴 링크 생성
-link = fuul.generate_referral_link(address)
+```javascript
+const codes = await Fuul.listReferralCodes({
+  user_identifier: '3AHZqroc...',
+  identifier_type: 'solana_address',
+});
 ```
 
-**FUUL_API_KEY 없으면 자동으로 Mock 모드** → 실제 API 호출 없이 로그만 출력.
+### 5-3. 레퍼럴 코드 수락 (서명 필요)
+
+서명 메시지 포맷: **`I am using invite code {code}`** (고정)
+
+```javascript
+await Fuul.useReferralCode({
+  code: 'abc1234',
+  user_identifier: '3AHZqroc...',
+  user_identifier_type: 'solana_address',
+  signature: '서명값',
+  signature_message: 'I am using invite code abc1234',
+});
+```
 
 ---
 
-## 7. 활성화 체크리스트
+## 6. 포인트 리더보드 조회
 
-- [ ] `app.fuul.xyz` 계정 생성
-- [ ] 인센티브 프로그램 생성 (Copy Perp)
-- [ ] `send:trigger_event` 키 발급
-- [ ] `read-only` 키 발급 (프론트용)
-- [ ] `.env`에 `FUUL_API_KEY`, `FUUL_PROJECT_ID` 입력
-- [ ] 서버 재시작 → Mock 모드 해제 확인 (`/health/detailed` 확인)
-- [ ] 테스트 이벤트 1건 전송 → 대시보드에서 수신 확인
+```javascript
+// 전체 리더보드 (상위 100명)
+const lb = await Fuul.getPointsLeaderboard({});
+
+// 추가 필드 포함
+const lb2 = await Fuul.getPointsLeaderboard({
+  fields: 'tier,referred_volume,enduser_volume,enduser_revenue',
+});
+// referred_volume은 USD 기준
+
+// 특정 유저 포인트 조회
+const userPts = await Fuul.getPointsLeaderboard({
+  user_identifier: '3AHZqroc...',
+  identifier_type: 'solana_address',
+});
+
+// 유저별 전환 포인트
+const byConversion = await Fuul.getUserPointsByConversion({
+  user_identifier: '3AHZqroc...',
+  identifier_type: 'solana_address',
+});
+```
+
+> ⏱️ 포인트 데이터는 최대 **1시간** 지연 업데이트
 
 ---
 
-## 8. 참고 링크
+## 7. 현재 구현 (`fuul/referral.py`) 상태 비교
 
-- 공식 문서: https://docs.fuul.xyz
-- API 레퍼런스: https://fuul.readme.io/reference
-- SDK npm: https://www.npmjs.com/package/@fuul/sdk
-- 대시보드: https://app.fuul.xyz
+| 기능 | 스펙 | 현재 구현 | 갭 |
+|------|------|---------|-----|
+| connect_wallet 이벤트 | POST /events, name=connect_wallet | ✅ `track_connect_wallet()` | 없음 |
+| follow 이벤트 | POST /events, name=follow | ✅ `track_follow()` | 없음 |
+| copy_trade 이벤트 | POST /events, name=copy_trade | ✅ `track_copy_trade()` | 없음 |
+| 배치 전송 | POST /events/batch | ❌ 단건만 구현 | 개선 권장 |
+| pageview 이벤트 | SDK `sendPageview()` | ❌ 미구현 | 프론트 SDK 추가 필요 |
+| 포인트 리더보드 | GET /payouts/leaderboard/points | ✅ `get_leaderboard()` | 없음 |
+| 레퍼럴 코드 SDK | `listReferralCodes()` | ⚠️ 자체 URL 생성만 | SDK 연동 권장 |
+| Mock 모드 | - | ✅ FUUL_API_KEY 없으면 자동 | 없음 |
+
+### 배치 이벤트 전송 개선 (추가 권장)
+
+```python
+# fuul/referral.py에 추가할 내용
+def send_batch_events(self, events: list) -> dict:
+    """배치 이벤트 전송 (API 호출 횟수 절감)"""
+    if self.mock:
+        return {"ok": True, "mock": True, "count": len(events)}
+    return self._post("events/batch", events)
+```
+
+---
+
+## 8. SDK 초기화 (프론트엔드 통합 시)
+
+```javascript
+// npm install @fuul/sdk
+import { Fuul } from '@fuul/sdk';
+
+// 초기화 (앱 루트에서 1회)
+Fuul.init({ apiKey: process.env.NEXT_PUBLIC_FUUL_TRACKING_KEY });
+
+// 페이지 로드마다
+await Fuul.sendPageview();
+
+// 지갑 연결 후
+await Fuul.identifyUser({
+  identifier: walletAddress,
+  identifierType: 'solana_address',
+  signature: signedMsg,
+  message: 'Sign to verify your identity',
+});
+```
+
+---
+
+## 9. 활성화 체크리스트
+
+- [ ] app.fuul.xyz 계정 생성
+- [ ] Copy Perp 인센티브 프로그램 생성
+- [ ] `send:trigger_event` 키 발급 → `.env FUUL_API_KEY` 입력
+- [ ] `send:tracking_event` 키 발급 → 프론트 환경변수
+- [ ] `FUUL_PROJECT_ID` 확인 → `.env` 입력
+- [ ] 서버 재시작 → `/health/detailed`에서 Mock 모드 해제 확인
+- [ ] 테스트 follow 이벤트 1건 → app.fuul.xyz 대시보드 수신 확인
+- [ ] 프론트에 `@fuul/sdk` 추가 + `sendPageview()` 호출 추가
+
+---
+
+## 10. 참고 링크
+
+| 문서 | URL |
+|------|-----|
+| 공식 문서 | https://docs.fuul.xyz |
+| API 레퍼런스 | https://fuul.readme.io/reference |
+| 커스텀 이벤트 | https://docs.fuul.xyz/developer-guide/sending-custom-events-through-the-api |
+| 레퍼럴 추적 | https://docs.fuul.xyz/developer-guide/tracking-referrals-in-your-app |
+| SDK npm | https://www.npmjs.com/package/@fuul/sdk |
+| 대시보드 | https://app.fuul.xyz |
