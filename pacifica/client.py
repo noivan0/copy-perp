@@ -24,7 +24,6 @@ from solders.keypair import Keypair
 from scrapling import Fetcher as _Fetcher
 
 _fetcher = _Fetcher()
-_fetcher.configure(verify=False)
 
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
@@ -71,37 +70,65 @@ def _sign_request(header: dict, payload: dict, keypair: Keypair) -> tuple[str, s
     return message, signature
 
 
-import urllib.parse as _urlparse
+def _parse_json(text: str):
+    """텍스트에서 첫 번째 JSON 오브젝트/배열 파싱"""
+    for ch in ('{', '['):
+        idx = text.find(ch)
+        if idx >= 0:
+            return json.loads(text[idx:])
+    raise RuntimeError(f"JSON 없음: {text[:100]}")
 
-def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
+
+def _unwrap(result) -> dict:
+    """allorigins 래핑 처리: {success, data} → data"""
+    if isinstance(result, dict) and "success" in result:
+        if result.get("success") is False:
+            raise RuntimeError(f"Proxy error: {result.get('error')}")
+        inner = result.get("data")
+        if inner is None:
+            return result
+        if isinstance(inner, str):
+            return json.loads(inner)
+        return inner
+    return result
+
+
+def _proxy_get(path: str) -> dict:
+    """GET 요청 — HMG 웹필터 우회 (allorigins → codetabs fallback)"""
     target_url = f"{REST_URL}/{path}"
 
-    # GET 요청은 allorigins.win 프록시로 우회 (HMG 웹필터 회피)
-    if method == "GET":
+    # 1차: allorigins.win (파라미터 없는 URL에 강함)
+    try:
         proxy_url = CORS_PROXY + _urlparse.quote(target_url, safe="")
-        req = urllib.request.Request(proxy_url,
-            headers={"User-Agent": "CopyPerp/1.0"}, method="GET")
-        try:
-            with urllib.request.urlopen(req, context=_ssl_ctx, timeout=15) as r:
-                raw = r.read()
-                result = json.loads(raw.decode("utf-8"))
-                # allorigins wraps: {"success":true,"data":{...}}
-                # 또는 직접 JSON 반환
-                if isinstance(result, dict) and "success" in result:
-                    if result.get("success") is False:
-                        raise RuntimeError(f"Proxy error: {result.get('error')}")
-                    inner = result.get("data")
-                    if inner is None:
-                        return result
-                    # data가 문자열이면 JSON 파싱
-                    if isinstance(inner, str):
-                        return json.loads(inner)
-                    return {"data": inner} if not isinstance(inner, dict) or "data" not in inner else inner
+        page = _fetcher.get(proxy_url, timeout=15)
+        text = page.get_all_text()
+        # 500/520 오류면 codetabs로 폴백
+        if text and not any(e in text[:50] for e in ("500", "520", "Error", "nginx")):
+            result = _unwrap(_parse_json(text))
+            # 유효한 결과만 반환 (빈 dict/list도 OK, None은 폴백)
+            if result is not None:
                 return result
-        except urllib.error.HTTPError as e:
-            raise RuntimeError(f"Proxy HTTP {e.code}: {e.read().decode()}")
+    except Exception:
+        pass
 
-    # POST/PUT/DELETE: 직접 요청 (서명 포함)
+    # 2차: codetabs.com (쿼리파라미터 포함 URL에 강함)
+    try:
+        codetabs_url = f"https://api.codetabs.com/v1/proxy/?quest={target_url}"
+        page2 = _fetcher.get(codetabs_url, timeout=15)
+        text2 = page2.get_all_text()
+        if len(text2) > 10:
+            return _parse_json(text2)
+    except Exception as e:
+        raise RuntimeError(f"모든 프록시 실패: {e}")
+
+
+def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
+    # GET은 scrapling 프록시 우회
+    if method == "GET":
+        return _proxy_get(path)
+
+    # POST/PUT/DELETE: 직접 요청 (서명 포함 — allorigins는 GET only)
+    target_url = f"{REST_URL}/{path}"
     data = json.dumps(body).encode() if body else None
     headers = {
         "Content-Type": "application/json",
