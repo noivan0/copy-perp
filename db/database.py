@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS copy_trades (
     client_order_id     TEXT UNIQUE,
     status              TEXT DEFAULT 'pending',  -- pending/filled/failed
     pnl                 REAL,
+    entry_price         REAL,   -- 진입가 (청산 PnL 계산용)
+    exec_price          REAL,   -- 체결가 (실제 주문 체결 가격)
     created_at          INTEGER,
     filled_at           INTEGER
 );
@@ -93,6 +95,9 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE followers ADD COLUMN privy_user_id TEXT",
         # Copy trade 실패 원인 기록
         "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
+        # PnL 추적용 진입가/체결가
+        "ALTER TABLE copy_trades ADD COLUMN entry_price REAL",
+        "ALTER TABLE copy_trades ADD COLUMN exec_price REAL",
     ]
     for sql in _migrations:
         try:
@@ -141,11 +146,17 @@ async def record_copy_trade(conn, trade: dict) -> None:
     await conn.execute(
         """INSERT OR IGNORE INTO copy_trades
            (id, follower_address, trader_address, symbol, side, amount, price,
-            client_order_id, status, pnl, created_at, error_msg)
+            client_order_id, status, pnl, entry_price, exec_price, created_at, error_msg)
            VALUES (:id, :follower_address, :trader_address, :symbol, :side,
-                   :amount, :price, :client_order_id, :status, :pnl, :created_at,
-                   :error_msg)""",
-        {**trade, "pnl": trade.get("pnl"), "error_msg": trade.get("error_msg")}
+                   :amount, :price, :client_order_id, :status, :pnl,
+                   :entry_price, :exec_price, :created_at, :error_msg)""",
+        {
+            **trade,
+            "pnl": trade.get("pnl"),
+            "entry_price": trade.get("entry_price"),
+            "exec_price": trade.get("exec_price"),
+            "error_msg": trade.get("error_msg"),
+        }
     )
     await conn.commit()
 

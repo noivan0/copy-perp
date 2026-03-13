@@ -1,0 +1,25 @@
+[Unit]
+Description=Copy Perp FastAPI Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp
+EnvironmentFile=/root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/.env
+ExecStart=/usr/bin/python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8001 --log-level info
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# 안정성
+KillMode=mixed
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=copy-perp
+
+[Install]
+WantedBy=multi-user.target

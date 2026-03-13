@@ -262,3 +262,93 @@ Built by **Pipe Company** for Pacifica Hackathon 2026.
 ---
 
 *Testnet only. Not financial advice.*
+
+---
+
+## 🚀 Quick Start
+
+### Testnet (개발/테스트)
+
+```bash
+# 환경 설정
+cp .env.testnet .env
+# .env에서 실제 키 값 입력:
+#   ACCOUNT_ADDRESS=<Solana 지갑 주소>
+#   AGENT_PRIVATE_KEY=<Base58 개인키>
+#   AGENT_WALLET=<에이전트 공개키>
+
+# 서버 시작
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload
+
+# 상태 확인
+curl http://localhost:8001/health
+curl http://localhost:8001/health/detailed
+```
+
+### Mainnet (실서비스)
+
+```bash
+cp .env.mainnet .env
+# .env에서 MAINNET 키 값 입력 + render.com 배포 후 사용
+# GET: codetabs CORS 프록시 자동 사용
+# POST: 별도 프록시 서버 필요 (proxy/ 폴더 참조)
+
+NETWORK=mainnet python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8001
+```
+
+### 자동 재시작 (프로덕션)
+
+```bash
+# systemd 사용
+sudo cp copy-perp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable copy-perp
+sudo systemctl start copy-perp
+sudo journalctl -f -u copy-perp
+
+# supervisor 사용
+pip install supervisor
+supervisord -c supervisord.conf
+```
+
+---
+
+## ⚙️ 환경변수 전체 목록
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `NETWORK` | `testnet` 또는 `mainnet` | `testnet` |
+| `TESTNET_REST_URL` | Testnet REST 엔드포인트 | `https://test-api.pacifica.fi/api/v1` |
+| `TESTNET_CF_URL` | HMG 우회용 CloudFront SNI | `https://do5jt23sqak4.cloudfront.net` |
+| `MAINNET_REST_URL` | Mainnet REST 엔드포인트 | `https://api.pacifica.fi/api/v1` |
+| `ACCOUNT_ADDRESS` | Pacifica 계정 주소 | — |
+| `AGENT_WALLET` | Agent Key 공개키 | — |
+| `AGENT_PRIVATE_KEY` | Agent Key Base58 개인키 | — |
+| `BUILDER_CODE` | Builder Program 코드 | `noivan` |
+| `BUILDER_FEE_RATE` | 수수료율 | `0.001` |
+| `COPY_RATIO` | 복사 비율 (0.0~1.0) | `0.10` |
+| `MAX_POSITION_USDC` | 팔로워당 최대 포지션 | `50` |
+| `PRIVY_APP_ID` | Privy 로그인 App ID | `""` (데모 모드) |
+| `FUUL_API_KEY` | Fuul 레퍼럴 API 키 | `""` (Mock 모드) |
+| `FUUL_PROJECT_ID` | Fuul 프로젝트 ID | — |
+| `ALERT_TELEGRAM_TOKEN` | 텔레그램 봇 토큰 (알림) | — |
+| `ALERT_TELEGRAM_CHAT_ID` | 텔레그램 채팅 ID | — |
+| `DB_PATH` | SQLite DB 절대 경로 | `copy_perp.db` |
+
+---
+
+## 📡 API 엔드포인트
+
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `GET /docs` | Swagger UI (자동 생성) |
+| `GET /health` | 서버 상태 (간략) |
+| `GET /health/detailed` | 상세 헬스 (모니터 폴링 시각, DB 크기, uptime) |
+| `GET /stats` | 플랫폼 통계 |
+| `GET /traders` | 트레이더 목록 |
+| `POST /traders` | 트레이더 등록 |
+| `GET /leaderboard` | 복합 스코어 리더보드 |
+| `POST /followers/onboard` | 팔로워 온보딩 (Privy 통합) |
+| `GET /followers` | 팔로워 목록 |
+| `GET /copy-trades` | 복사 거래 내역 (PnL 포함) |
+| `GET /metrics` | Prometheus 형식 메트릭 |

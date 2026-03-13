@@ -265,7 +265,11 @@ class CopyEngine:
                     # 숏 포지션 진입
                     follower_positions[pos_key] = {"entry_price": exec_price, "size": float(copy_amount), "side": "ask"}
 
-        # 기록
+        # 기록 (entry_price, exec_price 포함)
+        pos_key = symbol
+        _entry = None
+        if follower_addr in self._positions and pos_key in self._positions[follower_addr]:
+            _entry = self._positions[follower_addr][pos_key].get("entry_price")
         await record_copy_trade(self.db, {
             "id": trade_id,
             "follower_address": follower_addr,
@@ -277,6 +281,8 @@ class CopyEngine:
             "client_order_id": client_order_id,
             "status": status,
             "pnl": realized_pnl,
+            "entry_price": _entry,
+            "exec_price": exec_price if exec_price > 0 else None,
             "created_at": int(time.time() * 1000),
         })
 

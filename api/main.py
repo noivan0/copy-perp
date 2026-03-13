@@ -619,23 +619,40 @@ async def health_detailed():
         trader_count = follower_count = filled_count = 0
         total_pnl = 0
 
-    # 모니터 상태
-    monitor_status = {}
-    for addr, mon in _monitors.items():
-        monitor_status[addr[:12]] = {
-            "running": getattr(mon, "_running", True),
-            "last_poll": getattr(mon, "_last_poll", None),
-        }
-    
-    # 데이터 수신 상태
+    # 모니터 상태 상세
     now = time.time()
+    monitors_detail = []
+    for addr, mon in _monitors.items():
+        lpt = getattr(mon, "_last_poll_time", None)
+        fc  = getattr(mon, "_fail_count", 0)
+        monitors_detail.append({
+            "trader": addr,
+            "running": getattr(mon, "_running", True),
+            "last_poll_time": lpt,
+            "last_poll_ago_sec": round(now - lpt, 1) if lpt else None,
+            "fail_count": fc,
+        })
+
+    # uptime
+    uptime_sec = round(now - _start_time, 1)
+
+    # DB 파일 크기
+    db_path = os.getenv("DB_PATH", "copy_perp.db")
+    try:
+        db_size = os.path.getsize(db_path)
+    except Exception:
+        db_size = None
+
+    # 데이터 수신 상태
     last_poll = _lpt
-    
+
     return {
         "status": "ok",
         "network": os.getenv("NETWORK", "testnet"),
+        "uptime_seconds": uptime_sec,
         "db": {
             "ok": db_ok,
+            "size_bytes": db_size,
             "traders": trader_count,
             "followers": follower_count,
             "filled_trades": filled_count,
@@ -645,14 +662,16 @@ async def health_detailed():
             "connected": _dc_connected(),
             "symbols_cached": len(get_price_cache()),
             "source": "rest_poll",
+            "last_poll_ago_sec": round(now - last_poll, 1) if last_poll else None,
         },
         "monitors": {
             "count": len(_monitors),
-            "addresses": list(monitor_status.keys()),
+            "detail": monitors_detail,
         },
         "environment": {
             "builder_code": BUILDER_CODE,
             "network": os.getenv("NETWORK", "testnet"),
+            "rest_url": os.getenv("PACIFICA_REST_URL", "auto"),
         }
     }
 
