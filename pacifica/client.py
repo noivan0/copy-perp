@@ -27,6 +27,7 @@ from scrapling import Fetcher as _Fetcher
 _fetcher = _Fetcher()
 
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://do5jt23sqak4.cloudfront.net/api/v1")
+PACIFICA_REST_URL_DIRECT = "https://test-api.pacifica.fi/api/v1"  # GET 프록시용 실제 URL
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
@@ -102,7 +103,7 @@ def _unwrap(result):
 
 def _proxy_get(path: str) -> dict:
     """GET 요청 — HMG 웹필터 우회 (allorigins → codetabs fallback)"""
-    target_url = f"{REST_URL}/{path}"
+    target_url = f"{PACIFICA_REST_URL_DIRECT}/{path}"
 
     # 1차: allorigins.win (파라미터 없는 URL에 강함)
     try:
