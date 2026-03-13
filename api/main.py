@@ -120,6 +120,39 @@ async def _rest_price_poll_loop():
         await asyncio.sleep(30)
 
 
+async def _sync_leaderboard_loop():
+    """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)"""
+    from pacifica.client import PacificaClient
+    client = PacificaClient()
+    while True:
+        try:
+            lb = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: client.get_leaderboard(100)
+            )
+            for t in lb:
+                addr = t.get("address", "")
+                if addr:
+                    await _db.execute(
+                        """INSERT OR REPLACE INTO traders
+                           (address, alias, total_pnl, win_rate, max_drawdown, follower_count, copy_trade_count, roi_7d)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            addr,
+                            t.get("username") or addr[:8],
+                            float(t.get("pnl_all_time", 0) or 0),
+                            0.0,  # win_rate 별도 계산 필요
+                            0.0,
+                            0,
+                            0,
+                            float(t.get("pnl_7d", 0) or 0),
+                        )
+                    )
+            await _db.commit()
+        except Exception:
+            pass
+        await asyncio.sleep(60)  # 1분마다 갱신
+
+
 @app.on_event("startup")
 async def startup():
     global _db, _engine
@@ -128,6 +161,8 @@ async def startup():
     asyncio.create_task(_price_stream_loop())
     # WS 차단 환경 대비 REST 폴링 폴백
     asyncio.create_task(_rest_price_poll_loop())
+    # 실제 Pacifica 리더보드 동기화
+    asyncio.create_task(_sync_leaderboard_loop())
 
 
 # ── 요청 모델 ─────────────────────────────────────────

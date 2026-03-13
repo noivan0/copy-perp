@@ -123,18 +123,53 @@ def _proxy_get(path: str) -> dict:
         raise RuntimeError(f"모든 프록시 실패: {e}")
 
 
+def _proxy_post(path: str, body: dict) -> dict:
+    """POST 요청 — render.com 프록시 경유 (환경변수 PACIFICA_PROXY_URL 설정 시)"""
+    proxy_url = os.getenv("PACIFICA_PROXY_URL", "")
+    if not proxy_url:
+        raise RuntimeError(
+            "POST 프록시 미설정: .env에 PACIFICA_PROXY_URL=https://your-proxy.onrender.com 추가 필요"
+        )
+    target_url = f"{proxy_url.rstrip('/')}/api/v1/{path}"
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        target_url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "CopyPerp/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read()
+            enc = r.headers.get("Content-Encoding", "")
+            if enc == "gzip":
+                raw = gzip.decompress(raw)
+            return json.loads(raw.decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        enc = e.headers.get("Content-Encoding", "")
+        if enc == "gzip":
+            raw = gzip.decompress(raw)
+        raise RuntimeError(f"HTTP {e.code}: {raw.decode('utf-8', 'ignore')[:300]}")
+
+
 def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
     # GET은 scrapling 프록시 우회
     if method == "GET":
         return _proxy_get(path)
 
-    # POST/PUT/DELETE: 직접 요청 (서명 포함 — allorigins는 GET only)
+    # POST: render.com 프록시 경유 (PACIFICA_PROXY_URL 설정 시) or 직접 연결 시도
+    if method == "POST" and body is not None:
+        proxy_url = os.getenv("PACIFICA_PROXY_URL", "")
+        if proxy_url:
+            return _proxy_post(path, body)
+
+    # 직접 요청 (로컬 환경 or 프록시 미설정)
     target_url = f"{REST_URL}/{path}"
     data = json.dumps(body).encode() if body else None
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "CopyPerp/1.0",
-        "Accept-Encoding": "identity",
     }
     req = urllib.request.Request(target_url, data=data, headers=headers, method=method)
     try:
@@ -148,7 +183,11 @@ def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
                 raw = zlib.decompress(raw)
             return json.loads(raw.decode("utf-8"))
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read().decode()}")
+        raw = e.read()
+        enc = e.headers.get("Content-Encoding", "")
+        if enc == "gzip":
+            raw = gzip.decompress(raw)
+        raise RuntimeError(f"HTTP {e.code}: {raw.decode('utf-8', 'ignore')[:300]}")
 
 
 class PacificaClient:
@@ -322,15 +361,17 @@ class PacificaClient:
         return self._signed_post("account/leverage", "update_leverage",
                                  {"symbol": symbol, "leverage": lev})
 
-    def get_leaderboard(self, limit: int = 20) -> list:
-        """Pacifica 온체인 리더보드 조회"""
+    def get_leaderboard(self, limit: int = 10) -> list:
+        """Pacifica 온체인 리더보드 조회 (limit: 10, 100, 25000만 허용)"""
+        # Pacifica API는 10, 100, 25000만 허용
+        allowed = [10, 100, 25000]
+        api_limit = min((x for x in allowed if x >= limit), default=100)
         try:
-            result = _request("GET", f"leaderboard?limit={limit}")
-            # _proxy_get이 이미 _unwrap 처리 → list 반환하거나 {"data": [...]} 형태
+            result = _request("GET", f"leaderboard?limit={api_limit}")
             if isinstance(result, list):
-                return result
+                return result[:limit]
             if isinstance(result, dict):
-                return result.get("data", [])
+                return result.get("data", [])[:limit]
             return []
         except Exception:
             return []
