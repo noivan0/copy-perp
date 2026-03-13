@@ -18,15 +18,24 @@ import urllib.error
 from typing import Optional
 
 import gzip
+import urllib.parse as _urlparse
 import base58
 from solders.keypair import Keypair
+from scrapling import Fetcher as _Fetcher
 
-REST_URL = os.getenv("PACIFICA_REST_URL", "https://api.pacifica.fi/api/v1")
-WS_URL = os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
+_fetcher = _Fetcher()
+_fetcher.configure(verify=False)
+
+REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
+WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
 AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 서명)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
+
+# HMG 웹필터 우회: allorigins.win CORS 프록시 (GET 전용)
+# POST(서명 필요 API)는 직접 호출 유지
+CORS_PROXY = "https://api.allorigins.win/raw?url="
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
@@ -62,20 +71,53 @@ def _sign_request(header: dict, payload: dict, keypair: Keypair) -> tuple[str, s
     return message, signature
 
 
+import urllib.parse as _urlparse
+
 def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
-    url = f"{REST_URL}/{path}"
+    target_url = f"{REST_URL}/{path}"
+
+    # GET 요청은 allorigins.win 프록시로 우회 (HMG 웹필터 회피)
+    if method == "GET":
+        proxy_url = CORS_PROXY + _urlparse.quote(target_url, safe="")
+        req = urllib.request.Request(proxy_url,
+            headers={"User-Agent": "CopyPerp/1.0"}, method="GET")
+        try:
+            with urllib.request.urlopen(req, context=_ssl_ctx, timeout=15) as r:
+                raw = r.read()
+                result = json.loads(raw.decode("utf-8"))
+                # allorigins wraps: {"success":true,"data":{...}}
+                # 또는 직접 JSON 반환
+                if isinstance(result, dict) and "success" in result:
+                    if result.get("success") is False:
+                        raise RuntimeError(f"Proxy error: {result.get('error')}")
+                    inner = result.get("data")
+                    if inner is None:
+                        return result
+                    # data가 문자열이면 JSON 파싱
+                    if isinstance(inner, str):
+                        return json.loads(inner)
+                    return {"data": inner} if not isinstance(inner, dict) or "data" not in inner else inner
+                return result
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"Proxy HTTP {e.code}: {e.read().decode()}")
+
+    # POST/PUT/DELETE: 직접 요청 (서명 포함)
     data = json.dumps(body).encode() if body else None
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "CopyPerp/1.0",
-        "Accept-Encoding": "gzip, deflate",
+        "Accept-Encoding": "identity",
     }
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    req = urllib.request.Request(target_url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=10) as r:
+        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=15) as r:
             raw = r.read()
-            if r.headers.get("Content-Encoding") == "gzip":
+            enc = r.headers.get("Content-Encoding", "")
+            if enc == "gzip":
                 raw = gzip.decompress(raw)
+            elif enc == "deflate":
+                import zlib
+                raw = zlib.decompress(raw)
             return json.loads(raw.decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read().decode()}")

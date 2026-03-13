@@ -1,0 +1,15 @@
+name: Deploy Pacifica Proxy to Render
+
+on:
+  push:
+    branches: [master]
+    paths: ['proxy/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
