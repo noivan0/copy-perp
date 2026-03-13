@@ -376,9 +376,26 @@ def health():
     except Exception:
         db_size_bytes = -1
 
+    # mainnet/testnet 트레이더 수 집계 (sync sqlite3)
+    network_env = os.getenv("NETWORK", "testnet")
+    mainnet_traders_count: Optional[int] = None
+    testnet_traders_count: Optional[int] = None
+    try:
+        import sqlite3 as _sqlite3
+        _db_path2 = os.getenv("DB_PATH", "copy_perp.db")
+        with _sqlite3.connect(_db_path2) as _sc:
+            _row = _sc.execute("SELECT COUNT(*) FROM traders WHERE active=1").fetchone()
+            active_cnt = _row[0] if _row else 0
+        if network_env == "mainnet":
+            mainnet_traders_count = active_cnt
+        else:
+            testnet_traders_count = active_cnt
+    except Exception:
+        pass
+
     return {
         "status": "ok",
-        "network":        os.getenv("NETWORK", "testnet"),   # mainnet / testnet
+        "network":        network_env,               # mainnet / testnet
         "data_connected": _dc_connected(),           # REST 폴링 연결 상태
         "ws_connected":   _dc_connected(),           # 하위 호환 (WS → REST 전환)
         "data_source":    "rest_poll",               # 데이터 소스 명시
@@ -390,6 +407,8 @@ def health():
         "monitors_detail": monitors_detail,          # 각 monitor 상세
         "uptime_seconds":  round(_time_module.time() - _start_time, 1),  # 서버 기동 후 경과 시간
         "db_size_bytes":   db_size_bytes,            # DB 파일 크기
+        "mainnet_traders": mainnet_traders_count,    # mainnet 활성 트레이더 수
+        "testnet_traders": testnet_traders_count,    # testnet 활성 트레이더 수
     }
 
 

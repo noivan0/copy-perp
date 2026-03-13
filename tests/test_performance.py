@@ -331,11 +331,11 @@ class TestAPIResponsePerformance:
     def test_perf_c01_health_response_time_distribution(self):
         """[PERF-C01] /health 응답 시간 분포 (100회)"""
         times = []
-        for _ in range(100):
+        for idx in range(100):
             start = time.time()
-            code, _ = backend_get("/health")
+            code, _data = backend_get("/health")
             times.append((time.time() - start) * 1000)
-            if _ % 20 == 0:
+            if idx % 20 == 0:
                 time.sleep(0.05)
 
         avg = statistics.mean(times)
