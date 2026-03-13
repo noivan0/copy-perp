@@ -1,0 +1,276 @@
+{
+  "generated_at": "2026-03-13T16:13:44.432544",
+  "network": "mainnet",
+  "tier1": [
+    {
+      "address": "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+      "roi_30d": 12.255205188223671,
+      "pnl_30d": 115808.072482,
+      "leverage": 0.9109796247754732
+    },
+    {
+      "address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",
+      "roi_30d": 236.43823859213362,
+      "pnl_30d": 81345.212933,
+      "leverage": 1.5194590216691963
+    },
+    {
+      "address": "5RmsTTwkXQgKcTv5BK6CZEjHQMBVLVQVt8po3h5cQabB",
+      "roi_30d": 79.41221380409256,
+      "pnl_30d": 73284.294438,
+      "leverage": 0.0
+    },
+    {
+      "address": "GTU92nBC8LMyt9W4Qqc319BFR1vpkNNPAbt4QCnX7kZ6",
+      "roi_30d": 13.811732945895194,
+      "pnl_30d": 70020.438343,
+      "leverage": 1.134920959603239
+    },
+    {
+      "address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+      "roi_30d": 29.74371055728302,
+      "pnl_30d": 50260.129373,
+      "leverage": 1.0448475855626784
+    },
+    {
+      "address": "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV",
+      "roi_30d": 50.555829936777116,
+      "pnl_30d": 44228.759526,
+      "leverage": 9.358226760485435
+    },
+    {
+      "address": "2rEEo6bXeXLacwAnQwtw5YEz8CdnTGrQ2LQ2banK4mRw",
+      "roi_30d": 23.66503750118308,
+      "pnl_30d": 37235.570906,
+      "leverage": 3.231886802482951
+    },
+    {
+      "address": "DbB3TxHkGEA5jLY7DCbxbQWRNVrteUbHBhYwAgwL5TJh",
+      "roi_30d": 18.875721026434615,
+      "pnl_30d": 33952.500885,
+      "leverage": 1.0489126138812062
+    },
+    {
+      "address": "5RX2DD425DHj3VAouTbJWHtmBmzi2oUmuErwmfwgxs8n",
+      "roi_30d": 23.898911954870314,
+      "pnl_30d": 26896.889945,
+      "leverage": 8.396226820535288
+    },
+    {
+      "address": "HQWz5Pje7tbqJVTy7ES41P4moxQWHXhCqMYGnsQirzq9",
+      "roi_30d": 17.7884585569584,
+      "pnl_30d": 21464.208357,
+      "leverage": 0.0
+    },
+    {
+      "address": "Ep1d8JdFw4FnB85XDgXGVabYutro4JzK285HQqW6TZE2",
+      "roi_30d": 6.751301674564567,
+      "pnl_30d": 17564.127959,
+      "leverage": 0.9253569207934655
+    },
+    {
+      "address": "DCmDxhZ6Tz8k46th3aEQrMHPGmRXeKrrakBitMm4V9mz",
+      "roi_30d": 10.256224468909002,
+      "pnl_30d": 12688.926507,
+      "leverage": 0.909722371226951
+    },
+    {
+      "address": "6xQmCzMwMpGhouMip57hy9NGrtGKwz2kv2ZtdhjhXh1K",
+      "roi_30d": 51.02764882353383,
+      "pnl_30d": 11691.298712,
+      "leverage": 1.5788096795227098
+    },
+    {
+      "address": "F5BcMNcVyxeWqXyEivRc5NuUrFMZgNxnmwVvLpRKLdaf",
+      "roi_30d": 11.848784443116939,
+      "pnl_30d": 11465.738839,
+      "leverage": 0.9916795353939873
+    },
+    {
+      "address": "9sdisaXk3eLnqdu2bu4Y5AQ2g14jPpXF8Jt3vjnUri3o",
+      "roi_30d": 7.268584446182139,
+      "pnl_30d": 10339.682026,
+      "leverage": 1.0990442253735764
+    },
+    {
+      "address": "xTfdyNb16wMh7dAvCXHjAifj5bVFYv8URss1sXhuzdQ",
+      "roi_30d": 22.9854273883475,
+      "pnl_30d": 10237.41781,
+      "leverage": 0.0
+    },
+    {
+      "address": "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",
+      "roi_30d": 8.638683096781067,
+      "pnl_30d": 10052.37641,
+      "leverage": 2.647294817565451
+    },
+    {
+      "address": "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",
+      "roi_30d": 17.494804244517237,
+      "pnl_30d": 8710.351052,
+      "leverage": 4.338493947609699
+    },
+    {
+      "address": "2epJn5QBXgMfEBgeeuGxwTg2WfVjjgq3PRRALdtBc26k",
+      "roi_30d": 62.739862138343305,
+      "pnl_30d": 8363.98889,
+      "leverage": 0.7458135871613139
+    },
+    {
+      "address": "E8j5xSbGXEWtj7BQobPtiMAfh7CpqR8t1tXX7qtAWCiZ",
+      "roi_30d": 5.838752940723009,
+      "pnl_30d": 7231.378021,
+      "leverage": 0.6109828596268069
+    },
+    {
+      "address": "HKfd1is4v2kKsPMT3aoAEiKYbGbCVvsxjr3AXc83QXLF",
+      "roi_30d": 359.93998483108294,
+      "pnl_30d": 7208.069537,
+      "leverage": 0.0
+    },
+    {
+      "address": "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a",
+      "roi_30d": 41.35374275208097,
+      "pnl_30d": 6909.701499,
+      "leverage": 0.0
+    },
+    {
+      "address": "HDw3NtMgoEJHv8kcNqAfDWjPXhWW6nCwEVzA9aUcbw4L",
+      "roi_30d": 7.794181432165881,
+      "pnl_30d": 6581.260493,
+      "leverage": 2.9529137110145287
+    },
+    {
+      "address": "3sKVjxCBeZUJA6UQovLYikyqpAZypxpj5NbnPPBwYDa8",
+      "roi_30d": 8.190070224204847,
+      "pnl_30d": 6548.784607,
+      "leverage": 1.5898948654747342
+    },
+    {
+      "address": "C1aoHHNMvoThJVcoEddzYqSwzPS5yLGhmymLP3tXywvN",
+      "roi_30d": 34.72268120309384,
+      "pnl_30d": 6315.190256,
+      "leverage": 2.634075757187523
+    },
+    {
+      "address": "4y2j3GtaoqxwiDHsL75Pvwj2Ypb927w1aRscXYFFSmJF",
+      "roi_30d": 8.882014129434369,
+      "pnl_30d": 5845.798486,
+      "leverage": 2.651933293063304
+    },
+    {
+      "address": "BEE9evCYoXTQpVHjnLQsXVGi9ewe8dyp1rSejeDvKK8Q",
+      "roi_30d": 7.506767242116844,
+      "pnl_30d": 5266.778381,
+      "leverage": 2.32710785950795
+    },
+    {
+      "address": "B8gcCCHLkHAyt72912YtxozMAZU6xqjRzQVUNU9tg9Ej",
+      "roi_30d": 9.170817102078376,
+      "pnl_30d": 5050.406233,
+      "leverage": 0.4434418046904913
+    }
+  ],
+  "tier2": [
+    {
+      "address": "GjmCw1WxSFjxe7etBrCoHf27Sp2moBCb7dbY2G33W4yE",
+      "roi_30d": 525.6207494530082,
+      "pnl_30d": 544.047168
+    },
+    {
+      "address": "4VtjJPxuEavVSbZu9NraKfb13F2aKagvcvmDgpSgy3it",
+      "roi_30d": 300.1273158289384,
+      "pnl_30d": 501.843362
+    },
+    {
+      "address": "98cPhD7AUWAsvye282VLPZVZdwKYmGUnZMv5BSpdvrDf",
+      "roi_30d": 283.5960400979141,
+      "pnl_30d": 1758.466976
+    },
+    {
+      "address": "EST4fSSSfyGvwbdMaSQynHjMj9VoQDKBeZ1ZGZ7sBiB6",
+      "roi_30d": 268.4715740266257,
+      "pnl_30d": 380.177393
+    },
+    {
+      "address": "Gbhq37yEc6kUrS3Deoq8Wm5TFWSfGgmD1j3XBb6T854f",
+      "roi_30d": 229.97414849498608,
+      "pnl_30d": 266.078388
+    },
+    {
+      "address": "6Gn1pjyZUGU4JSCv7K22sricZKT8t8mBu9iAtdx3DsjX",
+      "roi_30d": 224.43596329247967,
+      "pnl_30d": 312.044169
+    },
+    {
+      "address": "2pVXw9EzwCNzuaJVCMB39np68a4ATLqw6H1WwEhEnbZY",
+      "roi_30d": 213.75716967518878,
+      "pnl_30d": 8853.102068
+    },
+    {
+      "address": "8E2aAaj9c6FsQ8SeiHNCp7BNf8qr82UbtTYx3ZYCMnXs",
+      "roi_30d": 192.21457720683816,
+      "pnl_30d": 435.051908
+    },
+    {
+      "address": "C8NFJ1fXTtonNzLzab7ZeMHYv2H6XFaryy1kzyrTSd5i",
+      "roi_30d": 188.01275361457354,
+      "pnl_30d": 2320.075554
+    },
+    {
+      "address": "HjJTBiFYHKtnCGRYmx4YjNiXoEXhZAvESkTRaVKhs5Zf",
+      "roi_30d": 163.41610339572688,
+      "pnl_30d": 610.398469
+    },
+    {
+      "address": "7qpkFQX5CKpmoL8YDCXzMBrPTCaVsXrC2N6CvqzSnX67",
+      "roi_30d": 159.83923543840294,
+      "pnl_30d": 2821.428056
+    },
+    {
+      "address": "AX9mrjLd3UW4pTASNnNLwEVGZcuJ7MzVVBYWBE8nKPE6",
+      "roi_30d": 154.04305991313856,
+      "pnl_30d": 3830.747751
+    },
+    {
+      "address": "5NoaTNsaTtDcxdfdxNj6HShCa8t31EspD2S8HwFKMTKZ",
+      "roi_30d": 144.53498842662916,
+      "pnl_30d": 1139.259009
+    },
+    {
+      "address": "EjApnnyomDGREgWBbcKz5EDQJy8rFUiFdABygYoU3gEu",
+      "roi_30d": 138.61810765559045,
+      "pnl_30d": 263.261891
+    },
+    {
+      "address": "G459LSs1TzhZJeB2SEoA5QKXstZBBLjwqtUE88R2RFGe",
+      "roi_30d": 133.1576003367582,
+      "pnl_30d": 977.716353
+    },
+    {
+      "address": "FqtP19Uwt9nUuB9WwM8zeZY1fSD5kx7FLfsF2ofxLnre",
+      "roi_30d": 131.47972452325814,
+      "pnl_30d": 775.731913
+    },
+    {
+      "address": "AqxaFBdmdxazfyG7b8ZTBQ8JWuJcgh1brM4QNpuGV7PH",
+      "roi_30d": 129.1298509323327,
+      "pnl_30d": 228.86712
+    },
+    {
+      "address": "6QZPKc53NaZBMiBSUia5Mc2sTCTS6iPvU5Q4cCkdnRhe",
+      "roi_30d": 124.83201758776545,
+      "pnl_30d": 256.497019
+    },
+    {
+      "address": "C33ZG55sgh8S62B1PUb2JFNcqegCW6QrcNR6SA53wjaj",
+      "roi_30d": 123.56496353739581,
+      "pnl_30d": 1853.678077
+    },
+    {
+      "address": "8NjH4U5KYtEe5RwgtuMXWTzCZ99tWKsoXFkh4sN1AkL9",
+      "roi_30d": 121.85687985969369,
+      "pnl_30d": 213.531597
+    }
+  ]
+}
