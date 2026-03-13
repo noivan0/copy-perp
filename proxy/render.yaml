@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pacifica-proxy
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PACIFICA_BASE
+        value: https://test-api.pacifica.fi/api/v1
