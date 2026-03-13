@@ -127,10 +127,12 @@ class OnboardRequest(BaseModel):
     """팔로워 온보딩 요청"""
     follower_address: str                       # 팔로워 Solana 지갑 주소
     private_key: Optional[str] = None          # base58 개인키 (Builder Code 서명용, 선택)
+    client_signature: Optional[str] = None     # Privy embedded wallet 서명 (base58) — private_key 대체
     copy_ratio: float = DEFAULT_COPY_RATIO
     max_position_usdc: float = DEFAULT_MAX_POS_USDC
     referrer_address: Optional[str] = None
     traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 DEFAULT_TIER1
+    privy_user_id: Optional[str] = None        # Privy 유저 ID (did:privy:xxx)
 
 class FollowerListResponse(BaseModel):
     data: list
@@ -255,11 +257,16 @@ async def onboard_follower(
     }
 
     try:
-        if body.private_key:
+        if body.client_signature:
+            # Privy embedded wallet이 프론트에서 직접 서명한 경우 (우선)
+            signature = body.client_signature
+            logger.info(f"Privy 클라이언트 서명 사용: {follower[:12]}...")
+        elif body.private_key:
+            # 서버 측 개인키로 서명 (데모/백엔드 용도)
             signature = _sign_builder_approval(body.private_key, payload_to_sign)
         else:
-            # private_key 미제공 — Builder Code 승인 보류 (Pacifica 팀 등록 후 처리)
-            logger.info("private_key 미제공 — Builder Code 서명 스킵 (팔로우는 정상 진행)")
+            # 서명 없음 — Builder Code 승인 보류 (Pacifica 팀 등록 후 자동 처리)
+            logger.info("서명 미제공 — Builder Code 스킵 (팔로우는 정상 진행)")
             signature = None
     except ImportError:
         logger.warning("solders 없음 — Builder Code 승인 스킵")

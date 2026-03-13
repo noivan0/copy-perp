@@ -50,7 +50,52 @@ from api.routers.builder import router as builder_router
 from api.routers.followers import router as followers_router
 from core.alerting import get_alert_manager
 
-app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app_):
+    """FastAPI lifespan — startup + graceful shutdown"""
+    # ── Startup ──────────────────────────────────
+    global _db, _engine
+    _db = await init_db()
+    _engine = CopyEngine(_db)
+
+    _network = os.getenv("NETWORK", "testnet")
+    _rest_url = os.getenv("PACIFICA_REST_URL", "")
+    _db_path  = os.getenv("DB_PATH", "copy_perp.db")
+    logger.info(f"🌐 NETWORK={_network} | REST={_rest_url} | DB={_db_path}")
+    if _network == "mainnet":
+        logger.info("🚀 MAINNET MODE: api.pacifica.fi 직접 접근")
+    else:
+        logger.info("🧪 TESTNET MODE: CloudFront SNI 우회")
+
+    asyncio.create_task(_dc_start(interval=30))
+    asyncio.create_task(_sync_leaderboard_loop())
+    asyncio.create_task(_restore_monitors_from_db())
+    asyncio.create_task(_auto_monitor_top_traders())
+    asyncio.create_task(_winrate_refresh_loop())
+
+    get_alert_manager().server_started(_network, 0)
+    logger.info("✅ Copy Perp 서버 시작 완료")
+
+    yield  # ← 서버 실행 구간
+
+    # ── Shutdown ─────────────────────────────────
+    logger.info("🛑 Graceful shutdown 시작...")
+    # 모든 모니터 중지
+    for addr, monitor in list(_monitors.items()):
+        try:
+            monitor._running = False
+            logger.info(f"  모니터 중지: {addr[:16]}...")
+        except Exception:
+            pass
+    # DB 연결 닫기
+    if _db:
+        await _db.close()
+        logger.info("  DB 연결 닫힘")
+    logger.info("✅ Graceful shutdown 완료")
+
+app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs", lifespan=lifespan)
 
 # CORS (프론트엔드 연동)
 app.add_middleware(
@@ -202,32 +247,12 @@ async def _winrate_refresh_loop():
         await asyncio.sleep(6 * 3600)  # 6시간마다
 
 
+# startup 이벤트는 lifespan으로 대체됨 (위 lifespan 함수 참조)
+# 하위 호환을 위해 deprecated 이벤트 유지 (lifespan과 중복 실행 방지)
 @app.on_event("startup")
-async def startup():
-    global _db, _engine
-    _db = await init_db()
-    _engine = CopyEngine(_db)
-
-    # ── 현재 NETWORK 환경 로깅 ──────────────────────────
-    _network = os.getenv("NETWORK", "testnet")
-    _rest_url = os.getenv("PACIFICA_REST_URL", "")
-    _db_path = os.getenv("DB_PATH", "copy_perp.db")
-    logger.info(f"🌐 NETWORK={_network} | REST={_rest_url} | DB={_db_path}")
-    if _network == "mainnet":
-        logger.info("🚀 MAINNET MODE: IP 54.230.62.105 직접 접근 (Host: api.pacifica.fi)")
-    else:
-        logger.info("🧪 TESTNET MODE: CloudFront SNI 우회 (do5jt23sqak4.cloudfront.net)")
-
-    # DataCollector REST 폴링 (WS 완전 대체 — HMG 차단)
-    asyncio.create_task(_dc_start(interval=30))
-    # 실제 Pacifica 리더보드 동기화
-    asyncio.create_task(_sync_leaderboard_loop())
-    # DB에서 active 팔로워 monitor 자동 복원
-    asyncio.create_task(_restore_monitors_from_db())
-    # QA팀 추천 트레이더 자동 모니터링 시작
-    asyncio.create_task(_auto_monitor_top_traders())
-    # win_rate 자동 갱신 (6시간마다)
-    asyncio.create_task(_winrate_refresh_loop())
+async def _startup_compat():
+    """lifespan 미지원 환경 대비 deprecated fallback — 이미 lifespan에서 처리됨"""
+    pass
 
 
 async def _restore_monitors_from_db():
