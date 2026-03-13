@@ -125,54 +125,65 @@ def get_trader_stats(address: str, limit: int = 100) -> dict:
 
 
 async def get_follower_stats(db, follower_address: str) -> dict:
-    """팔로워 통계 (비동기)"""
+    """팔로워 통계 (비동기) — DB copy_trades 기반"""
     try:
-        from db.database import get_copy_trades_by_follower
-        trades = get_copy_trades_by_follower(db, follower_address, limit=500)
-        wins = [t for t in trades if float(t.get("pnl", 0) or 0) > 0]
-        losses = [t for t in trades if float(t.get("pnl", 0) or 0) < 0]
-        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in trades)
-        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in trades)
-        win_rate = len(wins) / len(trades) if trades else 0
+        from db.database import get_copy_trades
+        trades = await get_copy_trades(db, follower=follower_address, limit=500)
+        filled = [t for t in trades if t.get("status") == "filled"]
+        failed = [t for t in trades if t.get("status") == "failed"]
+        wins = [t for t in filled if float(t.get("pnl", 0) or 0) > 0]
+        losses = [t for t in filled if float(t.get("pnl", 0) or 0) < 0]
+        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in filled)
+        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in filled)
+        win_rate = len(wins) / len(filled) if filled else 0
         return {
             "address": follower_address,
-            "total_copy_trades": len(trades),
+            "filled": len(filled),
+            "failed": len(failed),
+            "total": len(trades),
             "win_count": len(wins),
             "loss_count": len(losses),
             "win_rate": win_rate,
-            "total_pnl_usdc": total_pnl,
+            "total_pnl": total_pnl,
             "total_volume_usdc": total_vol,
         }
     except Exception as e:
         logger.error(f"follower stats 조회 실패 {follower_address[:12]}: {e}")
         return {
             "address": follower_address,
-            "total_copy_trades": 0,
-            "win_count": 0,
-            "loss_count": 0,
-            "win_rate": 0,
-            "total_pnl_usdc": 0,
-            "total_volume_usdc": 0,
+            "filled": 0, "failed": 0, "total": 0,
+            "win_count": 0, "loss_count": 0, "win_rate": 0,
+            "total_pnl": 0, "total_volume_usdc": 0,
         }
 
 
 async def get_platform_stats(db) -> dict:
     """플랫폼 전체 통계 (비동기)"""
     try:
-        from db.database import get_all_traders, get_all_followers, get_all_copy_trades
-        traders = get_all_traders(db)
-        followers = get_all_followers(db)
-        trades = get_all_copy_trades(db, limit=10000)
-        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in trades)
-        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in trades)
+        from db.database import get_leaderboard, get_copy_trades
+        import aiosqlite
+
+        traders_raw = await get_leaderboard(db, limit=1000)
+
+        # 팔로워 수: followers 테이블 직접 조회
+        async with db.execute("SELECT COUNT(DISTINCT address) FROM followers WHERE active=1") as cur:
+            row = await cur.fetchone()
+            follower_count = row[0] if row else 0
+
+        all_trades = await get_copy_trades(db, limit=100000)
+        filled_trades = [t for t in all_trades if t.get("status") == "filled"]
+        total_pnl = sum(float(t.get("pnl", 0) or 0) for t in filled_trades)
+        total_vol = sum(float(t.get("amount", 0) or 0) * float(t.get("price", 0) or 0) for t in filled_trades)
+
         return {
-            "active_traders": len(traders),
-            "active_followers": len(followers),
-            "total_trades_filled": len(trades),
+            "active_traders": len(traders_raw),
+            "active_followers": follower_count,
+            "total_trades_filled": len(filled_trades),
             "total_pnl_usdc": total_pnl,
             "total_volume_usdc": total_vol,
         }
-    except Exception:
+    except Exception as e:
+        logger.error(f"platform stats 오류: {e}")
         return {
             "active_traders": 0,
             "active_followers": 0,
