@@ -86,6 +86,7 @@ async def get_db():
 
 async def _sync_leaderboard_loop():
     """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)"""
+    await asyncio.sleep(10)  # 서버 완전 기동 후 시작
     from pacifica.client import PacificaClient
     client = PacificaClient()
     while True:
@@ -264,6 +265,24 @@ class ReferralTrackRequest(BaseModel):
 @app.get("/")
 def root():
     return {"status": "ok", "service": "Copy Perp", "version": "1.0.0", "docs": "/docs"}
+
+
+@app.get("/leaderboard")
+async def leaderboard_alias(limit: int = 20):
+    """/traders의 alias — 프론트 호환성"""
+    from db.database import get_leaderboard as _get_lb
+    from pacifica.client import PacificaClient
+    _pac = PacificaClient()
+    try:
+        real_lb = await asyncio.get_event_loop().run_in_executor(None, lambda: _pac.get_leaderboard(limit=limit))
+        if isinstance(real_lb, list) and real_lb:
+            return {"data": real_lb, "count": len(real_lb)}
+    except Exception:
+        pass
+    if _db:
+        leaders = await _get_lb(_db, limit)
+        return {"data": [dict(r) for r in leaders], "count": len(leaders)}
+    return {"data": [], "count": 0}
 
 
 @app.get("/health")
@@ -449,6 +468,74 @@ def get_referral(address: str):
     link = _fuul.generate_referral_link(address)
     points = _fuul.get_points(address)
     return {"address": address, "referral_link": link, "points": points}
+
+
+# ── 팔로워 온보딩 (프론트엔드 호환) ─────────────────────
+class OnboardRequest(BaseModel):
+    follower_address: str
+    traders: list  # 트레이더 주소 리스트
+    copy_ratio: float = 0.1
+    max_position_usdc: float = 50.0
+    referrer_address: Optional[str] = None
+
+
+@app.post("/followers/onboard")
+async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTasks):
+    """팔로워 온보딩 — 여러 트레이더를 한번에 팔로우"""
+    db = await get_db()
+    results = []
+    errors = []
+
+    for trader_addr in body.traders:
+        try:
+            await add_trader(db, trader_addr)
+            await add_follower(
+                db,
+                address=body.follower_address,
+                trader_address=trader_addr,
+                copy_ratio=body.copy_ratio,
+                max_position_usdc=body.max_position_usdc,
+            )
+            # 모니터 시작
+            if trader_addr not in _monitors:
+                monitor = RestPositionMonitor(trader_addr, _engine.on_fill)
+                _monitors[trader_addr] = monitor
+                background_tasks.add_task(monitor.start)
+            results.append({"trader": trader_addr, "status": "ok"})
+        except Exception as e:
+            errors.append({"trader": trader_addr, "error": str(e)})
+
+    # 레퍼럴 추적
+    if body.referrer_address and results:
+        try:
+            await _fuul.track_referral(body.referrer_address, body.follower_address)
+        except Exception:
+            pass
+
+    return {
+        "ok": len(results) > 0,
+        "follower": body.follower_address,
+        "followed": results,
+        "errors": errors,
+        "copy_ratio": body.copy_ratio,
+        "max_position_usdc": body.max_position_usdc,
+        "builder_code": BUILDER_CODE,
+        "note": f"Builder Code '{BUILDER_CODE}' 승인 대기 중 — 주문 실행은 가능",
+    }
+
+
+@app.get("/followers/{address}")
+async def get_follower_info(address: str):
+    """팔로워 정보 조회"""
+    db = await get_db()
+    from core.stats import get_follower_stats
+    stats = await get_follower_stats(db, address)
+    link = _fuul.generate_referral_link(address)
+    return {
+        "address": address,
+        "referral_link": link,
+        "stats": stats,
+    }
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────

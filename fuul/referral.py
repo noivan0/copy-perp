@@ -35,6 +35,7 @@ class FuulReferral:
 
     def __init__(self):
         self.mock = MOCK_MODE
+        self._points: dict = {}   # in-memory 포인트 (mock/테스트용)
         if self.mock:
             logger.info("Fuul: Mock 모드 (FUUL_API_KEY 미설정 — .env에 추가 후 재시작)")
         else:
@@ -159,6 +160,33 @@ class FuulReferral:
             args={"page": "/", "locationOrigin": "https://copy-perp.vercel.app"},
         )
         return self._post("events", event)
+
+    # ── 테스트/프론트 호환 메서드 ──────────────────────────────────────────
+
+    def generate_referral_link(self, address: str) -> str:
+        """레퍼럴 링크 생성 (ref= 코드 포함)"""
+        short = address[:8]
+        return f"https://copy-perp.vercel.app/?ref={short}"
+
+    async def track_referral(self, referrer: str, referee: str) -> dict:
+        """레퍼럴 추적 (async alias for track_follow)"""
+        result = self.track_follow(
+            follower_address=referee,
+            trader_address=referrer,
+            referrer=referrer,
+        )
+        # in-memory 포인트 누적 (mock + 실제 모두)
+        self._points[referrer] = self._points.get(referrer, 0) + 10
+        return result
+
+    def get_points(self, address: str) -> int:
+        """레퍼럴 포인트 조회 (in-memory, mock용)"""
+        return self._points.get(address, 0)
+
+    def get_leaderboard(self, limit: int = 10) -> list:
+        """포인트 리더보드"""
+        sorted_pts = sorted(self._points.items(), key=lambda x: x[1], reverse=True)
+        return [{"address": addr, "points": pts} for addr, pts in sorted_pts[:limit]]
 
     def get_referral_stats(self, address: str) -> dict:
         """레퍼럴 현황 조회 (Mock에서는 더미 반환)"""
