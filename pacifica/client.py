@@ -25,6 +25,7 @@ REST_URL = os.getenv("PACIFICA_REST_URL", "https://api.pacifica.fi/api/v1")
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
+AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 서명)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 
 _ssl_ctx = ssl.create_default_context()
@@ -174,8 +175,12 @@ class PacificaClient:
             "signature": signature,
             "timestamp": timestamp,
             "expiry_window": 5000,
-            **payload,
         }
+        # Agent Wallet 방식: 주문 서명은 agent key로 하되,
+        # 요청에 agent_wallet(공개키) 필드 추가 (공식 SDK 방식)
+        if AGENT_WALLET_PUBKEY:
+            body["agent_wallet"] = AGENT_WALLET_PUBKEY
+        body.update(payload)
         return _request("POST", endpoint_path, body)
 
     def market_order(
