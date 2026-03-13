@@ -39,29 +39,15 @@ _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 
 def _post(path: str, body: dict) -> dict:
-    url = f"{REST_URL}/{path}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "User-Agent": "CopyPerp/1.0"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=10) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        body_bytes = e.read()
-        raise RuntimeError(f"HTTP {e.code}: {body_bytes.decode()}")
+    """CloudFront SNI 스푸핑으로 HMG 웹필터 우회 POST"""
+    from pacifica.client import _cf_request
+    return _cf_request("POST", path, body)
 
 
 def _get(path: str) -> dict:
-    url = f"{REST_URL}/{path}"
-    req = urllib.request.Request(url, headers={"User-Agent": "CopyPerp/1.0"})
-    try:
-        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=10) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read().decode()}")
+    """CloudFront SNI 스푸핑으로 HMG 웹필터 우회 GET"""
+    from pacifica.client import _cf_request
+    return _cf_request("GET", path)
 
 
 # ── 요청 모델 ─────────────────────────────────────────

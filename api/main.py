@@ -131,22 +131,32 @@ async def _sync_leaderboard_loop():
             )
             for t in lb:
                 addr = t.get("address", "")
-                if addr:
-                    await _db.execute(
-                        """INSERT OR REPLACE INTO traders
-                           (address, alias, total_pnl, win_rate, max_drawdown, follower_count, copy_trade_count, roi_7d)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            addr,
-                            t.get("username") or addr[:8],
-                            float(t.get("pnl_all_time", 0) or 0),
-                            0.0,  # win_rate 별도 계산 필요
-                            0.0,
-                            0,
-                            0,
-                            float(t.get("pnl_7d", 0) or 0),
-                        )
+                if not addr:
+                    continue
+                pnl_all = float(t.get("pnl_all_time", 0) or 0)
+                pnl_30d = float(t.get("pnl_30d", 0) or 0)
+                pnl_7d  = float(t.get("pnl_7d", 0) or 0)
+                pnl_1d  = float(t.get("pnl_1d", 0) or 0)
+                equity  = float(t.get("equity_current", 0) or 0)
+                # 복합 점수: roi_30d*0.6 + roi_7d*0.3 + 1d 보너스
+                score = (pnl_30d/equity*0.6 + pnl_7d/equity*0.3 + (0.1 if pnl_1d > 0 else 0)) if equity > 0 else 0
+                await _db.execute(
+                    """INSERT OR REPLACE INTO traders
+                       (address, alias, total_pnl, win_rate, followers,
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
+                        volume_7d, volume_30d, oi_current, active, last_synced)
+                       VALUES (?,?,?,?,0, ?,?,?,?,?,?,?,?,1,strftime('%s','now'))""",
+                    (
+                        addr,
+                        t.get("username") or addr[:8],
+                        pnl_all,
+                        score * 100,  # win_rate 컬럼에 composite score 저장
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
+                        float(t.get("volume_7d", 0) or 0),
+                        float(t.get("volume_30d", 0) or 0),
+                        float(t.get("oi_current", 0) or 0),
                     )
+                )
             await _db.commit()
         except Exception:
             pass

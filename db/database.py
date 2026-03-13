@@ -116,10 +116,19 @@ async def record_copy_trade(conn, trade: dict) -> None:
 
 
 async def get_leaderboard(conn, limit: int = 20) -> list:
+    """복합 점수 기준 정렬: roi_30d*0.6 + roi_7d*0.3 + (1d 양수 보너스)
+    전략팀 분석 기준: ROI 60% + 일관성 40%
+    """
     async with conn.execute(
-        """SELECT address, alias, win_rate, total_pnl, followers
+        """SELECT address, alias, win_rate, total_pnl, followers,
+                  pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
+                  volume_7d, volume_30d, oi_current,
+                  CASE WHEN equity > 0
+                       THEN (pnl_30d/equity)*0.6 + (pnl_7d/equity)*0.3 + (CASE WHEN pnl_1d > 0 THEN 0.1 ELSE 0 END)
+                       ELSE 0
+                  END AS composite_score
            FROM traders WHERE active = 1
-           ORDER BY total_pnl DESC LIMIT ?""",
+           ORDER BY composite_score DESC LIMIT ?""",
         (limit,)
     ) as cur:
         return await cur.fetchall()
