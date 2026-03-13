@@ -72,7 +72,7 @@ async def get_db():
 # ── WS 가격 스트림 ────────────────────────────────────
 async def _price_stream_loop():
     import json, ssl, websockets
-    WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
+    WS_URL = os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -100,6 +100,8 @@ async def startup():
 
 
 # ── 요청 모델 ─────────────────────────────────────────
+BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
+
 class FollowRequest(BaseModel):
     follower_address: str
     trader_address: str
@@ -194,7 +196,9 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks):
         "trader": body.trader_address,
         "copy_ratio": body.copy_ratio,
         "max_position_usdc": body.max_position_usdc,
+        "builder_code": BUILDER_CODE,
         "monitoring": True,
+        "note": f"Builder Code '{BUILDER_CODE}' — 프론트에서 유저 서명 승인 필요",
     }
 
 

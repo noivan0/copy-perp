@@ -24,8 +24,8 @@ import base58
 
 logger = logging.getLogger(__name__)
 
-REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
-BUILDER_CODE = os.getenv("BUILDER_CODE", "copyperp")
+REST_URL = os.getenv("PACIFICA_REST_URL", "https://api.pacifica.fi/api/v1")
+BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.0005")  # 0.05%
 
 _ssl_ctx = ssl.create_default_context()

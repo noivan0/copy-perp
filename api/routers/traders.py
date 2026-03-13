@@ -13,6 +13,9 @@ from typing import Optional
 from db.database import add_trader, get_leaderboard, get_followers
 from core.stats import compute_trader_stats, get_trader_stats
 from core.mock import MOCK_TRADERS, mock_fill_event
+from pacifica.client import PacificaClient
+
+_pacifica = PacificaClient()
 
 router = APIRouter(prefix="/traders", tags=["traders"])
 
@@ -37,7 +40,15 @@ async def list_traders(limit: int = 20, mock: bool = False):
     if leaders:
         return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
 
-    # DB 비어있으면 Mock 폴백
+    # DB 비어있으면 실제 Pacifica 리더보드 시도
+    try:
+        real_lb = _pacifica.get_leaderboard(limit=limit)
+        if real_lb:
+            return {"data": real_lb, "source": "pacifica_live", "count": len(real_lb)}
+    except Exception:
+        pass
+
+    # 최후 폴백: Mock 데이터
     sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
     return {"data": sorted_traders[:limit], "source": "mock_fallback", "count": len(sorted_traders[:limit])}
 

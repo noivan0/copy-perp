@@ -17,13 +17,15 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
+import gzip
 import base58
 from solders.keypair import Keypair
 
-REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
+REST_URL = os.getenv("PACIFICA_REST_URL", "https://api.pacifica.fi/api/v1")
+WS_URL = os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
-BUILDER_CODE = os.getenv("BUILDER_CODE", "copy-perp-v1")
+BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
@@ -62,11 +64,18 @@ def _sign_request(header: dict, payload: dict, keypair: Keypair) -> tuple[str, s
 def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
     url = f"{REST_URL}/{path}"
     data = json.dumps(body).encode() if body else None
-    headers = {"Content-Type": "application/json", "User-Agent": "CopyPerp/1.0"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "CopyPerp/1.0",
+        "Accept-Encoding": "gzip, deflate",
+    }
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, context=_ssl_ctx, timeout=10) as r:
-            return json.loads(r.read())
+            raw = r.read()
+            if r.headers.get("Content-Encoding") == "gzip":
+                raw = gzip.decompress(raw)
+            return json.loads(raw.decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read().decode()}")
 
@@ -85,24 +94,51 @@ class PacificaClient:
     # ── 공개 API ──────────────────────────────────
 
     def get_markets(self) -> list:
-        """전체 마켓 목록 (68개)"""
-        return _request("GET", "info").get("data", [])
+        """전체 마켓 목록 — GET /api/v1/info"""
+        result = _request("GET", "info")
+        # 응답 구조: {"success": true, "data": [...]} 또는 직접 list
+        if isinstance(result, list):
+            return result
+        return result.get("data", [])
+
+    def get_prices(self) -> list:
+        """전체 마켓 가격/펀딩비 — GET /api/v1/info/prices"""
+        result = _request("GET", "info/prices")
+        if isinstance(result, list):
+            return result
+        return result.get("data", [])
+
+    def get_account_info(self) -> dict:
+        """계정 잔고/수수료 등급 — GET /api/v1/account"""
+        result = _request("GET", f"account?account={self.account}")
+        if isinstance(result, dict) and "data" in result:
+            return result["data"]
+        return result
 
     def get_positions(self) -> list:
-        """현재 포지션"""
-        return _request("GET", f"positions?account={self.account}").get("data", [])
+        """현재 포지션 — GET /api/v1/positions"""
+        result = _request("GET", f"positions?account={self.account}")
+        if isinstance(result, list):
+            return result
+        return result.get("data", [])
 
     def get_orders(self) -> list:
-        """미체결 주문"""
-        return _request("GET", f"orders?account={self.account}").get("data", [])
+        """미체결 주문 — GET /api/v1/orders"""
+        result = _request("GET", f"orders?account={self.account}")
+        if isinstance(result, list):
+            return result
+        return result.get("data", [])
 
     def get_account_trades(self, limit: int = 50) -> list:
         """
-        계정 체결 내역 — REST 폴링용
+        계정 체결 내역 — GET /api/v1/trades/history
         스키마: {event_type, price, amount, side, cause, created_at}
         side 값: open_long / open_short / close_long / close_short
         """
-        return _request("GET", f"trades?account={self.account}&limit={limit}").get("data", [])
+        result = _request("GET", f"trades/history?account={self.account}&limit={limit}")
+        if isinstance(result, list):
+            return result
+        return result.get("data", [])
 
     def get_trades(self, limit: int = 50) -> list:
         """하위 호환 — get_account_trades 위임"""

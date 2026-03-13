@@ -23,7 +23,8 @@ import websockets
 
 logger = logging.getLogger(__name__)
 
-WS_URL = "wss://test-ws.pacifica.fi/ws"
+import os as _os
+WS_URL = _os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
 REST_POLL_INTERVAL = 0.5  # 500ms
 
 _ssl_ctx = ssl.create_default_context()
