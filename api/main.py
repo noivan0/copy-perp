@@ -40,6 +40,7 @@ from core.position_monitor import PositionMonitor
 from core.stats import get_platform_stats
 from fuul.referral import FuulReferral
 from api.routers.traders import router as traders_router
+from api.routers.builder import router as builder_router
 
 app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs")
 
@@ -53,6 +54,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(traders_router)
+app.include_router(builder_router)
 
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None
