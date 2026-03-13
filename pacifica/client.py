@@ -26,8 +26,13 @@ from scrapling import Fetcher as _Fetcher
 
 _fetcher = _Fetcher()
 
+NETWORK = os.getenv("NETWORK", "testnet")
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://do5jt23sqak4.cloudfront.net/api/v1")
-PACIFICA_REST_URL_DIRECT = "https://test-api.pacifica.fi/api/v1"  # GET 프록시용 실제 URL
+# GET 프록시용 실제 URL — NETWORK 환경변수로 mainnet/testnet 자동 선택
+PACIFICA_REST_URL_DIRECT = (
+    "https://api.pacifica.fi/api/v1" if NETWORK == "mainnet"
+    else "https://test-api.pacifica.fi/api/v1"
+)
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
@@ -40,7 +45,8 @@ BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 CORS_PROXY = "https://api.allorigins.win/raw?url="
 # CF 도메인 = REST_URL에서 파싱 (do5jt23sqak4.cloudfront.net)
 _CF_HOST = os.getenv("PACIFICA_CF_HOST", "do5jt23sqak4.cloudfront.net")
-_PACIFICA_HOST = "test-api.pacifica.fi"  # CloudFront origin Host 헤더
+# CloudFront origin Host 헤더 — PACIFICA_HOST 환경변수 우선, fallback은 NETWORK 기반 자동 선택
+_PACIFICA_HOST = os.getenv("PACIFICA_HOST", "api.pacifica.fi" if NETWORK == "mainnet" else "test-api.pacifica.fi")
 CF_SNI_HOST = _CF_HOST  # SNI = CloudFront 도메인 (HMG 필터 통과)
 
 _ssl_ctx = ssl.create_default_context()

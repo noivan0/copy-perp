@@ -79,12 +79,16 @@ CREATE TABLE IF NOT EXISTS fee_records (
 async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
+    # WAL 모드: 동시 읽기/쓰기 성능 개선
+    await conn.execute("PRAGMA journal_mode=WAL")
+    await conn.execute("PRAGMA synchronous=NORMAL")
     await conn.executescript(CREATE_SQL)
     # 마이그레이션: 기존 DB에 누락된 컬럼 추가
     _migrations = [
         "ALTER TABLE traders ADD COLUMN win_count INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN lose_count INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN last_synced INTEGER DEFAULT 0",
+        "ALTER TABLE followers ADD COLUMN builder_code_approved INTEGER DEFAULT 0",
     ]
     for sql in _migrations:
         try:

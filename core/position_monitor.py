@@ -210,7 +210,13 @@ class RestPositionMonitor(PositionMonitor):
     
     WS 연결을 시도하지 않고 REST 폴링만 사용.
     HMG 웹필터 환경에서 안정적으로 동작.
+    연속 5회 이상 실패 시 60초 대기 후 자동 재시작.
     """
+
+    def __init__(self, trader_address: str, on_fill: Callable):
+        super().__init__(trader_address, on_fill)
+        self._fail_count = 0
+        self._last_poll_time: Optional[float] = None  # 마지막 폴링 성공 시각 (epoch)
 
     async def start(self):
         self._running = True
@@ -224,6 +230,19 @@ class RestPositionMonitor(PositionMonitor):
                     None, client.get_positions
                 )
                 await self._handle_positions(positions)
+                self._fail_count = 0  # 성공 시 카운터 초기화
+                self._last_poll_time = time.time()
             except Exception as e:
-                logger.debug(f"REST 폴링 오류: {e}")
+                self._fail_count += 1
+                logger.debug(f"REST 폴링 오류 (연속 {self._fail_count}회): {e}")
+                if self._fail_count > 5:
+                    logger.warning(
+                        f"[REST] {self.trader[:12]} 연속 {self._fail_count}회 실패 — "
+                        f"60초 대기 후 재시작"
+                    )
+                    await asyncio.sleep(60)
+                    self._fail_count = 0
+                    client = PacificaClient(self.trader)  # 클라이언트 재생성
+                    logger.info(f"[REST] {self.trader[:12]} 재시작")
+                    continue
             await asyncio.sleep(2.0)  # 2초 간격 폴링

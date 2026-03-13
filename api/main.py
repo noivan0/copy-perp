@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 import sys
+import time as _time_module
 import warnings
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ app.include_router(followers_router)
 _db = None
 _engine = None
 _monitors: dict[str, PositionMonitor] = {}
+_start_time: float = _time_module.time()  # 서버 기동 시각
 # _price_cache는 core.data_collector에서 관리
 from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_connected, start_polling as _dc_start
 _fuul = FuulReferral()
@@ -208,10 +210,40 @@ async def startup():
     asyncio.create_task(_dc_start(interval=30))
     # 실제 Pacifica 리더보드 동기화
     asyncio.create_task(_sync_leaderboard_loop())
+    # DB에서 active 팔로워 monitor 자동 복원
+    asyncio.create_task(_restore_monitors_from_db())
     # QA팀 추천 트레이더 자동 모니터링 시작
     asyncio.create_task(_auto_monitor_top_traders())
     # win_rate 자동 갱신 (6시간마다)
     asyncio.create_task(_winrate_refresh_loop())
+
+
+async def _restore_monitors_from_db():
+    """서버 재기동 후 DB의 active=1 팔로워가 팔로우하는 트레이더 monitor 자동 복원"""
+    global _monitors, _engine
+    await asyncio.sleep(2)  # 엔진 초기화 대기
+    try:
+        async with _db.execute(
+            "SELECT DISTINCT trader_address FROM followers WHERE active=1 AND trader_address IS NOT NULL"
+        ) as cur:
+            rows = await cur.fetchall()
+        restored = 0
+        for row in rows:
+            trader_addr = row[0]
+            if not trader_addr:
+                continue
+            if trader_addr not in _monitors:
+                try:
+                    monitor = RestPositionMonitor(trader_addr, _engine.on_fill)
+                    _monitors[trader_addr] = monitor
+                    asyncio.create_task(monitor.start())
+                    restored += 1
+                    logger.info(f"[Restore] monitor 복원: {trader_addr[:16]}...")
+                except Exception as e:
+                    logger.warning(f"[Restore] monitor 복원 실패 {trader_addr[:12]}: {e}")
+        logger.info(f"[Restore] DB에서 {restored}개 monitor 복원 완료")
+    except Exception as e:
+        logger.warning(f"[Restore] monitor 자동 복원 오류: {e}")
 
 
 # QA팀 추천 TOP5 트레이더 (복합 스코어 + 백테스트 ROI 기준)
@@ -287,7 +319,26 @@ async def leaderboard_alias(limit: int = 20):
 
 @app.get("/health")
 def health():
+    import os as _os
     btc = _get_pc().get("BTC", {})
+
+    # monitors_detail: 각 monitor의 trader 주소 + 마지막 폴링 시각
+    monitors_detail = []
+    for addr, mon in _monitors.items():
+        last_poll = getattr(mon, "_last_poll_time", None)
+        monitors_detail.append({
+            "trader": addr,
+            "last_poll_at": last_poll,
+            "fail_count": getattr(mon, "_fail_count", 0),
+        })
+
+    # DB 파일 크기
+    db_path = os.getenv("DB_PATH", "copy_perp.db")
+    try:
+        db_size_bytes = _os.path.getsize(db_path)
+    except Exception:
+        db_size_bytes = -1
+
     return {
         "status": "ok",
         "data_connected": _dc_connected(),           # REST 폴링 연결 상태
@@ -298,6 +349,9 @@ def health():
         "btc_oi":      btc.get("open_interest"),
         "active_monitors": len(_monitors),
         "symbols_cached":  len(_get_pc()),
+        "monitors_detail": monitors_detail,          # 각 monitor 상세
+        "uptime_seconds":  round(_time_module.time() - _start_time, 1),  # 서버 기동 후 경과 시간
+        "db_size_bytes":   db_size_bytes,            # DB 파일 크기
     }
 
 
