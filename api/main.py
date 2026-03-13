@@ -173,6 +173,33 @@ async def startup():
     asyncio.create_task(_rest_price_poll_loop())
     # 실제 Pacifica 리더보드 동기화
     asyncio.create_task(_sync_leaderboard_loop())
+    # QA팀 추천 트레이더 자동 모니터링 시작
+    asyncio.create_task(_auto_monitor_top_traders())
+
+
+# QA팀 추천 TOP5 트레이더 (복합 스코어 + 백테스트 ROI 기준)
+TOP_TRADERS = [
+    "5C9GKLrKFUvLWZEbMZQC5mtkTdKxuUhCzVCXZQH4FmCw",  # ROI+24% MaxDD0.1%
+    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",  # ROI+10% PF1000
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # PnL$518k Win52%
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # Win100% PnL$242k
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # Win92% PnL$166k
+]
+
+async def _auto_monitor_top_traders():
+    """QA 추천 TOP5 트레이더 자동 포지션 모니터링"""
+    global _monitors, _engine
+    await asyncio.sleep(3)  # 엔진 초기화 대기
+    for addr in TOP_TRADERS:
+        if addr not in _monitors:
+            try:
+                monitor = RestPositionMonitor(addr, _engine.on_fill)
+                _monitors[addr] = monitor
+                asyncio.create_task(monitor.start())
+                logger.info(f"[Auto] 모니터링 시작: {addr[:16]}...")
+            except Exception as e:
+                logger.warning(f"[Auto] 모니터 시작 실패 {addr[:12]}: {e}")
+    logger.info(f"[Auto] TOP5 트레이더 모니터링 완료: {len(_monitors)}개")
 
 
 # ── 요청 모델 ─────────────────────────────────────────
