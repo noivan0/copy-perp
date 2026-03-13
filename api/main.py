@@ -39,7 +39,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from db.database import init_db, add_trader, add_follower, get_followers, get_leaderboard
-from pacifica.client import PacificaClient
+from pacifica.client import PacificaClient, _CF_HOST, _PACIFICA_HOST
 from core.copy_engine import CopyEngine
 from core.position_monitor import PositionMonitor, RestPositionMonitor
 from core.stats import get_platform_stats
@@ -144,6 +144,60 @@ async def _sync_leaderboard_loop():
         await asyncio.sleep(60)  # 1분마다 갱신
 
 
+async def _winrate_refresh_loop():
+    """win_rate 자동 갱신 — 6시간마다 Tier1 트레이더 trades/history 재수집"""
+    import ssl as _ssl
+    await asyncio.sleep(60)  # 기동 후 1분 대기
+    while True:
+        try:
+            db = await get_db()
+            async with db.execute(
+                "SELECT address, alias FROM traders WHERE active=1 ORDER BY pnl_all_time DESC LIMIT 12"
+            ) as cur:
+                top_traders = await cur.fetchall()
+
+            for row in top_traders:
+                addr = row[0]
+                try:
+                    import json as _j, socket as _sock
+                    ctx = _ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=_ssl.CERT_NONE
+                    s = _sock.create_connection((_CF_HOST, 443), timeout=12)
+                    ss = ctx.wrap_socket(s, server_hostname=_CF_HOST)
+                    req = (f"GET /api/v1/trades/history?account={addr}&limit=100 HTTP/1.1\r\n"
+                           f"Host: {_PACIFICA_HOST}\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
+                    ss.sendall(req.encode()); data = b''
+                    ss.settimeout(12)
+                    try:
+                        while True:
+                            c = ss.recv(16384)
+                            if not c: break
+                            data += c
+                    except Exception: pass
+                    ss.close()
+                    body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
+                    result = _j.loads(body.decode('utf-8', 'ignore'))
+                    trades = result.get('data', []) if isinstance(result, dict) else []
+                    closes = [t for t in trades if 'close' in t.get('side', '')]
+                    wins = sum(1 for t in closes if float(t.get('pnl', 0) or 0) > 0)
+                    losses = len(closes) - wins
+                    total = wins + losses
+                    wr = wins / total if total > 0 else 0.0
+                    await db.execute(
+                        "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
+                        (wr, wins, losses, addr)
+                    )
+                    await asyncio.sleep(0.3)  # rate limit
+                except Exception as e:
+                    logger.debug(f"win_rate 갱신 실패 {addr[:12]}: {e}")
+
+            await db.commit()
+            logger.info(f"[WinRate] {len(top_traders)}명 갱신 완료")
+        except Exception as e:
+            logger.warning(f"[WinRate] 갱신 루프 오류: {e}")
+
+        await asyncio.sleep(6 * 3600)  # 6시간마다
+
+
 @app.on_event("startup")
 async def startup():
     global _db, _engine
@@ -155,6 +209,8 @@ async def startup():
     asyncio.create_task(_sync_leaderboard_loop())
     # QA팀 추천 트레이더 자동 모니터링 시작
     asyncio.create_task(_auto_monitor_top_traders())
+    # win_rate 자동 갱신 (6시간마다)
+    asyncio.create_task(_winrate_refresh_loop())
 
 
 # QA팀 추천 TOP5 트레이더 (복합 스코어 + 백테스트 ROI 기준)
@@ -310,25 +366,64 @@ async def unfollow_trader(trader_address: str, body: UnfollowRequest):
 
 # ── 거래 내역 ─────────────────────────────────────────
 @app.get("/trades")
-async def list_trades(limit: int = 50, follower: Optional[str] = None, trader: Optional[str] = None):
+async def list_trades(
+    limit: int = 50,
+    follower: Optional[str] = None,
+    trader:   Optional[str] = None,
+    status:   Optional[str] = None,   # filled | pending | failed
+):
+    """Copy Trade 내역 조회 (필터: follower, trader, status)"""
     db = await get_db()
+    conditions, params = [], []
     if follower:
-        q, p = "SELECT * FROM copy_trades WHERE follower_address=? ORDER BY created_at DESC LIMIT ?", (follower, limit)
-    elif trader:
-        q, p = "SELECT * FROM copy_trades WHERE trader_address=? ORDER BY created_at DESC LIMIT ?", (trader, limit)
-    else:
-        q, p = "SELECT * FROM copy_trades ORDER BY created_at DESC LIMIT ?", (limit,)
-
-    async with db.execute(q, p) as cur:
+        conditions.append("follower_address=?"); params.append(follower)
+    if trader:
+        conditions.append("trader_address=?");   params.append(trader)
+    if status:
+        conditions.append("status=?");           params.append(status)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+    async with db.execute(
+        f"SELECT * FROM copy_trades {where} ORDER BY created_at DESC LIMIT ?", params
+    ) as cur:
         rows = await cur.fetchall()
-    return {"data": [dict(r) for r in rows], "count": len(rows)}
+    data = [dict(r) for r in rows]
+    filled  = [r for r in data if r.get("status") == "filled"]
+    total_vol = sum(float(r.get("amount",0) or 0) * float(r.get("price",0) or 0) for r in filled)
+    total_pnl = sum(float(r.get("pnl",0) or 0) for r in filled)
+    return {
+        "data": data,
+        "count": len(data),
+        "summary": {
+            "filled": len(filled),
+            "total_volume_usdc": round(total_vol, 2),
+            "total_pnl_usdc": round(total_pnl, 4),
+        },
+    }
 
 
 # ── 통계 ──────────────────────────────────────────────
 @app.get("/stats")
 async def get_stats():
     db = await get_db()
-    stats = await get_platform_stats(db)
+    try:
+        stats = await get_platform_stats(db)
+    except Exception:
+        import sqlite3 as _sq3, aiosqlite as _aio
+        # fallback: 직접 DB 조회
+        async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as cur:
+            t_count = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as cur:
+            f_count = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as cur:
+            trade_count = (await cur.fetchone())[0]
+        stats = {
+            "active_traders": t_count,
+            "active_followers": f_count,
+            "total_trades_filled": trade_count,
+            "total_pnl_usdc": 0.0,
+            "total_volume_usdc": 0.0,
+        }
     stats["ws_symbols"] = len(_get_pc())
     stats["active_monitors"] = len(_monitors)
     return stats
