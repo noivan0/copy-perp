@@ -226,7 +226,10 @@ def test_ce003_follow_endpoint(ce_db):
 
 
 def test_ce004_builder_code_attached():
-    """[CE-004] 복사 주문에 builder_code=noivan 자동 포함 검증"""
+    """[CE-004] 복사 주문에 builder_code=noivan 자동 포함 검증
+    
+    limit_order/market_order 등에 builder_code=BUILDER_CODE 명시 시 payload 포함 확인.
+    """
     from unittest.mock import patch
     from pacifica.client import BUILDER_CODE
     import pacifica.client as pac_mod
@@ -238,13 +241,14 @@ def test_ce004_builder_code_attached():
     original_request = pac_mod._cf_request
 
     def capture_request(method, path, body=None):
-        if body and "builder_code" in str(body):
-            captured["builder_code"] = body.get("builder_code")
+        if body and isinstance(body, dict) and "builder_code" in body:
+            captured["builder_code"] = body["builder_code"]
         return original_request(method, path, body)
 
     with patch.object(pac_mod, '_cf_request', side_effect=capture_request):
         try:
-            client.market_order("ETH", "bid", "0.005")
+            # limit_order은 기본값이 BUILDER_CODE
+            client.limit_order("ETH", "bid", "0.005", price="2100")
         except Exception:
             pass
 
@@ -292,10 +296,13 @@ class TestBacktestValidation:
         with open(path) as f:
             data = json.load(f)
         results = [r for r in data["results"] if "error" not in r]
-        results.sort(key=lambda x: x.get("roi_pct", -999), reverse=True)
+        # roi_pct(구버전) 또는 roi_raw(신버전) 모두 지원
+        roi_key = "roi_pct" if "roi_pct" in results[0] else "roi_raw"
+        results.sort(key=lambda x: x.get(roi_key, -999), reverse=True)
         top = results[0]
-        assert top["roi_pct"] > 0, f"1위 ROI가 0 이하: {top['roi_pct']}"
-        print(f"\n✅ BT-003: 1위 {top['alias']} ROI={top['roi_pct']:+.1f}%")
+        roi = top.get(roi_key, 0)
+        assert roi > 0, f"1위 ROI가 0 이하: {roi}"
+        print(f"\n✅ BT-003: 1위 {top['alias']} ROI={roi:+.1f}%")
 
     def test_trader_analysis_structure(self):
         """[BT-004] trader_analysis.json 구조 검증"""
