@@ -30,7 +30,7 @@ router = APIRouter(prefix="/builder", tags=["builder"])
 
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://test-api.pacifica.fi/api/v1")
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
-BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.0005")
+BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 
 _ssl_ctx = ssl.create_default_context()

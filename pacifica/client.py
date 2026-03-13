@@ -399,6 +399,72 @@ class PacificaClient:
             return []
 
 
+def approve_builder_code(
+    main_private_key: str,
+    account_address: str,
+    builder_code: str = "noivan",
+    max_fee_rate: str = "0.001",
+) -> dict:
+    """
+    Builder Code approve — **main account private key**로 서명 필요.
+
+    Args:
+        main_private_key: main account(3AHZqroc...) 의 base58 private key
+        account_address:  main account 주소 (3AHZqroc...)
+        builder_code:     approve할 builder code (default: noivan)
+        max_fee_rate:     최대 fee rate 문자열 (default: "0.001")
+
+    Returns:
+        API 응답 dict (success=True이면 승인 완료)
+
+    서명 구조 (문서 기준):
+        {
+          "timestamp": <ms>,
+          "expiry_window": 5000,
+          "type": "approve_builder_code",
+          "data": {
+            "builder_code": "noivan",
+            "max_fee_rate": "0.001"
+          }
+        }
+        → 재귀 정렬 → compact JSON → sign → base58
+    """
+    kp = Keypair.from_bytes(base58.b58decode(main_private_key))
+    ts = int(time.time() * 1000)
+
+    data_to_sign = {
+        "timestamp": ts,
+        "expiry_window": 5000,
+        "type": "approve_builder_code",
+        "data": {
+            "builder_code": builder_code,
+            "max_fee_rate": max_fee_rate,
+        },
+    }
+    compact = json.dumps(_sort_json_keys(data_to_sign), separators=(",", ":"))
+    sig = kp.sign_message(compact.encode("utf-8"))
+    sig_b58 = base58.b58encode(bytes(sig)).decode("ascii")
+
+    payload = {
+        "account": account_address,
+        "agent_wallet": None,  # approve는 main account 직접 서명
+        "signature": sig_b58,
+        "timestamp": ts,
+        "expiry_window": 5000,
+        "builder_code": builder_code,
+        "max_fee_rate": max_fee_rate,
+    }
+    return _cf_request("POST", "account/builder_codes/approve", payload)
+
+
+def check_builder_approvals(account_address: str) -> list:
+    """승인된 builder code 목록 조회"""
+    result = _request("GET", f"account/builder_codes/approvals?account={account_address}")
+    if isinstance(result, dict):
+        return result.get("data", [])
+    return result or []
+
+
 # ── 빠른 연결 테스트 ──────────────────────────────────
 if __name__ == "__main__":
     client = PacificaClient()

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/followers", tags=["followers"])
 
 BUILDER_CODE     = os.getenv("BUILDER_CODE", "noivan")
-BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.0005")
+BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")
 AGENT_WALLET     = os.getenv("AGENT_WALLET", "")
 
 # 기본 팔로우 대상 Tier1 트레이더 (점수 상위)
