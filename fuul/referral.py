@@ -1,145 +1,192 @@
 """
 Fuul 레퍼럴 연동
-https://www.fuul.xyz/
+https://api.fuul.xyz/api/v1/
 
 Fuul은 온체인 레퍼럴/포인트 시스템.
 Copy Perp에서:
-- 팔로워가 다른 사람을 초대 → 레퍼럴 포인트 적립
-- 트레이더가 팔로워를 유치 → 추가 보상
+- 팔로워가 온보딩 시 → 'follow' 이벤트 발송
+- 팔로워가 복사 주문 체결 시 → 'copy_trade' 이벤트 발송
 
-현재 상태: Mock 구현 (Fuul API 키 미수령)
-실제 연동 시 FUUL_API_KEY 환경변수 설정 필요
+현재 상태: FUUL_API_KEY 없으면 Mock 모드
+실제 연동 시 .env에 FUUL_API_KEY 설정
 """
 
 import os
 import json
-import time
 import uuid
+import time
 import logging
 import urllib.request
 import urllib.error
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-FUUL_API_URL = os.getenv("FUUL_API_URL", "https://api.fuul.xyz")
-FUUL_API_KEY = os.getenv("FUUL_API_KEY", "")
+FUUL_API_BASE = os.getenv("FUUL_API_URL", "https://api.fuul.xyz/api/v1")
+FUUL_API_KEY  = os.getenv("FUUL_API_KEY", "")
 FUUL_PROJECT_ID = os.getenv("FUUL_PROJECT_ID", "")
 
-# Mock 모드 (API 키 없을 때)
-MOCK_MODE = not FUUL_API_KEY
+# API 키 없으면 Mock 모드
+MOCK_MODE = not FUUL_API_KEY.strip()
 
 
 class FuulReferral:
-    """Fuul 레퍼럴 시스템 연동"""
+    """Fuul 레퍼럴 시스템 연동 (SDK 없이 직접 HTTP 호출)"""
 
     def __init__(self):
         self.mock = MOCK_MODE
         if self.mock:
-            logger.info("Fuul: Mock 모드 (FUUL_API_KEY 미설정)")
+            logger.info("Fuul: Mock 모드 (FUUL_API_KEY 미설정 — .env에 추가 후 재시작)")
         else:
-            logger.info(f"Fuul: 실제 연동 (project={FUUL_PROJECT_ID})")
+            logger.info("Fuul: 실제 연동 모드 (project=%s)", FUUL_PROJECT_ID)
 
-        # Mock 저장소
-        self._referrals: dict[str, str] = {}   # referee → referrer
-        self._points: dict[str, float] = {}     # address → points
-
-    def generate_referral_link(self, address: str) -> str:
-        """팔로워/트레이더 레퍼럴 링크 생성"""
-        # ref 코드 = 주소 앞 8자
-        ref_code = address[:8]
-        base_url = os.getenv("APP_URL", "https://copy-perp.pacifica.fi")
-        return f"{base_url}?ref={ref_code}"
-
-    async def track_referral(self, referrer: str, referee: str) -> dict:
-        """레퍼럴 추적 (신규 팔로워 등록 시 호출)"""
+    def _post(self, path: str, body: dict) -> dict:
+        """POST /api/v1/{path}"""
         if self.mock:
-            self._referrals[referee] = referrer
-            # 레퍼러에게 포인트 적립 (Mock)
-            self._points[referrer] = self._points.get(referrer, 0) + 10.0
-            logger.info(f"[Mock] 레퍼럴: {referee[:8]} ← {referrer[:8]} (+10pt)")
-            return {"ok": True, "mock": True, "points_awarded": 10.0}
+            return {"ok": True, "mock": True, "event": body.get("name")}
 
-        # 실제 Fuul API 호출
+        url = f"{FUUL_API_BASE.rstrip('/')}/{path.lstrip('/')}"
+        payload = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={
+                "Authorization": f"Bearer {FUUL_API_KEY}",
+                "Content-Type": "application/json",
+                "X-Fuul-Sdk-Version": "7.17.1",
+                "User-Agent": "CopyPerp/1.0",
+            },
+            method="POST",
+        )
         try:
-            body = {
-                "project_id": FUUL_PROJECT_ID,
-                "referrer": referrer,
-                "referee": referee,
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            body_err = e.read().decode()
+            logger.warning("Fuul API 오류 HTTP %d: %s", e.code, body_err)
+            return {"ok": False, "error": body_err, "status": e.code}
+        except Exception as e:
+            logger.warning("Fuul 연결 실패: %s", e)
+            return {"ok": False, "error": str(e)}
+
+    def _make_event(
+        self,
+        name: str,
+        user_address: str,
+        args: Optional[dict] = None,
+        referrer: Optional[str] = None,
+    ) -> dict:
+        """표준 Fuul 이벤트 payload 생성"""
+        event: dict = {
+            "name": name,
+            "user": {
+                "identifier": user_address,
+                "identifier_type": "solana_address",
+            },
+            "args": args or {},
+            "metadata": {
+                "tracking_id": str(uuid.uuid4()),
+            },
+        }
+        if FUUL_PROJECT_ID:
+            event["metadata"]["project_id"] = FUUL_PROJECT_ID
+        if referrer:
+            event["metadata"]["referrer"] = referrer
+        return event
+
+    # ── Public API ─────────────────────────────────────────────────────────
+
+    def track_follow(
+        self,
+        follower_address: str,
+        trader_address: str,
+        referrer: Optional[str] = None,
+    ) -> dict:
+        """팔로워 온보딩 이벤트"""
+        event = self._make_event(
+            name="follow",
+            user_address=follower_address,
+            args={"trader": trader_address, "timestamp": int(time.time())},
+            referrer=referrer,
+        )
+        result = self._post("events", event)
+        logger.info("Fuul follow 이벤트: follower=%s trader=%s → %s",
+                    follower_address[:8], trader_address[:8], result)
+        return result
+
+    def track_copy_trade(
+        self,
+        follower_address: str,
+        trader_address: str,
+        symbol: str,
+        side: str,
+        amount_usdc: float,
+        order_id: Optional[str] = None,
+    ) -> dict:
+        """복사 주문 체결 이벤트"""
+        event = self._make_event(
+            name="copy_trade",
+            user_address=follower_address,
+            args={
+                "trader": trader_address,
+                "symbol": symbol,
+                "side": side,
+                "amount_usdc": amount_usdc,
+                "order_id": order_id or "",
                 "timestamp": int(time.time()),
-            }
-            req = urllib.request.Request(
-                f"{FUUL_API_URL}/v1/referrals",
-                data=json.dumps(body).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {FUUL_API_KEY}",
-                },
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=5) as r:
-                return json.loads(r.read())
-        except Exception as e:
-            logger.error(f"Fuul API 오류: {e}")
-            return {"ok": False, "error": str(e)}
+            },
+        )
+        result = self._post("events", event)
+        logger.info("Fuul copy_trade: follower=%s %s %s $%.2f → %s",
+                    follower_address[:8], symbol, side, amount_usdc, result)
+        return result
 
-    async def track_trade_volume(self, address: str, volume_usdc: float) -> dict:
-        """거래 볼륨 기반 포인트 적립"""
+    def track_pageview(self, page: str = "/") -> dict:
+        """페이지뷰 이벤트 (브라우저 컨텍스트 없으므로 서버 측 호출)"""
+        event = {
+            "name": "pageview",
+            "args": {"page": page, "locationOrigin": "https://copy-perp.vercel.app"},
+            "metadata": {"tracking_id": str(uuid.uuid4())},
+        }
+        if FUUL_PROJECT_ID:
+            event["metadata"]["project_id"] = FUUL_PROJECT_ID
+        return self._post("events", event)
+
+    def identify_user(self, address: str) -> dict:
+        """지갑 연결 이벤트 (connect_wallet)"""
+        event = self._make_event(
+            name="connect_wallet",
+            user_address=address,
+            args={"page": "/", "locationOrigin": "https://copy-perp.vercel.app"},
+        )
+        return self._post("events", event)
+
+    def get_referral_stats(self, address: str) -> dict:
+        """레퍼럴 현황 조회 (Mock에서는 더미 반환)"""
         if self.mock:
-            pts = volume_usdc * 0.001  # 1 USDC당 0.001 포인트
-            self._points[address] = self._points.get(address, 0) + pts
-            return {"ok": True, "mock": True, "points": pts}
-
-        try:
-            body = {
-                "project_id": FUUL_PROJECT_ID,
+            return {
                 "address": address,
-                "volume_usd": volume_usdc,
-                "event_type": "trade",
+                "referrals": 0,
+                "total_volume": 0.0,
+                "mock": True,
             }
+        try:
+            url = f"{FUUL_API_BASE.rstrip('/')}/payouts/leaderboard/referred-volume?user_identifiers={address}"
             req = urllib.request.Request(
-                f"{FUUL_API_URL}/v1/events",
-                data=json.dumps(body).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {FUUL_API_KEY}",
-                },
-                method="POST"
+                url,
+                headers={"Authorization": f"Bearer {FUUL_API_KEY}", "User-Agent": "CopyPerp/1.0"},
             )
-            with urllib.request.urlopen(req, timeout=5) as r:
+            with urllib.request.urlopen(req, timeout=10) as r:
                 return json.loads(r.read())
         except Exception as e:
-            logger.error(f"Fuul 볼륨 추적 오류: {e}")
             return {"ok": False, "error": str(e)}
 
-    def get_points(self, address: str) -> float:
-        """포인트 조회 (Mock)"""
-        return self._points.get(address, 0.0)
 
-    def get_leaderboard(self, limit: int = 10) -> list:
-        """포인트 리더보드 (Mock)"""
-        sorted_pts = sorted(self._points.items(), key=lambda x: x[1], reverse=True)
-        return [{"address": addr, "points": pts} for addr, pts in sorted_pts[:limit]]
+# ── 싱글턴 ─────────────────────────────────────────────────────────────────
+_fuul = None
 
 
-# 싱글턴
-fuul = FuulReferral()
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def test():
-        f = FuulReferral()
-        link = f.generate_referral_link("3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
-        print(f"레퍼럴 링크: {link}")
-
-        r = await f.track_referral("TraderAAA...", "FollowerBBB...")
-        print(f"레퍼럴 추적: {r}")
-
-        r2 = await f.track_trade_volume("TraderAAA...", 500.0)
-        print(f"볼륨 적립: {r2}")
-
-        print(f"TraderAAA 포인트: {f.get_points('TraderAAA...')}")
-        print(f"리더보드: {f.get_leaderboard()}")
-
-    asyncio.run(test())
+def get_fuul() -> FuulReferral:
+    global _fuul
+    if _fuul is None:
+        _fuul = FuulReferral()
+    return _fuul
