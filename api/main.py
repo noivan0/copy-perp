@@ -44,6 +44,7 @@ from core.stats import get_platform_stats
 from fuul.referral import FuulReferral
 from api.routers.traders import router as traders_router
 from api.routers.builder import router as builder_router
+from api.routers.followers import router as followers_router
 
 app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs")
 
@@ -58,12 +59,14 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(traders_router)
 app.include_router(builder_router)
+app.include_router(followers_router)
 
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None
 _engine = None
 _monitors: dict[str, PositionMonitor] = {}
-_price_cache: dict = {}
+# _price_cache는 core.data_collector에서 관리
+from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_connected, start_polling as _dc_start
 _fuul = FuulReferral()
 
 
@@ -74,53 +77,9 @@ async def get_db():
     return _db
 
 
-# ── WS 가격 스트림 ────────────────────────────────────
-async def _price_stream_loop():
-    import json, ssl, websockets
-    WS_URL = os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-
-    while True:
-        try:
-            async with websockets.connect(WS_URL, ssl=ssl_ctx, ping_interval=30) as ws:
-                await ws.send(json.dumps({"method": "subscribe", "params": {"source": "prices"}}))
-                async for raw in ws:
-                    data = json.loads(raw)
-                    if data.get("channel") == "prices":
-                        for item in data.get("data", []):
-                            _price_cache[item["symbol"]] = item
-        except Exception:
-            await asyncio.sleep(3)
-
-
-# ── 시작/종료 ─────────────────────────────────────────
-async def _rest_price_poll_loop():
-    """WS 차단 시 REST 폴링으로 가격 캐시 유지 (30초 주기)"""
-    from pacifica.client import PacificaClient
-    import asyncio
-    client = PacificaClient()
-    while True:
-        try:
-            prices = await asyncio.get_event_loop().run_in_executor(None, client.get_prices)
-            if isinstance(prices, list):
-                for item in prices:
-                    sym = item.get("symbol")
-                    if sym:
-                        # REST 응답 필드를 WS 포맷으로 정규화
-                        _price_cache[sym] = {
-                            "symbol": sym,
-                            "mark": item.get("mark", "0"),
-                            "oracle": item.get("oracle", "0"),
-                            "funding": item.get("funding", "0"),
-                            "open_interest": item.get("open_interest", "0"),
-                            "volume_24h": item.get("volume_24h", "0"),
-                            "mid": item.get("mid", "0"),
-                        }
-        except Exception as e:
-            pass
-        await asyncio.sleep(30)
+# ── 가격 데이터 수집 — DataCollector REST 폴링 (WS 완전 대체) ──────────────
+# WS는 HMG 웹필터에서 차단됨 (CloudFront WS도 502)
+# core/data_collector.py — CF SNI GET 방식 30초 주기 폴링으로 완전 교체
 
 
 async def _sync_leaderboard_loop():
@@ -188,9 +147,8 @@ async def startup():
     global _db, _engine
     _db = await init_db()
     _engine = CopyEngine(_db)
-    asyncio.create_task(_price_stream_loop())
-    # WS 차단 환경 대비 REST 폴링 폴백
-    asyncio.create_task(_rest_price_poll_loop())
+    # DataCollector REST 폴링 (WS 완전 대체 — HMG 차단)
+    asyncio.create_task(_dc_start(interval=30))
     # 실제 Pacifica 리더보드 동기화
     asyncio.create_task(_sync_leaderboard_loop())
     # QA팀 추천 트레이더 자동 모니터링 시작
@@ -252,28 +210,29 @@ def root():
 
 @app.get("/health")
 def health():
-    btc = _price_cache.get("BTC", {})
+    btc = _get_pc().get("BTC", {})
     return {
         "status": "ok",
-        "data_connected": bool(btc),
-        "ws_connected": bool(btc),  # 하위 호환
-        "btc_mark": btc.get("mark"),
+        "data_connected": _dc_connected(),           # REST 폴링 연결 상태
+        "ws_connected":   _dc_connected(),           # 하위 호환 (WS → REST 전환)
+        "data_source":    "rest_poll",               # 데이터 소스 명시
+        "btc_mark":    btc.get("mark"),
         "btc_funding": btc.get("funding"),
-        "btc_oi": btc.get("open_interest"),
+        "btc_oi":      btc.get("open_interest"),
         "active_monitors": len(_monitors),
-        "symbols_cached": len(_price_cache),
+        "symbols_cached":  len(_get_pc()),
     }
 
 
 @app.get("/markets")
 def get_markets(symbol: Optional[str] = None):
     if symbol:
-        data = _price_cache.get(symbol.upper())
+        data = _get_pc().get(symbol.upper())
         if not data:
             raise HTTPException(404, f"{symbol} not found in cache")
         return {"data": data}
     # 펀딩비 기준 정렬 (절댓값 높은 것 = 아비트라지 기회)
-    items = sorted(_price_cache.values(), key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
+    items = sorted(_get_pc().values(), key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
     return {"data": items, "count": len(items)}
 
 
@@ -281,7 +240,7 @@ def get_markets(symbol: Optional[str] = None):
 @app.get("/signals")
 def get_signals(top_n: int = 5):
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
-    items = list(_price_cache.values())
+    items = list(_get_pc().values())
     funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
     divergence_top = sorted(
         [m for m in items if float(m.get("oracle", 0)) > 0],
@@ -291,7 +250,7 @@ def get_signals(top_n: int = 5):
     return {
         "funding_extremes": funding_top,
         "oracle_mark_divergence": divergence_top,
-        "source": "live" if _price_cache else "empty",
+        "source": "live" if _get_pc() else "empty",
     }
 
 
@@ -368,7 +327,7 @@ async def list_trades(limit: int = 50, follower: Optional[str] = None, trader: O
 async def get_stats():
     db = await get_db()
     stats = await get_platform_stats(db)
-    stats["ws_symbols"] = len(_price_cache)
+    stats["ws_symbols"] = len(_get_pc())
     stats["active_monitors"] = len(_monitors)
     return stats
 
