@@ -143,21 +143,38 @@ async def _sync_leaderboard_loop():
                 equity  = float(t.get("equity_current", 0) or 0)
                 # 복합 점수: roi_30d*0.6 + roi_7d*0.3 + 1d 보너스
                 score = (pnl_30d/equity*0.6 + pnl_7d/equity*0.3 + (0.1 if pnl_1d > 0 else 0)) if equity > 0 else 0
+                # INSERT OR IGNORE: 신규만 삽입, 기존 win_rate/win_count 보존
                 await _db.execute(
-                    """INSERT OR REPLACE INTO traders
-                       (address, alias, total_pnl, win_rate, followers,
+                    """INSERT OR IGNORE INTO traders
+                       (address, alias, total_pnl, followers,
                         pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
                         volume_7d, volume_30d, oi_current, active, last_synced)
-                       VALUES (?,?,?,?,0, ?,?,?,?,?,?,?,?,1,strftime('%s','now'))""",
+                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,strftime('%s','now'))""",
                     (
                         addr,
                         t.get("username") or addr[:8],
                         pnl_all,
-                        score * 100,  # win_rate 컬럼에 composite score 저장
                         pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
                         float(t.get("volume_7d", 0) or 0),
                         float(t.get("volume_30d", 0) or 0),
                         float(t.get("oi_current", 0) or 0),
+                    )
+                )
+                # 기존 행은 PnL/equity 수치만 업데이트 (win_rate/win_count 보존)
+                await _db.execute(
+                    """UPDATE traders SET
+                       alias=COALESCE(?,alias), total_pnl=?, pnl_1d=?, pnl_7d=?,
+                       pnl_30d=?, pnl_all_time=?, equity=?, volume_7d=?,
+                       volume_30d=?, oi_current=?, active=1,
+                       last_synced=strftime('%s','now')
+                       WHERE address=?""",
+                    (
+                        t.get("username") or None,
+                        pnl_all, pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
+                        float(t.get("volume_7d", 0) or 0),
+                        float(t.get("volume_30d", 0) or 0),
+                        float(t.get("oi_current", 0) or 0),
+                        addr,
                     )
                 )
             await _db.commit()
