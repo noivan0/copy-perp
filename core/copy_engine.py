@@ -20,7 +20,7 @@ import aiosqlite
 from pacifica.client import PacificaClient, BUILDER_CODE
 from core.alerting import get_alert_manager
 from db.database import get_followers, record_copy_trade
-from core.retry import retry_sync, is_retryable
+from core.retry import retry_sync, classify_error
 
 logger = logging.getLogger(__name__)
 

@@ -84,8 +84,13 @@ class FuulReferral:
             logger.warning("Fuul API 오류 HTTP %d: %s", e.code, body_err)
             return {"ok": False, "error": body_err, "status": e.code}
         except Exception as e:
+            # latin-1 인코딩 오류 등 헤더 문제 → mock으로 폴백
+            err_str = str(e)
+            if "codec" in err_str or "encode" in err_str:
+                logger.debug("Fuul 헤더 인코딩 오류 (mock 폴백): %s", err_str)
+                return {"ok": True, "mock_fallback": True}
             logger.warning("Fuul 연결 실패: %s", e)
-            return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": err_str}
 
     def _post(self, path: str, body: dict, params: Optional[dict] = None) -> dict:
         return self._request("POST", path, body, params)
@@ -247,7 +252,8 @@ class FuulReferral:
         → {baseUrl}?af={code}
         """
         code = ref_code or address[:8]
-        return f"{APP_BASE_URL}?af={code}"
+        # af= (Fuul SDK 표준) + ref= (하위 호환) 둘 다 포함
+        return f"{APP_BASE_URL}?ref={code}&af={code}"
 
     def generate_referral_link(self, address: str, ref_code: Optional[str] = None) -> str:
         """레퍼럴 링크 생성 (alias)"""

@@ -48,6 +48,7 @@ from fuul.referral import FuulReferral
 from api.routers.traders import router as traders_router
 from api.routers.builder import router as builder_router
 from api.routers.followers import router as followers_router
+from core.alerting import get_alert_manager
 
 app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs")
 
@@ -512,6 +513,42 @@ async def get_stats():
     stats["ws_symbols"] = len(_get_pc())
     stats["active_monitors"] = len(_monitors)
     return stats
+
+
+# ── 메트릭 / 이벤트 로그 ──────────────────────────────
+@app.get("/metrics")
+async def get_metrics():
+    """Prometheus 텍스트 형식 메트릭"""
+    from fastapi.responses import PlainTextResponse
+    db = await get_db()
+    s = await get_platform_stats(db)
+    btc = _get_pc().get("BTC", {})
+    lines = [
+        f"copy_perp_active_traders {s.get('active_traders', 0)}",
+        f"copy_perp_active_followers {s.get('active_followers', 0)}",
+        f"copy_perp_copy_trades_total {s.get('total_trades_filled', 0)}",
+        f"copy_perp_volume_usdc {s.get('total_volume_usdc', 0)}",
+        f"copy_perp_monitors_active {len(_monitors)}",
+        f"copy_perp_btc_price {float(btc.get('mark', 0))}",
+        f"copy_perp_symbols_cached {len(_get_pc())}",
+        f'copy_perp_network{{network="{os.getenv("NETWORK","testnet")}"}} 1',
+    ]
+    # 알림 에러 카운트
+    am = get_alert_manager()
+    summary = am.get_error_summary()
+    for k, v in summary.get("total_error_counts", {}).items():
+        lines.append(f'copy_perp_order_errors{{follower="{k}"}} {v}')
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
+
+
+@app.get("/events")
+def get_events(limit: int = 50, level: Optional[str] = None):
+    """최근 시스템 이벤트 로그 (주문 실패, 연결 끊김 등)"""
+    am = get_alert_manager()
+    return {
+        "data": am.get_recent_events(limit=limit, level=level),
+        "summary": am.get_error_summary(),
+    }
 
 
 # ── 레퍼럴 ────────────────────────────────────────────
