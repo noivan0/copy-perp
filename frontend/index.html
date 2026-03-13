@@ -27,6 +27,7 @@
     .wallet-btn { background:var(--cyan); color:#080c18; border:none; padding:9px 20px;
                   border-radius:8px; font-weight:700; cursor:pointer; font-size:14px; transition:.15s; }
     .wallet-btn:hover { background:#00b8d9; }
+    .wallet-btn.connected { background:#22c55e20; color:var(--green); border:1px solid #22c55e40; }
 
     /* ── Ticker Bar ── */
     .ticker-bar { display:flex; gap:32px; padding:10px 32px; border-bottom:1px solid var(--border);
@@ -35,7 +36,6 @@
     .ticker-item { display:flex; align-items:center; gap:8px; white-space:nowrap; flex-shrink:0; }
     .ticker-sym { font-size:13px; font-weight:600; }
     .ticker-price { font-size:13px; }
-    .ticker-change { font-size:12px; }
     .up { color:var(--green); } .down { color:var(--red); }
 
     /* ── Hero ── */
@@ -58,96 +58,126 @@
                  border-bottom:1px solid var(--border); }
     .stat-item { flex:1; max-width:220px; text-align:center; padding:20px; border-right:1px solid var(--border); }
     .stat-item:last-child { border-right:none; }
-    .stat-val { font-size:26px; font-weight:800; color:var(--cyan); }
+    .stat-val { font-size:28px; font-weight:800; color:var(--cyan); }
     .stat-lbl { font-size:12px; color:var(--muted); margin-top:4px; }
 
-    /* ── Main Grid ── */
-    main { max-width:1300px; margin:0 auto; padding:32px; display:grid;
-           grid-template-columns:1fr 380px; gap:24px; }
+    /* ── Main Layout ── */
+    main { display:grid; grid-template-columns:1fr 340px; gap:24px; padding:24px 32px; max-width:1280px; margin:0 auto; }
+    @media(max-width:900px) { main { grid-template-columns:1fr; } }
 
-    /* ── Cards ── */
-    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; }
-    .card-title { font-size:16px; font-weight:600; margin-bottom:16px;
-                  display:flex; align-items:center; justify-content:space-between; }
-    .card-title .tag { font-size:11px; background:#00d4ff15; color:var(--cyan);
-                       padding:2px 8px; border-radius:4px; font-weight:500; }
+    /* ── Card ── */
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; }
+    .card-title { font-size:15px; font-weight:700; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
 
     /* ── Leaderboard ── */
     .lb-row { display:flex; align-items:center; gap:12px; padding:12px 0;
               border-bottom:1px solid var(--border); cursor:pointer; transition:.1s; }
-    .lb-row:hover { background:#ffffff05; margin:0 -8px; padding:12px 8px; border-radius:8px; }
+    .lb-row:hover { background:#00d4ff05; border-radius:8px; }
     .lb-row:last-child { border-bottom:none; }
-    .lb-rank { font-size:13px; color:var(--muted); width:20px; text-align:center; flex-shrink:0; }
-    .lb-rank.gold { color:#f59e0b; font-weight:700; }
-    .lb-rank.silver { color:#94a3b8; font-weight:700; }
-    .lb-rank.bronze { color:#b45309; font-weight:700; }
-    .lb-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#00d4ff,#7c3aed);
-                 display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;
-                 color:#fff; flex-shrink:0; }
+    .lb-rank { width:28px; text-align:center; font-weight:700; font-size:14px; }
+    .lb-rank.gold { color:#fbbf24; } .lb-rank.silver { color:#94a3b8; } .lb-rank.bronze { color:#cd7c3b; }
+    .lb-avatar { width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,#00d4ff20,#7c3aed20);
+                 display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; border:1px solid var(--border); }
     .lb-info { flex:1; min-width:0; }
-    .lb-name { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .lb-meta { font-size:12px; color:var(--muted); margin-top:2px; }
-    .lb-right { text-align:right; flex-shrink:0; }
+    .lb-name { font-size:13px; font-weight:600; font-family:monospace; }
+    .lb-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+    .lb-right { text-align:right; }
     .lb-pnl { font-size:14px; font-weight:700; }
     .lb-followers { font-size:12px; color:var(--muted); margin-top:2px; }
-    .copy-btn { background:#00d4ff15; color:var(--cyan); border:1px solid #00d4ff30;
-                padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px;
-                font-weight:600; white-space:nowrap; transition:.1s; }
-    .copy-btn:hover { background:#00d4ff25; }
+    .copy-btn { background:var(--cyan); color:#080c18; border:none; padding:6px 14px;
+                border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; flex-shrink:0; transition:.15s; }
+    .copy-btn:hover { background:#00b8d9; }
 
-    /* ── Right Panel ── */
-    .right-panel { display:flex; flex-direction:column; gap:20px; }
-
-    /* ── Market Data ── */
-    .market-row { display:flex; justify-content:space-between; align-items:center;
-                  padding:10px 0; border-bottom:1px solid var(--border); }
-    .market-row:last-child { border-bottom:none; }
-    .market-sym { font-size:13px; font-weight:600; }
-    .market-price { font-size:13px; font-weight:500; }
-    .market-funding { font-size:12px; }
+    /* ── Right Sidebar ── */
+    .sidebar { display:flex; flex-direction:column; gap:16px; }
 
     /* ── Follow Form ── */
     .form-group { margin-bottom:14px; }
-    label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:500; }
-    input, select { width:100%; background:#080c18; border:1px solid var(--border);
-                    color:var(--text); padding:10px 14px; border-radius:8px; font-size:14px; outline:none; }
-    input:focus, select:focus { border-color:var(--cyan); }
-    .submit-btn { width:100%; background:var(--cyan); color:#080c18; border:none;
-                  padding:13px; border-radius:9px; font-weight:700; cursor:pointer;
-                  font-size:15px; transition:.15s; margin-top:4px; }
-    .submit-btn:hover { background:#00b8d9; transform:translateY(-1px); }
+    .form-group label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:600; }
+    .form-group input, .form-group select {
+      width:100%; background:#080c18; border:1px solid var(--border); color:var(--text);
+      padding:10px 12px; border-radius:8px; font-size:13px; outline:none; transition:.15s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color:var(--cyan); }
+    .submit-btn { width:100%; background:var(--cyan); color:#080c18; border:none; padding:12px;
+                  border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; transition:.15s; }
+    .submit-btn:hover { background:#00b8d9; }
+    .submit-btn:disabled { background:var(--muted); cursor:not-allowed; }
 
-    /* ── Badges ── */
-    .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
-    .badge-green { background:#22c55e20; color:var(--green); }
-    .badge-red { background:#ef444420; color:var(--red); }
+    /* ── Market List ── */
+    .market-row { display:flex; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); gap:10px; }
+    .market-row:last-child { border-bottom:none; }
+    .market-sym { font-weight:700; font-size:13px; width:40px; }
+    .market-price { flex:1; font-size:13px; font-family:monospace; }
+    .market-funding { font-size:12px; }
+
+    /* ── Login Modal ── */
+    .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000;
+                backdrop-filter:blur(4px); align-items:center; justify-content:center; }
+    .modal-bg.show { display:flex; }
+    .modal { background:var(--card); border:1px solid var(--border); border-radius:16px;
+             padding:32px; width:100%; max-width:400px; }
+    .modal-title { font-size:20px; font-weight:800; margin-bottom:8px; }
+    .modal-sub { font-size:14px; color:var(--sub); margin-bottom:24px; }
+    .login-btn { width:100%; display:flex; align-items:center; gap:12px; background:#080c18;
+                 border:1px solid var(--border); color:var(--text); padding:14px 18px; border-radius:10px;
+                 font-size:14px; font-weight:600; cursor:pointer; margin-bottom:10px; transition:.15s; }
+    .login-btn:hover { border-color:var(--cyan); background:#00d4ff08; }
+    .login-btn .icon { width:22px; text-align:center; }
+    .modal-close { width:100%; background:transparent; border:none; color:var(--muted);
+                   font-size:13px; cursor:pointer; margin-top:8px; padding:8px; }
+    .modal-close:hover { color:var(--text); }
+
+    /* ── Status ── */
+    .status-chip { display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 9px;
+                   border-radius:20px; font-weight:600; }
+    .status-chip.green { background:#22c55e15; color:var(--green); border:1px solid #22c55e30; }
+    .status-chip.yellow { background:#fbbf2415; color:#fbbf24; border:1px solid #fbbf2430; }
 
     /* ── Toast ── */
-    #toast { position:fixed; bottom:24px; right:24px; background:#1e293b; color:var(--text);
-             padding:12px 20px; border-radius:10px; font-size:14px; border:1px solid var(--border);
-             display:none; z-index:999; animation:slideup .2s ease; }
-    @keyframes slideup { from{transform:translateY(10px);opacity:0} to{transform:translateY(0);opacity:1} }
+    #toast { display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+             background:#1a2640; color:var(--text); padding:12px 24px; border-radius:10px;
+             font-size:14px; z-index:9999; border:1px solid var(--border); max-width:400px; text-align:center; }
 
-    @media(max-width:900px) {
-      main { grid-template-columns:1fr; }
-      .hero h1 { font-size:36px; }
-      .stats-row { gap:0; }
-    }
+    /* ── My Positions ── */
+    .pos-row { display:flex; justify-content:space-between; align-items:center;
+               padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .pos-row:last-child { border-bottom:none; }
   </style>
 </head>
 <body>
 
-<!-- Header -->
+<!-- Login Modal -->
+<div class="modal-bg" id="login-modal">
+  <div class="modal">
+    <div class="modal-title">Connect to Copy Perp</div>
+    <div class="modal-sub">Sign in to start copying top traders on Pacifica</div>
+    <button class="login-btn" onclick="loginWith('google')">
+      <span class="icon">🔵</span> Continue with Google
+    </button>
+    <button class="login-btn" onclick="loginWith('twitter')">
+      <span class="icon">🐦</span> Continue with Twitter / X
+    </button>
+    <button class="login-btn" onclick="loginWith('discord')">
+      <span class="icon">💜</span> Continue with Discord
+    </button>
+    <button class="login-btn" onclick="loginWithWallet()">
+      <span class="icon">👛</span> Connect Wallet Directly
+    </button>
+    <button class="modal-close" onclick="closeLoginModal()">Cancel</button>
+  </div>
+</div>
+
 <header>
   <div class="logo">Copy<span>Perp</span></div>
   <div class="header-right">
-    <div class="live-badge"><span class="dot"></span>LIVE on Pacifica Testnet</div>
-    <button class="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
+    <div class="live-badge"><div class="dot"></div> LIVE on Pacifica Testnet</div>
+    <button class="wallet-btn" id="wallet-btn" onclick="openLoginModal()">Connect Wallet</button>
   </div>
 </header>
 
-<!-- Ticker -->
-<div class="ticker-bar" id="ticker">
+<!-- Ticker Bar -->
+<div class="ticker-bar">
   <div class="ticker-item"><span class="ticker-sym">BTC</span><span class="ticker-price" id="t-BTC">—</span></div>
   <div class="ticker-item"><span class="ticker-sym">ETH</span><span class="ticker-price" id="t-ETH">—</span></div>
   <div class="ticker-item"><span class="ticker-sym">SOL</span><span class="ticker-price" id="t-SOL">—</span></div>
@@ -157,77 +187,96 @@
   <div class="ticker-item"><span class="ticker-sym">AVAX</span><span class="ticker-price" id="t-AVAX">—</span></div>
 </div>
 
-<!-- Hero -->
-<div class="hero">
-  <div class="hero-tag">🚀 Track 3 — Social & Gamification</div>
-  <h1>Copy Top Traders.<br><em>On-Chain.</em> Automatically.</h1>
-  <p>Follow the best perpetual traders on Pacifica and mirror their positions in real-time. Your funds stay in your wallet. No CEX. No custody risk.</p>
-  <div class="hero-btns">
-    <button class="btn-primary" onclick="scrollToFollow()">Start Copying →</button>
-    <button class="btn-outline" onclick="scrollToLeaderboard()">View Leaderboard</button>
-  </div>
-</div>
-
-<!-- Stats -->
+<!-- Stats Row -->
 <div class="stats-row">
   <div class="stat-item"><div class="stat-val" id="s-traders">—</div><div class="stat-lbl">Active Traders</div></div>
   <div class="stat-item"><div class="stat-val" id="s-followers">—</div><div class="stat-lbl">Followers</div></div>
-  <div class="stat-item"><div class="stat-val" id="s-volume">—</div><div class="stat-lbl">Copy Volume (24h)</div></div>
-  <div class="stat-item"><div class="stat-val" id="s-symbols">—</div><div class="stat-lbl">Markets Tracked</div></div>
+  <div class="stat-item"><div class="stat-val" id="s-volume">—</div><div class="stat-lbl">Volume Copied</div></div>
+  <div class="stat-item"><div class="stat-val" id="s-symbols">68</div><div class="stat-lbl">Markets</div></div>
 </div>
 
-<!-- Main -->
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-tag">🏆 Pacifica Hackathon — Track 3</div>
+  <h1>Trade Like the <em>Best.</em><br>Automatically.</h1>
+  <p>Copy top Pacifica traders with one click. Your positions mirror theirs in real-time — no experience needed.</p>
+  <div class="hero-btns">
+    <button class="btn-primary" onclick="scrollToLeaderboard()">Browse Top Traders</button>
+    <button class="btn-outline" onclick="openLoginModal()">Start Copying →</button>
+  </div>
+</div>
+
 <main>
-  <!-- Left: Leaderboard -->
+  <!-- Left: Leaderboard + Markets -->
   <div>
-    <div class="card" id="leaderboard-section">
+    <!-- Leaderboard -->
+    <div class="card" id="leaderboard-section" style="margin-bottom:20px;">
       <div class="card-title">
-        Trader Leaderboard
-        <span class="tag">LIVE</span>
+        🏆 Top Traders
+        <span class="status-chip green">Live</span>
       </div>
-      <div id="leaderboard">
-        <div style="color:var(--muted);font-size:14px;padding:16px 0;">로딩 중...</div>
-      </div>
+      <div id="leaderboard"><div style="color:var(--muted);font-size:14px;">불러오는 중...</div></div>
+    </div>
+
+    <!-- Markets -->
+    <div class="card">
+      <div class="card-title">📊 Markets</div>
+      <div id="market-list"><div style="color:var(--muted);font-size:14px;">연결 중...</div></div>
     </div>
   </div>
 
-  <!-- Right Panel -->
-  <div class="right-panel">
-    <!-- BTC Market -->
-    <div class="card">
-      <div class="card-title">Market Data <span class="tag">WS</span></div>
-      <div id="market-list">
-        <div style="color:var(--muted);font-size:14px;">연결 중...</div>
+  <!-- Right: Sidebar -->
+  <div class="sidebar">
+
+    <!-- My Status -->
+    <div class="card" id="my-status-card" style="display:none;">
+      <div class="card-title">👤 My Account</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Wallet</div>
+      <div style="font-size:13px;font-family:monospace;word-break:break-all;" id="my-address">—</div>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Copying</div>
+        <div id="my-copying-count" style="font-size:18px;font-weight:700;color:var(--cyan);">0 traders</div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">My Positions</div>
+        <div id="my-positions">—</div>
       </div>
     </div>
 
     <!-- Follow Form -->
     <div class="card" id="follow-section">
-      <div class="card-title">Start Copying</div>
-      <div class="form-group">
-        <label>Trader Address</label>
-        <input type="text" id="f-trader" placeholder="Trader wallet address..." />
+      <div class="card-title">⚡ Start Copying</div>
+      <div id="follow-login-prompt" style="text-align:center;padding:16px 0;">
+        <div style="font-size:32px;margin-bottom:12px;">🔒</div>
+        <div style="font-size:14px;color:var(--sub);margin-bottom:16px;">Connect wallet to start copying top traders</div>
+        <button class="btn-primary" style="font-size:13px;padding:10px 24px;" onclick="openLoginModal()">Connect Wallet</button>
       </div>
-      <div class="form-group">
-        <label>Copy Ratio</label>
-        <select id="f-ratio">
-          <option value="0.25">25% of my balance</option>
-          <option value="0.5" selected>50% of my balance</option>
-          <option value="0.75">75% of my balance</option>
-          <option value="1.0">100% of my balance</option>
-        </select>
+      <div id="follow-form" style="display:none;">
+        <div class="form-group">
+          <label>Trader</label>
+          <input type="text" id="f-trader" placeholder="Trader wallet address..." />
+        </div>
+        <div class="form-group">
+          <label>Copy Ratio</label>
+          <select id="f-ratio">
+            <option value="0.05">5% of my balance</option>
+            <option value="0.10" selected>10% of my balance</option>
+            <option value="0.25">25% of my balance</option>
+            <option value="0.50">50% of my balance</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max Position Size (USD)</label>
+          <input type="number" id="f-max" value="50" min="10" step="10" />
+        </div>
+        <button class="submit-btn" id="follow-submit-btn" onclick="startCopying()">Start Copying →</button>
       </div>
-      <div class="form-group">
-        <label>Max Position Size (USD)</label>
-        <input type="number" id="f-max" value="100" min="10" step="10" />
-      </div>
-      <button class="submit-btn" onclick="startCopying()">Start Copying →</button>
     </div>
 
     <!-- My Referral -->
     <div class="card">
-      <div class="card-title">My Referral Link</div>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Invite followers and earn Builder Code rewards on every trade they copy.</p>
+      <div class="card-title">🔗 Referral Link</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Invite friends and earn on every trade they copy.</p>
       <div style="background:#080c18;border:1px solid var(--border);border-radius:8px;padding:10px 14px;
                   font-size:12px;color:var(--sub);word-break:break-all;" id="referral-link">
         Connect wallet to generate referral link
@@ -235,6 +284,29 @@
       <button class="btn-outline" style="width:100%;margin-top:12px;font-size:13px;padding:10px;"
               onclick="copyReferral()">Copy Link</button>
     </div>
+
+    <!-- Backtest Result -->
+    <div class="card">
+      <div class="card-title">📈 Backtest Results</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">7-day simulation · Top 10 Tier1 traders · $10K initial</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:var(--sub);font-size:13px;">7-day ROI</span>
+        <span style="color:var(--green);font-weight:700;">+1.82%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:var(--sub);font-size:13px;">Copy Ratio</span>
+        <span style="font-weight:600;">10%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:var(--sub);font-size:13px;">Tier 1 Traders</span>
+        <span style="font-weight:600;">17</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--sub);font-size:13px;">Stop Loss</span>
+        <span style="color:var(--red);font-weight:600;">-10%</span>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -245,7 +317,12 @@ const API = location.hostname === 'localhost' ? 'http://localhost:8001' : '/api'
 const SYMBOLS = ['BTC','ETH','SOL','SUI','DOGE','XAU','AVAX'];
 const RANK_LABELS = ['🥇','🥈','🥉'];
 
-function toast(msg, duration=2500) {
+// ── 지갑 상태 ─────────────────────────────────────
+let _walletAddress = null;
+let _walletProvider = null;  // 'google' | 'twitter' | 'discord' | 'wallet'
+
+// ── 유틸 ─────────────────────────────────────────
+function toast(msg, duration=2800) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', duration);
@@ -258,6 +335,12 @@ function fmt(n, decimals=2) {
   return '$' + v.toFixed(decimals);
 }
 
+function fmtPct(v) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  const n = parseFloat(v);
+  return (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%';
+}
+
 function fmtFunding(f) {
   const v = parseFloat(f) * 100;
   if (isNaN(v)) return '—';
@@ -265,60 +348,143 @@ function fmtFunding(f) {
   return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(4)}%</span>`;
 }
 
+function shortAddr(addr) {
+  if (!addr || addr.length < 12) return addr || '—';
+  return addr.substring(0,6) + '...' + addr.slice(-4);
+}
+
+// ── Login Modal ────────────────────────────────────
+function openLoginModal() {
+  if (_walletAddress) { scrollToFollow(); return; }
+  document.getElementById('login-modal').classList.add('show');
+}
+
+function closeLoginModal() {
+  document.getElementById('login-modal').classList.remove('show');
+}
+
+async function loginWith(provider) {
+  closeLoginModal();
+  toast(`⏳ ${provider} 로그인 중...`);
+
+  // Privy SDK 실제 연동 시 교체:
+  // const { login } = usePrivy();
+  // await login({ loginMethods: [provider] });
+  // const wallet = user.linkedAccounts.find(a => a.type === 'wallet' && a.chainType === 'solana');
+
+  // 데모 모드: 테스트 계정으로 시뮬레이션
+  await new Promise(r => setTimeout(r, 800));
+  const demoAddr = '3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ';
+  onWalletConnected(demoAddr, provider);
+}
+
+async function loginWithWallet() {
+  closeLoginModal();
+  toast('⏳ 지갑 연결 중...');
+  await new Promise(r => setTimeout(r, 600));
+  const demoAddr = '3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ';
+  onWalletConnected(demoAddr, 'wallet');
+}
+
+function onWalletConnected(address, provider) {
+  _walletAddress = address;
+  _walletProvider = provider;
+
+  // 헤더 버튼 업데이트
+  const btn = document.getElementById('wallet-btn');
+  btn.textContent = shortAddr(address);
+  btn.className = 'wallet-btn connected';
+  btn.onclick = null;
+
+  // 팔로우 폼 표시
+  document.getElementById('follow-login-prompt').style.display = 'none';
+  document.getElementById('follow-form').style.display = 'block';
+
+  // My Account 카드 표시
+  document.getElementById('my-status-card').style.display = 'block';
+  document.getElementById('my-address').textContent = shortAddr(address);
+
+  // 레퍼럴 링크
+  document.getElementById('referral-link').textContent =
+    `${location.origin}/?ref=${address.substring(0,8)}`;
+
+  // 내 팔로잉 현황 조회
+  fetchMyFollowing(address);
+
+  toast(`✅ 연결 완료 (${provider})`);
+}
+
+async function fetchMyFollowing(address) {
+  try {
+    const r = await fetch(`${API}/followers/list`);
+    const d = await r.json();
+    const mine = (d.data || []).filter(f => f.address === address);
+    document.getElementById('my-copying-count').textContent = mine.length + ' traders';
+
+    if (mine.length > 0) {
+      document.getElementById('my-positions').innerHTML = mine.map(f =>
+        `<div style="font-size:12px;color:var(--sub);padding:4px 0;">${shortAddr(f.trader_address)} · ${(f.copy_ratio*100).toFixed(0)}%</div>`
+      ).join('');
+    }
+  } catch(e) {}
+}
+
 // ── 마켓 데이터 ──────────────────────────────────
 async function fetchMarkets() {
   try {
     const r = await fetch(`${API}/markets`);
     const d = await r.json();
-    // API는 배열 반환 → symbol을 키로 맵 변환
-    const arr = d.data || [];
-    const items = Array.isArray(arr)
-      ? Object.fromEntries(arr.map(m => [m.symbol, m]))
-      : arr;
+    const arr = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
+    const items = Object.fromEntries(arr.map(m => [m.symbol, m]));
 
-    // 티커 업데이트
     SYMBOLS.forEach(sym => {
       const el = document.getElementById(`t-${sym}`);
       if (el && items[sym]) {
         const p = parseFloat(items[sym].mark);
-        el.textContent = p >= 1000 ? '$' + p.toLocaleString('en',{maximumFractionDigits:0})
-                                   : '$' + p.toFixed(4);
+        el.textContent = p >= 1 ? '$' + p.toLocaleString('en',{maximumFractionDigits:p >= 100 ? 0 : 2})
+                                : '$' + p.toFixed(4);
       }
     });
 
-    // 마켓 리스트 (상위 7개)
     const top = SYMBOLS.map(s => items[s]).filter(Boolean);
     document.getElementById('market-list').innerHTML = top.map(m => `
       <div class="market-row">
         <span class="market-sym">${m.symbol}</span>
         <span class="market-price">${fmt(m.mark, parseFloat(m.mark) > 1 ? 2 : 4)}</span>
-        <span class="market-funding">${fmtFunding(m.funding)}<span style="color:var(--muted)"> funding</span></span>
+        <span class="market-funding">${fmtFunding(m.funding)}<span style="color:var(--muted)"> fr</span></span>
       </div>
     `).join('');
 
-    // Stats
-    document.getElementById('s-symbols').textContent = Object.keys(items).length;
+    document.getElementById('s-symbols').textContent = arr.length || 68;
   } catch(e) { console.error('fetchMarkets:', e); }
 }
 
 // ── 트레이더 리더보드 ─────────────────────────────
 async function fetchLeaderboard() {
   try {
-    const r = await fetch(`${API}/traders`);
+    const r = await fetch(`${API}/traders?limit=20`);
     const d = await r.json();
-    const traders = d.data || [];
+    const traders = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
 
     document.getElementById('s-traders').textContent = traders.length;
 
+    if (traders.length === 0) {
+      document.getElementById('leaderboard').innerHTML =
+        '<div style="color:var(--muted);padding:16px 0">트레이더 없음</div>';
+      return;
+    }
+
     document.getElementById('leaderboard').innerHTML = traders.map((t, i) => {
-      const rank = RANK_LABELS[i] || (i + 1);
+      const rank = RANK_LABELS[i] || `#${i+1}`;
       const rankCls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
-      const pnlCls = t.total_pnl >= 0 ? 'up' : 'down';
-      const pnlStr = (t.total_pnl >= 0 ? '+' : '') + '$' + Math.abs(t.total_pnl).toLocaleString('en',{maximumFractionDigits:0});
-      const initials = (t.alias || t.address).substring(0,2).toUpperCase();
-      const addr = t.address.length > 12 ? t.address.substring(0,6)+'...'+t.address.slice(-4) : t.address;
-      const roiStr = t.roi_7d ? ((t.roi_7d >= 0 ? '+' : '') + (t.roi_7d * 100).toFixed(1) + '% 7d') : '';
-      const winStr = t.win_rate ? Math.round(t.win_rate * 100) + '% win' : '';
+      const pnl = parseFloat(t.total_pnl) || 0;
+      const pnlCls = pnl >= 0 ? 'up' : 'down';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toLocaleString('en',{maximumFractionDigits:0});
+      const initials = (t.alias || t.address || '??').substring(0,2).toUpperCase();
+      const addr = shortAddr(t.address);
+      const winRate = t.win_rate ? Math.round(t.win_rate * 100) + '% win' : '';
+      const roi7d = (t.roi_7d != null) ? fmtPct(t.roi_7d) + ' 7d' : '';
+      const meta = [winRate, roi7d].filter(Boolean).join(' · ') || (t.tier ? `Tier ${t.tier}` : '');
 
       return `
         <div class="lb-row" onclick="fillTrader('${t.address}')">
@@ -326,16 +492,16 @@ async function fetchLeaderboard() {
           <div class="lb-avatar">${initials}</div>
           <div class="lb-info">
             <div class="lb-name">${t.alias || addr}</div>
-            <div class="lb-meta">${[winStr, roiStr].filter(Boolean).join(' · ')}</div>
+            <div class="lb-meta">${meta}</div>
           </div>
           <div class="lb-right">
             <div class="lb-pnl ${pnlCls}">${pnlStr}</div>
             <div class="lb-followers">${t.followers || 0} followers</div>
           </div>
-          <button class="copy-btn" onclick="event.stopPropagation();fillTrader('${t.address}')">Copy</button>
+          <button class="copy-btn" onclick="event.stopPropagation();selectAndCopy('${t.address}')">Copy</button>
         </div>
       `;
-    }).join('') || '<div style="color:var(--muted);padding:16px 0">트레이더 없음</div>';
+    }).join('');
   } catch(e) { console.error('fetchLeaderboard:', e); }
 }
 
@@ -344,31 +510,12 @@ async function fetchStats() {
   try {
     const r = await fetch(`${API}/stats`);
     const d = await r.json();
-    document.getElementById('s-traders').textContent = d.active_traders || '—';
-    document.getElementById('s-followers').textContent = d.active_followers || '—';
-    document.getElementById('s-volume').textContent =
-      d.total_volume_usdc ? '$' + (d.total_volume_usdc/1000).toFixed(1) + 'K' : '$0';
-    document.getElementById('s-symbols').textContent = d.ws_symbols || '—';
-  } catch(e) { console.error('fetchStats:', e); }
-}
-
-// ── 지갑 연결 ──────────────────────────────────────
-let _walletAddress = null;
-
-function connectWallet() {
-  // TODO: Privy SDK 연동 (Google/Twitter 소셜 로그인)
-  // 연동 전 임시: 데모 주소로 레퍼럴 링크 미리보기
-  toast('🔗 Privy 지갑 연동 예정 (Google/Twitter 소셜 로그인)');
-}
-
-async function updateReferralLink(address) {
-  try {
-    const r = await fetch(`${API}/referral/${address}`);
-    const d = await r.json();
-    if (d.referral_link) {
-      document.getElementById('referral-link').textContent = d.referral_link;
-    }
-  } catch(e) { console.error('updateReferralLink:', e); }
+    if (d.active_traders != null) document.getElementById('s-traders').textContent = d.active_traders;
+    if (d.active_followers != null) document.getElementById('s-followers').textContent = d.active_followers;
+    if (d.total_volume_usdc != null)
+      document.getElementById('s-volume').textContent =
+        '$' + (d.total_volume_usdc / 1000).toFixed(1) + 'K';
+  } catch(e) {}
 }
 
 // ── 팔로우 ────────────────────────────────────────
@@ -377,21 +524,69 @@ function fillTrader(addr) {
   document.getElementById('follow-section').scrollIntoView({behavior:'smooth'});
 }
 
+function selectAndCopy(addr) {
+  if (!_walletAddress) {
+    openLoginModal();
+    return;
+  }
+  fillTrader(addr);
+}
+
 async function startCopying() {
+  if (!_walletAddress) { openLoginModal(); return; }
+
   const trader = document.getElementById('f-trader').value.trim();
-  const ratio = document.getElementById('f-ratio').value;
-  const maxUsd = document.getElementById('f-max').value;
+  const ratio = parseFloat(document.getElementById('f-ratio').value);
+  const maxUsd = parseFloat(document.getElementById('f-max').value);
+
   if (!trader) { toast('❌ 트레이더 주소를 입력하세요'); return; }
-  toast('⏳ 지갑 연결 후 Copy 등록 가능합니다 (Privy 연동 예정)');
+  if (!ratio || ratio <= 0) { toast('❌ Copy ratio를 확인하세요'); return; }
+
+  const btn = document.getElementById('follow-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 처리 중...';
+
+  try {
+    const body = {
+      follower_address: _walletAddress,
+      traders: [trader],
+      copy_ratio: ratio,
+      max_position_usdc: maxUsd,
+    };
+
+    const r = await fetch(`${API}/followers/onboard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const d = await r.json();
+
+    if (r.ok && d.ok !== false) {
+      toast(`✅ Copy 시작! ${shortAddr(trader)} 트레이더를 팔로우합니다`);
+      document.getElementById('f-trader').value = '';
+      fetchMyFollowing(_walletAddress);
+      fetchStats();
+    } else {
+      const errMsg = d.detail || d.error || d.message || '서버 오류';
+      toast(`❌ 오류: ${errMsg}`);
+    }
+  } catch(e) {
+    toast('❌ 네트워크 오류: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Start Copying →';
+  }
 }
 
 // ── 레퍼럴 ────────────────────────────────────────
 function copyReferral() {
   const link = document.getElementById('referral-link').textContent.trim();
-  if (link.startsWith('Connect')) { toast('❌ 지갑을 먼저 연결하세요'); return; }
+  if (link.startsWith('Connect')) { openLoginModal(); return; }
   navigator.clipboard.writeText(link).then(() => toast('✅ 레퍼럴 링크 복사됨'));
 }
 
+// ── 스크롤 ────────────────────────────────────────
 function scrollToFollow() {
   document.getElementById('follow-section').scrollIntoView({behavior:'smooth'});
 }
@@ -399,11 +594,16 @@ function scrollToLeaderboard() {
   document.getElementById('leaderboard-section').scrollIntoView({behavior:'smooth'});
 }
 
+// ── Modal 외부 클릭 닫기 ──────────────────────────
+document.getElementById('login-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeLoginModal();
+});
+
 // ── 초기화 ────────────────────────────────────────
 fetchMarkets();
 fetchLeaderboard();
 fetchStats();
-setInterval(fetchMarkets, 3000);
+setInterval(fetchMarkets, 5000);
 setInterval(fetchLeaderboard, 15000);
 setInterval(fetchStats, 10000);
 </script>

@@ -43,12 +43,12 @@ DEFAULT_MAX_POS_USDC  = 50.0  # $50
 
 class OnboardRequest(BaseModel):
     """팔로워 온보딩 요청"""
-    follower_address: str           # 팔로워 Solana 지갑 주소
-    private_key: str                # base58 개인키 (Builder Code 서명용)
+    follower_address: str                       # 팔로워 Solana 지갑 주소
+    private_key: Optional[str] = None          # base58 개인키 (Builder Code 서명용, 선택)
     copy_ratio: float = DEFAULT_COPY_RATIO
     max_position_usdc: float = DEFAULT_MAX_POS_USDC
     referrer_address: Optional[str] = None
-    traders: Optional[list] = None  # 지정 시 해당 트레이더만, None이면 DEFAULT_TIER1
+    traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 DEFAULT_TIER1
 
 class FollowerListResponse(BaseModel):
     data: list
@@ -139,10 +139,14 @@ async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTas
     }
 
     try:
-        signature = _sign_builder_approval(body.private_key, payload_to_sign)
+        if body.private_key:
+            signature = _sign_builder_approval(body.private_key, payload_to_sign)
+        else:
+            # private_key 미제공 — Builder Code 승인 보류 (Pacifica 팀 등록 후 처리)
+            logger.info("private_key 미제공 — Builder Code 서명 스킵 (팔로우는 정상 진행)")
+            signature = None
     except ImportError:
-        # solders/base58 없으면 서명 스킵 (프론트에서 서명 전달 방식 사용)
-        logger.warning("solders 없음 — Builder Code 승인 스킵 (프론트 서명 방식 사용)")
+        logger.warning("solders 없음 — Builder Code 승인 스킵")
         signature = None
     except Exception as e:
         result["errors"].append(f"서명 생성 실패: {e}")
