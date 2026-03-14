@@ -204,10 +204,21 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
             raw_body = gzip.decompress(raw_body)
             break
 
-    result = json.loads(raw_body.decode("utf-8", "ignore"))
+    body_text = raw_body.decode("utf-8", "ignore").strip()
+    if not body_text:
+        if status_code >= 400:
+            raise RuntimeError(f"HTTP {status_code}: (empty body)")
+        return {}
+    try:
+        result = json.loads(body_text)
+    except json.JSONDecodeError:
+        if status_code >= 400:
+            raise RuntimeError(f"HTTP {status_code}: {body_text[:300]}")
+        return {"raw": body_text}
 
     if status_code >= 400:
-        raise RuntimeError(f"HTTP {status_code}: {json.dumps(result)[:300]}")
+        err = result.get("error", body_text) if isinstance(result, dict) else body_text
+        raise RuntimeError(f"HTTP {status_code}: {err}")
 
     return result
 
@@ -402,21 +413,28 @@ class PacificaClient:
     # ── 서명 API ──────────────────────────────────
 
     def _signed_post(self, endpoint_path: str, order_type: str, payload: dict) -> dict:
+        """
+        공식 SDK sign_message 방식:
+          서명 대상: {timestamp, expiry_window, type, data: payload}  (재귀 정렬 → compact JSON)
+          요청 body: {account, agent_wallet, signature, timestamp, expiry_window, **payload}  (data 래퍼 제거, top-level flatten)
+
+        중요: builder_code는 payload(data) 안에 포함되어야 서명 대상에 들어감.
+             top-level에만 있으면 서명 검증 실패.
+        """
         if not self._kp:
             raise RuntimeError("AGENT_PRIVATE_KEY 미설정 — 주문 실행 불가")
         timestamp = int(time.time() * 1000)
         header = {"timestamp": timestamp, "expiry_window": 5000, "type": order_type}
+        # payload에 builder_code가 있으면 서명 대상(data)에도 포함됨 — 공식 문서 기준
         _, signature = _sign_request(header, payload, self._kp)
         body = {
             "account": self.account,
+            "agent_wallet": AGENT_WALLET_PUBKEY or None,
             "signature": signature,
             "timestamp": timestamp,
             "expiry_window": 5000,
         }
-        # Agent Wallet 방식: 주문 서명은 agent key로 하되,
-        # 요청에 agent_wallet(공개키) 필드 추가 (공식 SDK 방식)
-        if AGENT_WALLET_PUBKEY:
-            body["agent_wallet"] = AGENT_WALLET_PUBKEY
+        # payload를 top-level로 flatten (data 래퍼 제거)
         body.update(payload)
         return _request("POST", endpoint_path, body)
 
@@ -426,9 +444,20 @@ class PacificaClient:
         side: str,           # "bid" (롱) / "ask" (숏)
         amount: str,
         slippage_percent: str = "0.5",
-        builder_code: Optional[str] = None,  # 승인 전까지 기본 None
+        builder_code: Optional[str] = None,  # 승인된 경우 BUILDER_CODE 전달
         client_order_id: Optional[str] = None,
     ) -> dict:
+        """
+        시장가 주문 생성.
+
+        공식 문서 서명 구조 (builder_code 포함 시):
+          data = {
+            "symbol": ..., "amount": ..., "side": ...,
+            "slippage_percent": ..., "reduce_only": false,
+            "client_order_id": ...,
+            "builder_code": "noivan"   ← data 안에 포함해야 서명 검증 통과
+          }
+        """
         payload = {
             "symbol": symbol,
             "side": side,
@@ -437,6 +466,7 @@ class PacificaClient:
             "slippage_percent": slippage_percent,
             "client_order_id": client_order_id or str(uuid.uuid4()),
         }
+        # builder_code는 data(payload) 안에 포함 — 공식 문서 기준
         if builder_code:
             payload["builder_code"] = builder_code
         return self._signed_post("orders/create_market", "create_market_order", payload)
@@ -513,17 +543,10 @@ def approve_builder_code(
 ) -> dict:
     """
     Builder Code approve — **main account private key**로 서명 필요.
+    Agent wallet이 아닌 main account 키로 직접 서명.
 
-    Args:
-        main_private_key: main account(3AHZqroc...) 의 base58 private key
-        account_address:  main account 주소 (3AHZqroc...)
-        builder_code:     approve할 builder code (default: noivan)
-        max_fee_rate:     최대 fee rate 문자열 (default: "0.001")
-
-    Returns:
-        API 응답 dict (success=True이면 승인 완료)
-
-    서명 구조 (문서 기준):
+    공식 문서 서명 구조:
+        서명 대상 =
         {
           "timestamp": <ms>,
           "expiry_window": 5000,
@@ -533,34 +556,53 @@ def approve_builder_code(
             "max_fee_rate": "0.001"
           }
         }
-        → 재귀 정렬 → compact JSON → sign → base58
+        → 재귀 정렬 → compact JSON → Ed25519 sign → base58
+
+        요청 body =
+        {
+          "account": "<address>",
+          "agent_wallet": null,
+          "signature": "<base58>",
+          "timestamp": <ms>,
+          "expiry_window": 5000,
+          "builder_code": "noivan",     ← data 래퍼 제거, top-level
+          "max_fee_rate": "0.001"       ← data 래퍼 제거, top-level
+        }
+
+    Returns:
+        API 응답 dict (success=True이면 승인 완료)
     """
-    kp = Keypair.from_bytes(base58.b58decode(main_private_key))
+    try:
+        seed = base58.b58decode(main_private_key)
+        kp = Keypair.from_seed(seed[:32])
+    except Exception:
+        kp = Keypair.from_base58_string(main_private_key)
+
     ts = int(time.time() * 1000)
 
-    data_to_sign = {
+    # 서명 대상: header + data 구조 (공식 sign_message 방식)
+    sign_header = {
         "timestamp": ts,
         "expiry_window": 5000,
         "type": "approve_builder_code",
-        "data": {
-            "builder_code": builder_code,
-            "max_fee_rate": max_fee_rate,
-        },
     }
-    compact = json.dumps(_sort_json_keys(data_to_sign), separators=(",", ":"))
-    sig = kp.sign_message(compact.encode("utf-8"))
-    sig_b58 = base58.b58encode(bytes(sig)).decode("ascii")
+    sign_data = {
+        "builder_code": builder_code,
+        "max_fee_rate": max_fee_rate,
+    }
+    _, sig_b58 = _sign_request(sign_header, sign_data, kp)
 
-    payload = {
+    # 요청 body: data 래퍼 제거, top-level flatten
+    request_body = {
         "account": account_address,
-        "agent_wallet": None,  # approve는 main account 직접 서명
+        "agent_wallet": None,
         "signature": sig_b58,
         "timestamp": ts,
         "expiry_window": 5000,
         "builder_code": builder_code,
         "max_fee_rate": max_fee_rate,
     }
-    return _cf_request("POST", "account/builder_codes/approve", payload)
+    return _cf_request("POST", "account/builder_codes/approve", request_body)
 
 
 def check_builder_approvals(account_address: str) -> list:

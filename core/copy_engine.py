@@ -189,7 +189,13 @@ class CopyEngine:
         trade_id = str(uuid.uuid4())
 
         try:
-            bc = BUILDER_CODE if follower["builder_approved"] else ""
+            # builder_approved(구) 또는 builder_code_approved(신) 둘 중 하나라도 1이면 포함
+            # mainnet에서 noivan 승인 완료 → 신규 팔로워는 온보딩 시 approve() 호출
+            _bc_approved = (
+                follower.get("builder_code_approved", 0) or
+                follower.get("builder_approved", 0)
+            )
+            bc = BUILDER_CODE if _bc_approved else ""
 
             if self.mock_mode:
                 # Mock 모드: 실제 API 호출 없이 80% 성공 시뮬레이션
