@@ -361,3 +361,101 @@
 01:08:08 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.6390 trader_pnl=+0.16 copy_pnl=+0.0008 자본=$10,012.20
 01:08:08 [INFO]   → 신규 처리: 20건
 01:08:08 [INFO]   💤 120초 대기 | 잔여 45.6분
+01:10:08 [INFO] 
+🔄 폴링 #9 | 자본=$10,012.20 | ROI=+0.12% | 처리=280건
+01:10:08 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:10:09 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:10:09 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:10:10 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:10:10 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:10:11 [INFO]   → 신규 처리: 0건
+
+=================================================================
+  📊 COPY PERP MAINNET PAPERTRADING 리포트
+  세션: 16분 25초 | 폴링: 9회 | 2026-03-14 01:10:11
+=================================================================
+💰 자본 현황
+   초기 자본    : $   10,000.00
+   현재 자본    : $   10,012.20
+   실현 PnL     : $      +12.20  (+0.12%)
+   최대 드로우다운: 0.01%
+
+📈 거래 성과
+   완료 거래    : 280건 (승:94 | 패:57 | 본전:129)
+   승률         : 62.3%
+   수익 인수    : 4.45x
+   평균 이익    : $+0.1675
+   평균 손실    : $-0.0621
+   총 이익      : $+15.7489
+   총 손실      : $-3.5383
+
+⚙️  실행 통계
+   주문 처리    : 280건
+   스킵         : 45건 (소액 필터)
+
+👥 트레이더별 기여
+   [4TYEjn9P] 거래=58건 PnL=+0.0045 승률=78%
+   [YjCD9Gek] 거래=48건 PnL=+12.6964 승률=100%
+   [HtC4WT6J] 거래=84건 PnL=-0.2248 승률=5%
+   [E8j5xSbG] 거래=90건 PnL=-0.2786 승률=61%
+=================================================================
+
+🔍 안정성 평가
+   ✅ 이상 없음 — 드로우다운 양호, 수익 안정
+
+01:10:11 [INFO] 💾 결과 저장: papertrading/live_result.json
+01:10:11 [INFO]   💤 120초 대기 | 잔여 43.6분
+01:12:11 [INFO] 
+🔄 폴링 #10 | 자본=$10,012.20 | ROI=+0.12% | 처리=280건
+01:12:11 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:12:12 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:12:12 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:12:12 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.5890 trader_pnl=-1.62 copy_pnl=-0.0057 자본=$10,012.19
+01:12:12 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.5930 trader_pnl=-1.61 copy_pnl=-0.0056 자본=$10,012.19
+01:12:12 [INFO]   ❌ [HtC4WT6J] SOL close_long amt=0.010 @ $87.8700 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.19
+01:12:12 [INFO]   ❌ [HtC4WT6J] SOL close_long amt=1.010 @ $87.8700 trader_pnl=-3.56 copy_pnl=-0.0125 자본=$10,012.17
+01:12:12 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.6000 trader_pnl=-1.59 copy_pnl=-0.0056 자본=$10,012.17
+01:12:12 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.6080 trader_pnl=-1.57 copy_pnl=-0.0055 자본=$10,012.16
+01:12:12 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.6120 trader_pnl=-1.56 copy_pnl=-0.0055 자본=$10,012.16
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,673.0000 trader_pnl=-0.53 copy_pnl=-0.0019 자본=$10,012.16
+01:12:12 [INFO]   ❌ [HtC4WT6J] SOL close_long amt=1.670 @ $87.9400 trader_pnl=-5.78 copy_pnl=-0.0202 자본=$10,012.13
+01:12:12 [INFO]   ❌ [HtC4WT6J] SOL close_long amt=1.010 @ $87.9400 trader_pnl=-3.49 copy_pnl=-0.0122 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,705.0000 trader_pnl=-0.12 copy_pnl=-0.0004 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,705.0000 trader_pnl=-0.27 copy_pnl=-0.0010 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,706.0000 trader_pnl=-0.15 copy_pnl=-0.0005 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,706.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,706.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,707.0000 trader_pnl=-0.23 copy_pnl=-0.0008 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,707.0000 trader_pnl=-0.24 copy_pnl=-0.0008 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,707.0000 trader_pnl=-0.23 copy_pnl=-0.0008 자본=$10,012.12
+01:12:12 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,707.0000 trader_pnl=-0.11 copy_pnl=-0.0004 자본=$10,012.12
+01:12:13 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:12:13 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:12:13 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.570 @ $87.8700 trader_pnl=-0.06 copy_pnl=-0.0003 자본=$10,012.12
+01:12:13 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.570 @ $87.9400 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.12
+01:12:13 [INFO]   → 신규 처리: 21건
+01:12:13 [INFO]   💤 120초 대기 | 잔여 41.5분
+01:14:14 [INFO] 
+🔄 폴링 #11 | 자본=$10,012.12 | ROI=+0.12% | 처리=301건
+01:14:14 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:14:14 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5845 trader_pnl=+0.02 copy_pnl=+0.0006 자본=$10,012.12
+01:14:14 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:14:15 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:14:15 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,649.0000 trader_pnl=-0.27 copy_pnl=-0.0009 자본=$10,012.12
+01:14:15 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,649.0000 trader_pnl=-1.64 copy_pnl=-0.0057 자본=$10,012.11
+01:14:15 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,650.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.11
+01:14:15 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:14:16 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:14:16 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=5.030 @ $87.8900 trader_pnl=-0.31 copy_pnl=-0.0016 자본=$10,012.11
+01:14:16 [INFO]   → 신규 처리: 5건
+01:14:16 [INFO]   💤 120초 대기 | 잔여 39.5분
+01:16:16 [INFO] 
+🔄 폴링 #12 | 자본=$10,012.11 | ROI=+0.12% | 처리=306건
+01:16:16 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:16:16 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5891 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$10,012.11
+01:16:17 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:16:17 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:16:18 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:16:19 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:16:19 [INFO]   → 신규 처리: 1건
+01:16:19 [INFO]   💤 120초 대기 | 잔여 37.4분
