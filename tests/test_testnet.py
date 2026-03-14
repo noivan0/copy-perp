@@ -92,8 +92,9 @@ def backend_get(path: str) -> tuple[int, dict]:
 
 @pytest.fixture(autouse=True)
 def rate_guard():
+    time.sleep(0.3)   # pre-request wait
     yield
-    time.sleep(0.4)
+    time.sleep(0.8)   # post-request wait (rate limit)
 
 
 # ── TN-A: Testnet 기본 연결 ────────────────────────────────────────────

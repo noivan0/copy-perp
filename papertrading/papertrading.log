@@ -1,0 +1,320 @@
+00:53:46 [INFO] 📡 Mainnet 리더보드 조회 중...
+00:53:46 [INFO] ✅ 리더보드에서 5명 선정
+00:53:46 [INFO] 📋 Papertrading v2 시작
+00:53:46 [INFO]    초기 자본: $10,000 | copy_ratio=0.05
+00:53:46 [INFO]    추적 트레이더: 5명
+00:53:46 [INFO]      [4TYEjn9P] ROI=1029% weight=0.63
+00:53:46 [INFO]      [YjCD9Gek] ROI=168% weight=0.1
+00:53:46 [INFO]      [HtC4WT6J] ROI=109% weight=0.07
+00:53:46 [INFO]      [6ZjWoJKe] ROI=172% weight=0.1
+00:53:46 [INFO]      [E8j5xSbG] ROI=160% weight=0.1
+00:53:46 [INFO] ⏱  실행: 60분 | 간격: 120초
+00:53:46 [INFO] 
+🔄 폴링 #1 | 자본=$10,000.00 | ROI=+0.00% | 처리=0건
+00:53:46 [INFO]   [4TYEjn9P] 내역 100건 조회
+00:53:46 [INFO]   ❌ [4TYEjn9P] TRUMP close_long amt=132.700 @ $3.7182 trader_pnl=-11.23 copy_pnl=-0.3539 자본=$9,999.65
+00:53:46 [INFO]   ❌ [4TYEjn9P] SOL close_short amt=4.060 @ $87.8100 trader_pnl=-23.17 copy_pnl=-0.7299 자본=$9,998.92
+00:53:46 [INFO]   ❌ [4TYEjn9P] TRUMP close_long amt=63.400 @ $3.7331 trader_pnl=-4.42 copy_pnl=-0.1393 자본=$9,998.78
+00:53:46 [INFO]   ✅ [4TYEjn9P] LTC close_short amt=11.530 @ $55.1100 trader_pnl=+5.29 copy_pnl=+0.1667 자본=$9,998.94
+00:53:46 [INFO]   ❌ [4TYEjn9P] SOL close_short amt=0.010 @ $88.1500 trader_pnl=-0.06 copy_pnl=-0.0019 자본=$9,998.94
+00:53:46 [INFO]   ❌ [4TYEjn9P] BTC close_short amt=0.000 @ $70,862.0000 trader_pnl=-0.01 copy_pnl=-0.0004 자본=$9,998.94
+00:53:46 [INFO]   ❌ [4TYEjn9P] BTC close_short amt=0.002 @ $70,856.0000 trader_pnl=-2.64 copy_pnl=-0.0833 자본=$9,998.86
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=19.600 @ $2.5859 trader_pnl=+3.42 copy_pnl=+0.1078 자본=$9,998.97
+00:53:46 [INFO]   ✅ [4TYEjn9P] JUP close_short amt=6093.000 @ $0.1641 trader_pnl=+37.23 copy_pnl=+1.1729 자본=$10,000.14
+00:53:46 [INFO]   ❌ [4TYEjn9P] SOL close_short amt=0.010 @ $88.1300 trader_pnl=-0.06 copy_pnl=-0.0019 자본=$10,000.14
+00:53:46 [INFO]   ❌ [4TYEjn9P] SOL close_short amt=0.010 @ $88.0700 trader_pnl=-0.06 copy_pnl=-0.0019 자본=$10,000.13
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6130 trader_pnl=+0.01 copy_pnl=+0.0005 자본=$10,000.14
+00:53:46 [INFO]   ✅ [4TYEjn9P] XRP close_short amt=816.800 @ $1.3972 trader_pnl=+22.38 copy_pnl=+0.7049 자본=$10,000.84
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6120 trader_pnl=+0.01 copy_pnl=+0.0005 자본=$10,000.84
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6143 trader_pnl=+0.01 copy_pnl=+0.0005 자본=$10,000.84
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5952.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$10,000.86
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6090 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$10,000.86
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6089 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$10,000.86
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5942.000 @ $0.0034 trader_pnl=+0.48 copy_pnl=+0.0151 자본=$10,000.87
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.6115 trader_pnl=+0.01 copy_pnl=+0.0005 자본=$10,000.87
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$10,000.89
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.91
+00:53:46 [INFO]   ❌ [4TYEjn9P] BCH close_short amt=4.570 @ $459.3600 trader_pnl=-30.57 copy_pnl=-0.9629 자본=$9,999.94
+00:53:46 [INFO]   ❌ [4TYEjn9P] AVAX close_short amt=7.050 @ $9.6950 trader_pnl=-2.35 copy_pnl=-0.0741 자본=$9,999.87
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5929.000 @ $0.0034 trader_pnl=+0.44 copy_pnl=+0.0140 자본=$9,999.88
+00:53:46 [INFO]   ❌ [4TYEjn9P] AVAX close_short amt=7.050 @ $9.7030 trader_pnl=-2.41 copy_pnl=-0.0759 자본=$9,999.81
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0159 자본=$9,999.82
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5949.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.84
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5930 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$9,999.84
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.86
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.87
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.89
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5949.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$9,999.90
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$9,999.92
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$9,999.93
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.95
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5952.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.97
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5940 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$9,999.97
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$9,999.98
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0159 자본=$10,000.00
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5951.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0161 자본=$10,000.02
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5935.000 @ $0.0034 trader_pnl=+0.45 copy_pnl=+0.0142 자본=$10,000.03
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5944.000 @ $0.0034 trader_pnl=+0.49 copy_pnl=+0.0153 자본=$10,000.05
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5949.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.06
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5956.000 @ $0.0034 trader_pnl=+0.53 copy_pnl=+0.0167 자본=$10,000.08
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.09
+00:53:46 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5980 trader_pnl=+0.02 copy_pnl=+0.0005 자본=$10,000.09
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0159 자본=$10,000.11
+00:53:46 [INFO]   ✅ [4TYEjn9P] ADA close_short amt=41.600 @ $0.2641 trader_pnl=+0.35 copy_pnl=+0.0110 자본=$10,000.12
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0159 자본=$10,000.14
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.15
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.17
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5944.000 @ $0.0034 trader_pnl=+0.49 copy_pnl=+0.0153 자본=$10,000.18
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.50 copy_pnl=+0.0157 자본=$10,000.20
+00:53:46 [INFO]   ✅ [4TYEjn9P] kPEPE close_short amt=5947.000 @ $0.0034 trader_pnl=+0.51 copy_pnl=+0.0159 자본=$10,000.22
+00:53:46 [INFO]   [YjCD9Gek] 내역 100건 조회
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.115 @ $2,091.6000 trader_pnl=+10.38 copy_pnl=+0.0519 자본=$10,000.27
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=3.738 @ $2,081.5000 trader_pnl=+298.76 copy_pnl=+1.4938 자본=$10,001.76
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,103.3000 trader_pnl=+11.86 copy_pnl=+0.0593 자본=$10,001.82
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.116 @ $2,107.9000 trader_pnl=+12.38 copy_pnl=+0.0619 자본=$10,001.88
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.116 @ $2,108.1000 trader_pnl=+12.40 copy_pnl=+0.0620 자본=$10,001.94
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.046 @ $2,104.0000 trader_pnl=+4.72 copy_pnl=+0.0236 자본=$10,001.97
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,104.4000 trader_pnl=+12.03 copy_pnl=+0.0601 자본=$10,002.03
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,104.4000 trader_pnl=+12.03 copy_pnl=+0.0601 자본=$10,002.09
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,104.4000 trader_pnl=+12.03 copy_pnl=+0.0601 자본=$10,002.15
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.139 @ $2,104.4000 trader_pnl=+14.33 copy_pnl=+0.0717 자본=$10,002.22
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,107.8000 trader_pnl=+12.41 copy_pnl=+0.0620 자본=$10,002.28
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,108.7000 trader_pnl=+12.51 copy_pnl=+0.0626 자본=$10,002.34
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,112.0000 trader_pnl=+12.90 copy_pnl=+0.0645 자본=$10,002.41
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.117 @ $2,105.0000 trader_pnl=+12.15 copy_pnl=+0.0608 자본=$10,002.47
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.048 @ $2,103.5000 trader_pnl=+4.84 copy_pnl=+0.0242 자본=$10,002.49
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,103.5000 trader_pnl=+12.05 copy_pnl=+0.0602 자본=$10,002.55
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,103.5000 trader_pnl=+12.05 copy_pnl=+0.0602 자본=$10,002.61
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,103.2000 trader_pnl=+12.02 copy_pnl=+0.0601 자본=$10,002.67
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.240 @ $2,098.5000 trader_pnl=+23.26 copy_pnl=+0.1163 자본=$10,002.79
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.119 @ $2,097.6000 trader_pnl=+11.39 copy_pnl=+0.0569 자본=$10,002.85
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.119 @ $2,099.1000 trader_pnl=+11.57 copy_pnl=+0.0578 자본=$10,002.91
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.094 @ $2,100.0000 trader_pnl=+9.26 copy_pnl=+0.0463 자본=$10,002.95
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.050 @ $2,097.1000 trader_pnl=+4.78 copy_pnl=+0.0239 자본=$10,002.98
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.050 @ $2,097.7000 trader_pnl=+4.81 copy_pnl=+0.0240 자본=$10,003.00
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.119 @ $2,098.4000 trader_pnl=+11.52 copy_pnl=+0.0576 자본=$10,003.06
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.200 @ $2,098.4000 trader_pnl=+19.36 copy_pnl=+0.0968 자본=$10,003.15
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.092 @ $2,093.5000 trader_pnl=+8.49 copy_pnl=+0.0425 자본=$10,003.20
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.016 @ $2,093.5000 trader_pnl=+1.51 copy_pnl=+0.0075 자본=$10,003.20
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.092 @ $2,092.5000 trader_pnl=+8.40 copy_pnl=+0.0420 자본=$10,003.25
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.016 @ $2,098.6000 trader_pnl=+1.59 copy_pnl=+0.0080 자본=$10,003.25
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,120.2000 trader_pnl=+14.01 copy_pnl=+0.0700 자본=$10,003.32
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.087 @ $2,120.6000 trader_pnl=+10.33 copy_pnl=+0.0517 자본=$10,003.38
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.819 @ $2,120.3000 trader_pnl=+97.20 copy_pnl=+0.4860 자본=$10,003.86
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,135.8000 trader_pnl=+15.78 copy_pnl=+0.0789 자본=$10,003.94
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.315 @ $2,135.6000 trader_pnl=+42.18 copy_pnl=+0.2109 자본=$10,004.15
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.105 @ $2,135.6000 trader_pnl=+14.13 copy_pnl=+0.0706 자본=$10,004.22
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=1.046 @ $2,136.2000 trader_pnl=+140.87 copy_pnl=+0.7043 자본=$10,004.93
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,128.5000 trader_pnl=+14.95 copy_pnl=+0.0748 자본=$10,005.00
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.118 @ $2,127.7000 trader_pnl=+14.86 copy_pnl=+0.0743 자본=$10,005.08
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.101 @ $2,131.2000 trader_pnl=+13.07 copy_pnl=+0.0653 자본=$10,005.14
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=5.251 @ $2,127.9000 trader_pnl=+663.28 copy_pnl=+3.3164 자본=$10,008.46
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.116 @ $2,143.6000 trader_pnl=+16.52 copy_pnl=+0.0826 자본=$10,008.54
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.116 @ $2,142.7000 trader_pnl=+16.41 copy_pnl=+0.0821 자본=$10,008.62
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.537 @ $2,139.7000 trader_pnl=+74.18 copy_pnl=+0.3709 자본=$10,008.99
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.005 @ $2,148.7000 trader_pnl=+0.74 copy_pnl=+0.0037 자본=$10,009.00
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.010 @ $2,148.7000 trader_pnl=+1.44 copy_pnl=+0.0072 자본=$10,009.00
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=5.107 @ $2,154.4000 trader_pnl=+780.48 copy_pnl=+3.9024 자본=$10,012.91
+00:53:46 [INFO]   ✅ [YjCD9Gek] ETH close_long amt=0.007 @ $2,160.9000 trader_pnl=+1.08 copy_pnl=+0.0054 자본=$10,012.91
+00:53:47 [INFO]   [HtC4WT6J] 내역 100건 조회
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,563.0000 trader_pnl=-0.15 copy_pnl=-0.0005 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,590.0000 trader_pnl=-0.44 copy_pnl=-0.0015 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,601.0000 trader_pnl=-0.31 copy_pnl=-0.0011 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,602.0000 trader_pnl=-0.29 copy_pnl=-0.0010 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,602.0000 trader_pnl=-0.15 copy_pnl=-0.0005 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,556.0000 trader_pnl=-0.29 copy_pnl=-0.0010 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,609.0000 trader_pnl=-0.28 copy_pnl=-0.0010 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,629.0000 trader_pnl=-0.27 copy_pnl=-0.0009 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,578.0000 trader_pnl=-0.18 copy_pnl=-0.0006 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,579.0000 trader_pnl=-0.30 copy_pnl=-0.0011 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,580.0000 trader_pnl=-0.29 copy_pnl=-0.0010 자본=$10,012.90
+00:53:47 [INFO]   ✅ [HtC4WT6J] LIT close_long amt=22.500 @ $1.1006 trader_pnl=+0.61 copy_pnl=+0.0021 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] ETH close_long amt=0.006 @ $2,085.9000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] ETH close_long amt=0.023 @ $2,086.0000 trader_pnl=-0.93 copy_pnl=-0.0033 자본=$10,012.90
+00:53:47 [INFO]   ✅ [HtC4WT6J] XRP close_short amt=956.860 @ $1.3951 trader_pnl=+7.04 copy_pnl=+0.0246 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,797.0000 trader_pnl=-0.13 copy_pnl=-0.0005 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=1.340 @ $36.5630 trader_pnl=-0.85 copy_pnl=-0.0030 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,821.0000 trader_pnl=-0.50 copy_pnl=-0.0017 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,831.0000 trader_pnl=-0.49 copy_pnl=-0.0017 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,831.0000 trader_pnl=-0.49 copy_pnl=-0.0017 자본=$10,012.92
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,836.0000 trader_pnl=-0.46 copy_pnl=-0.0016 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,837.0000 trader_pnl=-0.10 copy_pnl=-0.0003 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.5710 trader_pnl=-1.70 copy_pnl=-0.0059 자본=$10,012.91
+00:53:47 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=1.340 @ $36.5750 trader_pnl=-0.83 copy_pnl=-0.0029 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,865.0000 trader_pnl=-0.28 copy_pnl=-0.0010 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.20 copy_pnl=-0.0007 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.23 copy_pnl=-0.0008 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.21 copy_pnl=-0.0007 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,866.0000 trader_pnl=-0.22 copy_pnl=-0.0008 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,867.0000 trader_pnl=-0.18 copy_pnl=-0.0006 자본=$10,012.90
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,867.0000 trader_pnl=-1.39 copy_pnl=-0.0049 자본=$10,012.89
+00:53:47 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.6110 trader_pnl=-1.59 copy_pnl=-0.0056 자본=$10,012.89
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,856.0000 trader_pnl=-1.41 copy_pnl=-0.0049 자본=$10,012.88
+00:53:47 [INFO]   ✅ [HtC4WT6J] XRP close_short amt=10.340 @ $1.3968 trader_pnl=+0.06 copy_pnl=+0.0002 자본=$10,012.88
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,845.0000 trader_pnl=-0.14 copy_pnl=-0.0005 자본=$10,012.88
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,859.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.88
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,860.0000 trader_pnl=-0.47 copy_pnl=-0.0017 자본=$10,012.88
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,865.0000 trader_pnl=-0.93 copy_pnl=-0.0032 자본=$10,012.88
+00:53:47 [INFO]   ❌ [HtC4WT6J] SOL close_long amt=3.460 @ $88.0800 trader_pnl=-12.99 copy_pnl=-0.0455 자본=$10,012.83
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,757.0000 trader_pnl=-0.14 copy_pnl=-0.0005 자본=$10,012.83
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,855.0000 trader_pnl=-0.24 copy_pnl=-0.0008 자본=$10,012.83
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,882.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.83
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.016 @ $70,884.0000 trader_pnl=-10.39 copy_pnl=-0.0364 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,888.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,889.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,889.0000 trader_pnl=-0.25 copy_pnl=-0.0009 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,890.0000 trader_pnl=-0.20 copy_pnl=-0.0007 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,890.0000 trader_pnl=-0.23 copy_pnl=-0.0008 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,890.0000 trader_pnl=-0.21 copy_pnl=-0.0007 자본=$10,012.79
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,891.0000 trader_pnl=-1.33 copy_pnl=-0.0047 자본=$10,012.78
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,891.0000 trader_pnl=-0.55 copy_pnl=-0.0019 자본=$10,012.78
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,891.0000 trader_pnl=-1.34 copy_pnl=-0.0047 자본=$10,012.78
+00:53:47 [INFO]   ✅ [HtC4WT6J] XRP close_short amt=33.620 @ $1.3960 trader_pnl=+0.22 copy_pnl=+0.0008 자본=$10,012.78
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,817.0000 trader_pnl=-0.27 copy_pnl=-0.0009 자본=$10,012.78
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.001 @ $70,823.0000 trader_pnl=-0.49 copy_pnl=-0.0017 자본=$10,012.77
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,824.0000 trader_pnl=-1.47 copy_pnl=-0.0052 자본=$10,012.77
+00:53:47 [INFO]   ❌ [HtC4WT6J] HYPE close_long amt=2.710 @ $36.5720 trader_pnl=-1.94 copy_pnl=-0.0068 자본=$10,012.76
+00:53:47 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,857.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.76
+00:53:47 [INFO]   [6ZjWoJKe] 내역 100건 조회
+00:53:48 [INFO]   [E8j5xSbG] 내역 100건 조회
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.340 @ $36.5430 trader_pnl=+0.03 copy_pnl=+0.0001 자본=$10,012.76
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5430 trader_pnl=+0.03 copy_pnl=+0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.570 @ $87.8500 trader_pnl=-0.07 copy_pnl=-0.0004 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=1.350 @ $36.5030 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5030 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.570 @ $87.8700 trader_pnl=-0.06 copy_pnl=-0.0003 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=3.590 @ $1.3927 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=10.410 @ $1.3927 trader_pnl=-0.05 copy_pnl=-0.0002 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=11.520 @ $1.3927 trader_pnl=-0.05 copy_pnl=-0.0003 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=10.400 @ $1.3927 trader_pnl=-0.05 copy_pnl=-0.0002 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.210 @ $87.8900 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] PUMP close_long amt=25225.000 @ $0.0020 trader_pnl=-0.07 copy_pnl=-0.0003 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=0.730 @ $36.4870 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.4870 trader_pnl=-0.05 copy_pnl=-0.0002 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.4950 trader_pnl=-0.04 copy_pnl=-0.0002 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.4850 trader_pnl=-0.05 copy_pnl=-0.0003 자본=$10,012.76
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=7.006 @ $2,082.5000 trader_pnl=-84.89 copy_pnl=-0.4245 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] SOL close_long amt=0.570 @ $87.8600 trader_pnl=-0.07 copy_pnl=-0.0003 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5300 trader_pnl=+0.01 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.340 @ $36.5340 trader_pnl=+0.02 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5340 trader_pnl=+0.02 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.024 @ $2,082.4000 trader_pnl=-0.31 copy_pnl=-0.0015 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=16.200 @ $36.5230 trader_pnl=+0.20 copy_pnl=+0.0010 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] PUMP close_long amt=25201.000 @ $0.0020 trader_pnl=-0.01 copy_pnl=-0.0001 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=8.940 @ $1.3953 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.115 @ $2,087.2000 trader_pnl=-0.86 copy_pnl=-0.0043 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.026 @ $2,087.2000 trader_pnl=-0.19 copy_pnl=-0.0010 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.027 @ $2,087.2000 trader_pnl=-0.20 copy_pnl=-0.0010 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.023 @ $2,087.2000 trader_pnl=-0.17 copy_pnl=-0.0008 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.040 @ $2,087.2000 trader_pnl=-0.29 copy_pnl=-0.0015 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.340 @ $36.5520 trader_pnl=+0.05 copy_pnl=+0.0002 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5520 trader_pnl=+0.05 copy_pnl=+0.0003 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.570 @ $88.0100 trader_pnl=+0.02 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.570 @ $88.0500 trader_pnl=+0.04 copy_pnl=+0.0002 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.140 @ $88.0700 trader_pnl=+0.01 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5630 trader_pnl=+0.07 copy_pnl=+0.0003 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=0.200 @ $36.5670 trader_pnl=+0.01 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=35.820 @ $1.3964 trader_pnl=-0.04 copy_pnl=-0.0002 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=0.820 @ $36.5670 trader_pnl=+0.04 copy_pnl=+0.0002 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5750 trader_pnl=+0.08 copy_pnl=+0.0004 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.340 @ $36.5820 trader_pnl=+0.09 copy_pnl=+0.0004 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5820 trader_pnl=+0.09 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.140 @ $88.1900 trader_pnl=+0.03 copy_pnl=+0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5830 trader_pnl=+0.09 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5830 trader_pnl=+0.09 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5870 trader_pnl=+0.10 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.340 @ $36.5910 trader_pnl=+0.10 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5910 trader_pnl=+0.10 copy_pnl=+0.0005 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5530 trader_pnl=+0.05 copy_pnl=+0.0003 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=57.400 @ $1.3967 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.115 @ $2,089.6000 trader_pnl=-0.58 copy_pnl=-0.0029 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=35.840 @ $1.3955 trader_pnl=-0.08 copy_pnl=-0.0004 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] XRP close_long amt=17.720 @ $1.3956 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.570 @ $88.0800 trader_pnl=+0.06 copy_pnl=+0.0003 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.570 @ $88.0800 trader_pnl=+0.06 copy_pnl=+0.0003 자본=$10,012.33
+00:53:48 [INFO]   ❌ [E8j5xSbG] HYPE close_short amt=70.790 @ $36.4920 trader_pnl=-9.16 copy_pnl=-0.0458 자본=$10,012.28
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.014 @ $2,091.3000 trader_pnl=-0.06 copy_pnl=-0.0003 자본=$10,012.28
+00:53:48 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=0.006 @ $2,091.6000 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.28
+00:53:48 [INFO]   ✅ [E8j5xSbG] ENA close_short amt=3304.000 @ $0.1081 trader_pnl=+1.25 copy_pnl=+0.0063 자본=$10,012.29
+00:53:48 [INFO]   ✅ [E8j5xSbG] ENA close_short amt=1818.000 @ $0.1081 trader_pnl=+0.69 copy_pnl=+0.0034 자본=$10,012.29
+00:53:48 [INFO]   ✅ [E8j5xSbG] ENA close_short amt=18658.000 @ $0.1081 trader_pnl=+7.07 copy_pnl=+0.0354 자본=$10,012.33
+00:53:48 [INFO]   ✅ [E8j5xSbG] ENA close_short amt=9243.000 @ $0.1081 trader_pnl=+3.50 copy_pnl=+0.0175 자본=$10,012.34
+00:53:48 [INFO]   ✅ [E8j5xSbG] SOL close_long amt=0.570 @ $88.2000 trader_pnl=+0.12 copy_pnl=+0.0006 자본=$10,012.34
+00:53:48 [INFO]   → 신규 처리: 226건
+00:53:48 [INFO]   💤 120초 대기 | 잔여 60.0분
+00:55:48 [INFO] 
+🔄 폴링 #2 | 자본=$10,012.34 | ROI=+0.12% | 처리=226건
+00:55:48 [INFO]   [4TYEjn9P] 내역 100건 조회
+00:55:49 [INFO]   [YjCD9Gek] 내역 100건 조회
+00:55:50 [INFO]   [HtC4WT6J] 내역 100건 조회
+00:55:50 [INFO]   [6ZjWoJKe] 내역 100건 조회
+00:55:51 [INFO]   [E8j5xSbG] 내역 100건 조회
+00:55:51 [INFO]   ❌ [E8j5xSbG] ETH close_long amt=2.653 @ $2,085.0000 trader_pnl=-25.52 copy_pnl=-0.1276 자본=$10,012.22
+00:55:51 [INFO]   ✅ [E8j5xSbG] BTC close_short amt=0.283 @ $70,596.0000 trader_pnl=+61.39 copy_pnl=+0.3070 자본=$10,012.52
+00:55:51 [INFO]   ❌ [E8j5xSbG] BNB close_long amt=0.098 @ $652.4600 trader_pnl=-0.13 copy_pnl=-0.0007 자본=$10,012.52
+00:55:51 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.5550 trader_pnl=+0.04 copy_pnl=+0.0002 자본=$10,012.52
+00:55:51 [INFO]   → 신규 처리: 4건
+00:55:51 [INFO]   💤 120초 대기 | 잔여 57.9분
+00:57:51 [INFO] 
+🔄 폴링 #3 | 자본=$10,012.52 | ROI=+0.13% | 처리=230건
+00:57:51 [INFO]   [4TYEjn9P] 내역 100건 조회
+00:57:51 [INFO]   ❌ [4TYEjn9P] BTC close_short amt=0.003 @ $70,621.0000 trader_pnl=-3.14 copy_pnl=-0.0988 자본=$10,012.42
+00:57:52 [INFO]   [YjCD9Gek] 내역 100건 조회
+00:57:52 [INFO]   [HtC4WT6J] 내역 100건 조회
+00:57:52 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,635.0000 trader_pnl=-0.30 copy_pnl=-0.0010 자본=$10,012.42
+00:57:52 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,636.0000 trader_pnl=-0.29 copy_pnl=-0.0010 자본=$10,012.42
+00:57:52 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,636.0000 trader_pnl=-0.31 copy_pnl=-0.0011 자본=$10,012.42
+00:57:52 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,636.0000 trader_pnl=-0.14 copy_pnl=-0.0005 자본=$10,012.42
+00:57:52 [INFO]   ❌ [HtC4WT6J] PLTR close_short amt=4.813 @ $150.9300 trader_pnl=-0.02 copy_pnl=-0.0001 자본=$10,012.42
+00:57:52 [INFO]   ❌ [HtC4WT6J] PLTR close_short amt=6.510 @ $150.9300 trader_pnl=-0.03 copy_pnl=-0.0001 자본=$10,012.42
+00:57:53 [INFO]   [6ZjWoJKe] 내역 100건 조회
+00:57:53 [INFO]   [E8j5xSbG] 내역 100건 조회
+00:57:53 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.360 @ $36.6510 trader_pnl=+0.17 copy_pnl=+0.0009 자본=$10,012.42
+00:57:53 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.350 @ $36.6550 trader_pnl=+0.18 copy_pnl=+0.0009 자본=$10,012.42
+00:57:53 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.360 @ $36.6550 trader_pnl=+0.18 copy_pnl=+0.0009 자본=$10,012.42
+00:57:54 [INFO]   → 신규 처리: 10건
+00:57:54 [INFO]   💤 120초 대기 | 잔여 55.9분
+00:59:54 [INFO] 
+🔄 폴링 #4 | 자본=$10,012.42 | ROI=+0.12% | 처리=240건
+00:59:54 [INFO]   [4TYEjn9P] 내역 100건 조회
+00:59:54 [INFO]   ✅ [4TYEjn9P] ICP close_short amt=0.100 @ $2.5759 trader_pnl=+0.02 copy_pnl=+0.0006 자본=$10,012.42
+00:59:55 [INFO]   [YjCD9Gek] 내역 100건 조회
+00:59:55 [INFO]   [HtC4WT6J] 내역 100건 조회
+00:59:55 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,637.0000 trader_pnl=-0.27 copy_pnl=-0.0010 자본=$10,012.42
+00:59:55 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,645.0000 trader_pnl=-1.62 copy_pnl=-0.0057 자본=$10,012.42
+00:59:55 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,645.0000 trader_pnl=-0.26 copy_pnl=-0.0009 자본=$10,012.42
+00:59:56 [INFO]   [6ZjWoJKe] 내역 100건 조회
+00:59:56 [INFO]   [E8j5xSbG] 내역 100건 조회
+00:59:56 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.6210 trader_pnl=+0.13 copy_pnl=+0.0007 자본=$10,012.42
+00:59:56 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.360 @ $36.6480 trader_pnl=+0.17 copy_pnl=+0.0009 자본=$10,012.42
+00:59:56 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.360 @ $36.6570 trader_pnl=+0.18 copy_pnl=+0.0009 자본=$10,012.42
+00:59:56 [INFO]   → 신규 처리: 7건
+00:59:56 [INFO]   💤 120초 대기 | 잔여 53.8분
+01:01:57 [INFO] 
+🔄 폴링 #5 | 자본=$10,012.42 | ROI=+0.12% | 처리=247건
+01:01:57 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:01:57 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:01:58 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:01:58 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.002 @ $70,605.0000 trader_pnl=-1.74 copy_pnl=-0.0061 자본=$10,012.41
+01:01:58 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:01:59 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:01:59 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=0.190 @ $36.6290 trader_pnl=+0.02 copy_pnl=+0.0001 자본=$10,012.41
+01:01:59 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.370 @ $36.6210 trader_pnl=+0.13 copy_pnl=+0.0007 자본=$10,012.41
+01:01:59 [INFO]   → 신규 처리: 3건
+01:01:59 [INFO]   💤 120초 대기 | 잔여 51.8분
+01:03:59 [INFO] 
+🔄 폴링 #6 | 자본=$10,012.41 | ROI=+0.12% | 처리=250건
+01:03:59 [INFO]   [4TYEjn9P] 내역 100건 조회
+01:04:00 [INFO]   [YjCD9Gek] 내역 100건 조회
+01:04:01 [INFO]   [HtC4WT6J] 내역 100건 조회
+01:04:01 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.000 @ $70,654.0000 trader_pnl=-0.17 copy_pnl=-0.0006 자본=$10,012.41
+01:04:01 [INFO]   ❌ [HtC4WT6J] BTC close_long amt=0.014 @ $70,656.0000 trader_pnl=-10.83 copy_pnl=-0.0379 자본=$10,012.38
+01:04:01 [INFO]   [6ZjWoJKe] 내역 100건 조회
+01:04:02 [INFO]   [E8j5xSbG] 내역 100건 조회
+01:04:02 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=18.550 @ $36.6930 trader_pnl=+3.38 copy_pnl=+0.0169 자본=$10,012.39
+01:04:02 [INFO]   ❌ [E8j5xSbG] ETH close_short amt=6.939 @ $2,087.1000 trader_pnl=-14.57 copy_pnl=-0.0729 자본=$10,012.32
+01:04:02 [INFO]   ✅ [E8j5xSbG] HYPE close_long amt=1.360 @ $36.6780 trader_pnl=+0.21 copy_pnl=+0.0011 자본=$10,012.32
+01:04:02 [INFO]   → 신규 처리: 5건
+01:04:02 [INFO]   💤 120초 대기 | 잔여 49.7분

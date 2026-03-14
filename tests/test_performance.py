@@ -289,17 +289,17 @@ class TestDBPerformance:
             for i in range(10000):
                 batch.append((
                     str(_uuid.uuid4()),
-                    TRADER, FOLLOWER,
+                    FOLLOWER, TRADER,
                     "BTC", "bid", "0.001",
                     "72000", "filled",
-                    now + i, now + i
+                    now + i
                 ))
                 if len(batch) == 500:
                     await conn.executemany(
                         """INSERT INTO copy_trades
-                        (id, trader_address, follower_address, symbol, side, amount,
-                         price, status, created_at, updated_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (id, follower_address, trader_address, symbol, side, amount,
+                         price, status, created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
                         batch
                     )
                     await conn.commit()

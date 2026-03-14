@@ -1,0 +1,82 @@
+{
+  "version": "v3",
+  "session_start": 1773450010.008205,
+  "session_end": 1773450310.0542636,
+  "duration_min": 5.0,
+  "poll_count": 5,
+  "initial_capital": 10000.0,
+  "final_capital": 10000.0,
+  "total_equity": 10000.0,
+  "total_pnl": 0.0,
+  "roi_pct": 0.0,
+  "win_rate": 0.0,
+  "wins": 0,
+  "losses": 0,
+  "total_trades": 0,
+  "profit_factor": 0,
+  "gross_profit": 0.0,
+  "gross_loss": 0.0,
+  "max_dd_pct": 0.0,
+  "calmar": 9999,
+  "sharpe_approx": null,
+  "orders": 15,
+  "skipped": 38,
+  "open_positions": 15,
+  "equity_series": [
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0
+  ],
+  "closed_trades": [],
+  "traders": [
+    {
+      "alias": "YjCD9Gek",
+      "pnl_30d": 98375.266672,
+      "pnl_7d": 82040.307287,
+      "equity": 927828.770838,
+      "score": 91841.28291800001,
+      "weight": 0.3198
+    },
+    {
+      "alias": "monogram",
+      "pnl_30d": 73284.294438,
+      "pnl_7d": 59544.643256,
+      "equity": 92283.404438,
+      "score": 67788.4339652,
+      "weight": 0.236
+    },
+    {
+      "alias": "Ph9yECGo",
+      "pnl_30d": 62490.955074,
+      "pnl_7d": 21835.090358,
+      "equity": 169143.922404,
+      "score": 46228.6091876,
+      "weight": 0.161
+    },
+    {
+      "alias": "GTU92nBC",
+      "pnl_30d": 53220.222671,
+      "pnl_7d": 29797.719501,
+      "equity": 498838.21257,
+      "score": 43851.221403,
+      "weight": 0.1527
+    },
+    {
+      "alias": "AEEqcwDj",
+      "pnl_30d": 48692.955197,
+      "pnl_7d": 20673.598006,
+      "equity": 298692.675197,
+      "score": 37485.2123206,
+      "weight": 0.1305
+    }
+  ],
+  "config": {
+    "copy_ratio": 0.02,
+    "max_position_usdc": 200.0,
+    "stop_loss_pct": 8.0,
+    "take_profit_pct": 15.0,
+    "max_open_positions": 15
+  }
+}
