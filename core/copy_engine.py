@@ -192,8 +192,8 @@ class CopyEngine:
             # builder_approved(구) 또는 builder_code_approved(신) 둘 중 하나라도 1이면 포함
             # mainnet에서 noivan 승인 완료 → 신규 팔로워는 온보딩 시 approve() 호출
             _bc_approved = (
-                follower.get("builder_code_approved", 0) or
-                follower.get("builder_approved", 0)
+                (follower["builder_code_approved"] if "builder_code_approved" in follower.keys() else 0) or
+                (follower["builder_approved"] if "builder_approved" in follower.keys() else 0)
             )
             bc = BUILDER_CODE if _bc_approved else ""
 
