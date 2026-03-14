@@ -1,0 +1,441 @@
+{
+  "timestamp": "2026-03-14T10:59:13",
+  "n_experiments": 112,
+  "improvements": 4,
+  "best_score": 2.510837545524,
+  "best_params": {
+    "w_consistency": 0.35,
+    "w_momentum": 0.2,
+    "w_risk_adj_roi": 0.2,
+    "w_copyability": 0.15,
+    "w_liq_safety": 0.1,
+    "min_equity": 50000.0,
+    "max_leverage": 10.0,
+    "max_turnover": 100.0,
+    "min_pnl_30d": 3000.0,
+    "min_consistency": 0.33,
+    "min_copyability": 0.3,
+    "momentum_cap": 3.0,
+    "momentum_floor": -1.0,
+    "n_traders": 5,
+    "max_pos_usdc": 600.0
+  },
+  "selected_traders": [
+    {
+      "address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+      "alias": "Ph9yECGodDAj",
+      "score": 0.755,
+      "roi_30d": 59.52735985184398,
+      "leverage": 0.8254552458957226,
+      "consistency": 0.6666666666666666,
+      "copyability": 0.9426035617316233,
+      "momentum": 1.5589417871578104,
+      "risk_adj_roi": 32.60959696803458,
+      "equity": 167627.681967
+    },
+    {
+      "address": "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+      "alias": "YjCD9Gek6MVY",
+      "score": 0.6395,
+      "roi_30d": 11.304000664982828,
+      "leverage": 1.1399959561273272,
+      "consistency": 0.6666666666666666,
+      "copyability": 0.8436449695025924,
+      "momentum": 3.756249675365759,
+      "risk_adj_roi": 5.282253283057257,
+      "equity": 923130.385691
+    },
+    {
+      "address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1",
+      "alias": "49R9MFU7Jopa",
+      "score": 0.5917,
+      "roi_30d": 8.369193914209278,
+      "leverage": 0.5072683784771892,
+      "consistency": 0.6666666666666666,
+      "copyability": 0.998438206853156,
+      "momentum": -0.45739011144931807,
+      "risk_adj_roi": 5.552557217888942,
+      "equity": 289776.274806
+    },
+    {
+      "address": "Ep1d8JdFw4FnB85XDgXGVabYutro4JzK285HQqW6TZE2",
+      "alias": "Ep1d8JdFw4Fn",
+      "score": 0.5671,
+      "roi_30d": 6.749977703582492,
+      "leverage": 1.278260017877995,
+      "consistency": 0.6666666666666666,
+      "copyability": 0.4321878006651291,
+      "momentum": 1.185289511616428,
+      "risk_adj_roi": 2.9627775805281087,
+      "equity": 258859.563477
+    },
+    {
+      "address": "DbB3TxHkGEA5jLY7DCbxbQWRNVrteUbHBhYwAgwL5TJh",
+      "alias": "DbB3TxHkGEA5",
+      "score": 0.5499,
+      "roi_30d": 7.946453120842258,
+      "leverage": 1.0467040243304935,
+      "consistency": 0.6666666666666666,
+      "copyability": 0.8892819030821023,
+      "momentum": -0.710424087770748,
+      "risk_adj_roi": 3.882560949887055,
+      "equity": 180253.469753
+    }
+  ],
+  "experiment_history": [
+    {
+      "exp": 63,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 64,
+      "field": "max_pos_usdc",
+      "delta": 25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 65,
+      "field": "max_pos_usdc",
+      "delta": -25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 66,
+      "field": "max_pos_usdc",
+      "delta": 50.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 67,
+      "field": "max_pos_usdc",
+      "delta": 50.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 68,
+      "field": "max_pos_usdc",
+      "delta": -25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 69,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 70,
+      "field": "max_pos_usdc",
+      "delta": 25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 71,
+      "field": "max_pos_usdc",
+      "delta": 25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 72,
+      "field": "max_pos_usdc",
+      "delta": 50.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 73,
+      "field": "max_pos_usdc",
+      "delta": 50.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 74,
+      "field": "max_pos_usdc",
+      "delta": 25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 75,
+      "field": "max_pos_usdc",
+      "delta": 25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 76,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 77,
+      "field": "max_pos_usdc",
+      "delta": -25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 78,
+      "field": "max_pos_usdc",
+      "delta": 50.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 79,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 80,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 81,
+      "field": "max_pos_usdc",
+      "delta": -50.0,
+      "score": 2.5004533973846734,
+      "improved": false
+    },
+    {
+      "exp": 82,
+      "field": "max_pos_usdc",
+      "delta": -25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 83,
+      "field": "max_pos_usdc",
+      "delta": -25.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 84,
+      "field": "w_consistency",
+      "delta": -0.1,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 85,
+      "field": "momentum_cap",
+      "delta": 1.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 86,
+      "field": "momentum_floor",
+      "delta": 0.25,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 87,
+      "field": "max_turnover",
+      "delta": -10,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 88,
+      "field": "momentum_cap",
+      "delta": 0.5,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 89,
+      "field": "momentum_floor",
+      "delta": -0.25,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 90,
+      "field": "max_turnover",
+      "delta": -20,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 91,
+      "field": "w_momentum",
+      "delta": 0.05,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 92,
+      "field": "momentum_floor",
+      "delta": 0.25,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 93,
+      "field": "w_momentum",
+      "delta": 0.1,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 94,
+      "field": "w_consistency",
+      "delta": -0.05,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 95,
+      "field": "min_pnl_30d",
+      "delta": -1000,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 96,
+      "field": "w_copyability",
+      "delta": -0.05,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 97,
+      "field": "min_equity",
+      "delta": 10000,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 98,
+      "field": "max_turnover",
+      "delta": 10,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 99,
+      "field": "max_turnover",
+      "delta": 10,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 100,
+      "field": "w_liq_safety",
+      "delta": 0.05,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 101,
+      "field": "momentum_cap",
+      "delta": 1.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 102,
+      "field": "max_turnover",
+      "delta": -10,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 103,
+      "field": "w_momentum",
+      "delta": -0.1,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 104,
+      "field": "momentum_cap",
+      "delta": 1.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 105,
+      "field": "w_copyability",
+      "delta": 0.1,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 106,
+      "field": "min_pnl_30d",
+      "delta": 2000,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 107,
+      "field": "n_traders",
+      "delta": 1,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 108,
+      "field": "momentum_floor",
+      "delta": 0.25,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 109,
+      "field": "momentum_cap",
+      "delta": 1.0,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 110,
+      "field": "w_consistency",
+      "delta": -0.05,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 111,
+      "field": "min_equity",
+      "delta": -25000,
+      "score": 2.510837545524,
+      "improved": false
+    },
+    {
+      "exp": 112,
+      "field": "w_consistency",
+      "delta": -0.1,
+      "score": 2.510837545524,
+      "improved": false
+    }
+  ],
+  "metrics_summary": {
+    "total_traders_analyzed": 25,
+    "traders_passed_filter": 7
+  }
+}

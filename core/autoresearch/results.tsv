@@ -1,0 +1,13 @@
+commit	tag	sharpe	roi_pct	win_rate	profit_factor	max_dd	n_traders	description
+29489fc	baseline	0	0.0	0	1.0	0.0	10	기본 설정 — autoresearch round 1 시작점
+29489fc	baseline	0.0581	0.0033	0.6842	1.0425	0.0712	10	기본 — W_MOM=0.35 W_PROFIT=0.30
+29489fc	high_mom	0.0581	0.0033	0.6842	1.0425	0.0715	10	고모멘텀 — momentum 비중 45%
+29489fc	strict_filter	1.7998	0.0533	0.8462	8.3462	0.0533	7	강화필터 — 엄격 기준
+29489fc	balanced	0.3873	0.0225	0.7895	1.3149	0.0627	10	균형 — 수익성 35% 강화
+29489fc	nonlinear_oi	0.1801	0.0101	0.7368	1.1434	0.0642	10	비선형OI패널티 — soft limit 0.5x
+89c631a	r2_higher_mom_sigmoid	1.6336	0.0491	0.8462	6.2185	0.0496	7	모멘텀 sigmoid 급경사 k=8
+89c631a	r2_consistency_bonus	1.7214	0.0525	0.8462	6.5784	0.053	7	일관성 가중치 25% 강화
+89c631a	r2_roi_saturation_low	1.7302	0.0527	0.8462	6.6026	0.0532	7	ROI 포화점 30% (이상치 더 강하게 압축)
+89c631a	r2_ultra_strict	0	0	0	1	0	0	초강력 필터 — 최상위만
+89c631a	r2_oi_soft_lower	1.6366	0.0476	0.8462	7.5573	0.0481	7	OI soft limit 0.3x, 강력 패널티
+89c631a	r2_momentum_focus	1.5486	0.0442	0.8889	7.8613	0.0462	5	모멘텀 집중 50%

@@ -1,0 +1,53 @@
+{
+  "follower_loss": -1078.599503,
+  "n_traders": 5,
+  "total_ept_net": 1078.5995,
+  "avg_mdd": 0.0,
+  "selected": [
+    {
+      "alias": "",
+      "crs": 104.89,
+      "grade": "A",
+      "copy_ratio": 0.0943,
+      "ept_net": 2906.5341,
+      "flags": []
+    },
+    {
+      "alias": "",
+      "crs": 104.89,
+      "grade": "A",
+      "copy_ratio": 0.0877,
+      "ept_net": 157.7567,
+      "flags": []
+    },
+    {
+      "alias": "",
+      "crs": 104.89,
+      "grade": "A",
+      "copy_ratio": 0.0959,
+      "ept_net": 785.8988,
+      "flags": []
+    },
+    {
+      "alias": "",
+      "crs": 99.89,
+      "grade": "A",
+      "copy_ratio": 0.0879,
+      "ept_net": 1065.6946,
+      "flags": [
+        "\u26a0\ufe0f \uace0\ube48\ub3c4 \uc2ac\ub9ac\ud53c\uc9c0 \uc704\ud5d8 (300\uac74, \ud328\ub110\ud2f0=0.05)"
+      ]
+    },
+    {
+      "alias": "",
+      "crs": 99.89,
+      "grade": "A",
+      "copy_ratio": 0.0879,
+      "ept_net": 368.5656,
+      "flags": [
+        "\u26a0\ufe0f \uace0\ube48\ub3c4 \uc2ac\ub9ac\ud53c\uc9c0 \uc704\ud5d8 (300\uac74, \ud328\ub110\ud2f0=0.05)"
+      ]
+    }
+  ],
+  "timestamp": "2026-03-14T11:08:46.723022"
+}

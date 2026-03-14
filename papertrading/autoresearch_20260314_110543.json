@@ -1,0 +1,159 @@
+{
+  "timestamp": "20260314_110543",
+  "iterations": 288,
+  "best_score": -999,
+  "best_config": {},
+  "best_result": {},
+  "top10": [
+    {
+      "iteration": 1,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "equal",
+        "max_traders": 3
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 2,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "equal",
+        "max_traders": 5
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 3,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "roi",
+        "max_traders": 3
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 4,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "roi",
+        "max_traders": 5
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 5,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "sharpe",
+        "max_traders": 3
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 6,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "sharpe",
+        "max_traders": 5
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 7,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "sortino",
+        "max_traders": 3
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 8,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 5,
+        "weight_method": "sortino",
+        "max_traders": 5
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 9,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 10,
+        "weight_method": "equal",
+        "max_traders": 3
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    },
+    {
+      "iteration": 10,
+      "score": -999,
+      "params": {
+        "min_profit_factor": 0.0,
+        "min_sortino": -999,
+        "max_mcl": 10,
+        "weight_method": "equal",
+        "max_traders": 5
+      },
+      "result": {
+        "score": -999,
+        "reason": "\ud2b8\ub808\uc774\ub354 \ubd80\uc871 (0\uba85)"
+      }
+    }
+  ]
+}
