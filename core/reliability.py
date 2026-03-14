@@ -1,489 +1,599 @@
 """
-트레이더 신뢰성 점수 v2 — Composite Reliability Score (CRS-v2)
-==============================================================
-학술/산업 표준 지표 전수 구현:
-  - Sharpe, Sortino, Calmar (Sharpe 1966, Young 1991)
-  - Ulcer Index / UPI (Peter Martin 1987)
-  - Profit Factor, Expectancy, Kelly (Ralph Vince)
-  - Risk of Ruin (Larry Williams)
-  - Common Sense Ratio, Tail Ratio (Van Tharp)
-  - GHPR (Geometric Holding Period Return)
-  - Recovery Factor (ZuluTrade)
-  - Strategy Purity (Copy Perp 자체 개발)
+core/reliability.py
+트레이더 성과 신뢰성 측정 — Composite Reliability Score (CRS)
 
-팔로워 수익 직결 원칙:
-  EPT_net = EPT_gross - (avg_position × follower_cost)  > 0 필수
-  follower_cost = taker_fee(0.06%) + slippage_est(0.05%) = 0.11%
+핵심 철학: 단순 PnL이 아닌 "이 성과가 팔로워에게 재현 가능한가?"
+
+3가지 신뢰성 함정을 필터링:
+  1. 비활성 함정    — 최근엔 아무것도 안 함, 과거 성과로 포장
+  2. 하락 전환 함정 — 30일 좋지만 최근 7일 급격히 하락 중
+  3. 레버리지 함정  — OI/Equity 비율 극단, 팔로워 슬리피지 폭발
+
+추가: trades/history 개별 거래 기반 통계 (Profit Factor, Expectancy, 연속손실)
+
+입력: leaderboard 데이터 + (선택) trades/history 배열
+출력: CRS 0~100, 티어 S/A/B/C/D, 권장 copy_ratio
 """
 from __future__ import annotations
 import math
-from collections import Counter
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
-# ── 비용 상수 ────────────────────────────────────────────
-TAKER_FEE     = 0.0006
-SLIPPAGE_EST  = 0.0005
-FOLLOWER_COST = TAKER_FEE + SLIPPAGE_EST   # 0.11%
+# ────────────────────────────────────────────
+# 등급 기준
+# ────────────────────────────────────────────
+GRADE = {"S": 80, "A": 65, "B": 50, "C": 35, "D": 0}
+MAX_COPY_RATIO = {"S": 0.15, "A": 0.10, "B": 0.07, "C": 0.04, "D": 0.0}
 
-# ── 등급 체계 ─────────────────────────────────────────────
-GRADES = {
-    "S": {"min_crs": 80, "max_ratio": 0.15, "label": "Elite"},
-    "A": {"min_crs": 70, "max_ratio": 0.10, "label": "Recommended"},
-    "B": {"min_crs": 60, "max_ratio": 0.07, "label": "Standard"},
-    "C": {"min_crs": 50, "max_ratio": 0.05, "label": "Caution"},
-    "D": {"min_crs":  0, "max_ratio": 0.00, "label": "Excluded"},
-}
+# ────────────────────────────────────────────
+# 하드 필터 (하나라도 해당 → D등급 즉시 제외)
+# ────────────────────────────────────────────
+HARD_FILTER = dict(
+    min_equity_usdc   = 10_000,   # 최소 자산 $10k (너무 소규모 제외)
+    min_pnl_30d       =  1_000,   # 30일 최소 수익 $1k
+    max_oi_equity_ratio=   3.0,   # OI/Equity 최대 3배 (극단 레버리지 제외)
+    min_consistency   =      2,   # 활동 일관성 최소 2 (1=거의 비활성)
+    min_momentum_ratio=  -0.30,   # 7d/30d >= -30% (30일 대비 최근 -30% 초과 하락 제외)
+    max_roi_30d       =   300.0,  # ROI 300% 초과 → 단발성 투기 의심
+)
 
 
-# ═══════════════════════════════════════════════════════════
-# 1. 원시 지표 계산 함수
-# ═══════════════════════════════════════════════════════════
+# ────────────────────────────────────────────
+# 보조 함수
+# ────────────────────────────────────────────
+def _norm(v: float, lo: float, hi: float, invert: bool = False) -> float:
+    """0~100 정규화, 항상 클램핑 보장"""
+    if hi == lo:
+        return 50.0
+    s = (max(lo, min(hi, v)) - lo) / (hi - lo) * 100
+    return round(max(0.0, min(100.0, 100 - s if invert else s)), 2)
 
-def compute_all_metrics(trades: list) -> dict:
+
+def _safe(v, fallback=0.0):
+    try:
+        return float(v or 0)
+    except Exception:
+        return fallback
+
+
+# ────────────────────────────────────────────
+# 개별 거래 기반 계산 (trades/history 있을 때)
+# ────────────────────────────────────────────
+def calc_trade_stats(trades: list[dict]) -> dict:
     """
-    거래 내역에서 전체 성과 지표를 계산한다.
-    trades: [{'pnl': float, 'created_at': ms, 'side': str, 'fee': float, ...}]
+    trades/history 배열 → 세부 통계
+    필드: pnl, amount, price, entry_price, cause, created_at, side
     """
-    pnl_series = [float(t.get("pnl", 0) or 0)
-                  for t in sorted(trades, key=lambda x: x.get("created_at", 0))]
-    pnl_hits   = [p for p in pnl_series if p != 0]
-    wins       = [p for p in pnl_hits if p > 0]
-    losses     = [p for p in pnl_hits if p < 0]
-    fees       = [float(t.get("fee", 0) or 0) for t in trades]
+    pnls = [_safe(t.get("pnl")) for t in trades
+            if _safe(t.get("pnl")) != 0.0 and t.get("cause") != "liquidation"]
 
-    n = len(pnl_hits)
-    if n == 0:
-        return {"error": "no_pnl_data", "sample_n": 0}
+    if not pnls:
+        return {}
 
-    # ── 기본 통계 ─────────────────────────────────────────
-    total_pnl  = sum(pnl_hits)
-    total_fee  = sum(fees)
-    win_rate   = len(wins) / n
-    loss_rate  = 1.0 - win_rate
-    avg_win    = sum(wins) / len(wins)     if wins   else 0.0
-    avg_loss   = sum(losses) / len(losses) if losses else 0.0
-    gross_wins = sum(wins)
-    gross_loss = abs(sum(losses))
+    wins   = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p < 0]
 
-    # ── 수익성 ────────────────────────────────────────────
+    win_rate     = len(wins) / len(pnls)
+    gross_win    = sum(wins)
+    gross_loss   = abs(sum(losses))
+    profit_factor= gross_win / gross_loss if gross_loss > 0 else 999.0
+    avg_win      = gross_win / len(wins) if wins else 0
+    avg_loss     = sum(losses) / len(losses) if losses else 0  # 음수
+    expectancy   = win_rate * avg_win + (1 - win_rate) * avg_loss  # 거래당 기대값
 
-    # Profit Factor
-    profit_factor = gross_wins / gross_loss if gross_loss > 0 else 999.0
-
-    # Expectancy (Ralph Vince)
-    expectancy = (win_rate * avg_win) + (loss_rate * avg_loss)
-
-    # Payoff Ratio (Risk:Reward)
-    payoff_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else 999.0
-
-    # Kelly Criterion (f*)
-    kelly = 0.0
-    if avg_loss != 0 and avg_win > 0:
-        kelly = (win_rate * avg_win - loss_rate * abs(avg_loss)) / abs(avg_loss)
-    kelly = max(0.0, kelly)
-
-    # GHPR (Geometric Holding Period Return)
-    ghpr = 0.0
-    base = max(abs(avg_loss) * 10, 100.0) if avg_loss else 100.0
-    if pnl_hits:
-        product = 1.0
-        for p in pnl_hits:
-            product *= (1.0 + p / base)
-        ghpr = (product ** (1.0 / n) - 1.0) * 100
-
-    # ── 위험 ──────────────────────────────────────────────
-
-    # MDD (수익률 기반 — 절대 PnL 기반 아님)
-    cumulative = []
-    cum = 0.0
-    for p in pnl_series:
-        cum += p
-        cumulative.append(cum)
-
-    peak, mdd = 0.0, 0.0
-    for c in cumulative:
-        peak = max(peak, c)
-        if peak > 0:
-            dd   = (peak - c) / peak
-            mdd  = max(mdd, dd)
-    mdd_pct = mdd * 100
-
-    # MDD 절대값 (Recovery Factor용)
-    mdd_abs = mdd * max(cumulative) if cumulative and max(cumulative) > 0 else 0.01
-
-    # Recovery Factor (ZuluTrade 핵심 지표)
-    recovery_factor = total_pnl / mdd_abs if mdd_abs > 0 else 999.0
-
-    # Risk of Ruin (Larry Williams)
-    risk_of_ruin = 0.0
-    edge = win_rate - loss_rate
-    if edge > 0 and loss_rate > 0:
-        ror_base = (1.0 - edge) / (1.0 + edge)
-        risk_of_ruin = ror_base ** (1.0 / max(abs(avg_loss), 1e-6))
-    risk_of_ruin = min(max(risk_of_ruin, 0.0), 1.0) * 100  # %
-
-    # Max Consecutive Losses
-    max_consec_loss, cur = 0, 0
-    for p in pnl_hits:
+    # 최대 연속 손실 계산
+    max_streak = cur_streak = 0
+    for p in pnls:
         if p < 0:
-            cur += 1
-            max_consec_loss = max(max_consec_loss, cur)
+            cur_streak += 1
+            max_streak = max(max_streak, cur_streak)
         else:
-            cur = 0
+            cur_streak = 0
 
-    # ── 위험조정 수익 ──────────────────────────────────────
+    # 청산 비율 (신뢰성 치명적)
+    liq_count = sum(1 for t in trades if t.get("cause") == "liquidation")
+    liq_rate  = liq_count / len(trades) if trades else 0
 
-    # Sharpe Ratio (거래별)
-    sharpe = 0.0
-    if n > 1:
-        mean_r = sum(pnl_hits) / n
-        var    = sum((p - mean_r) ** 2 for p in pnl_hits) / (n - 1)
-        std_r  = math.sqrt(var) if var > 0 else 0.0
-        sharpe = (mean_r / std_r) * math.sqrt(n) if std_r > 0 else 0.0
+    # 평균 보유 시간 (분) — created_at ms 타임스탬프 기준
+    hold_times = []
+    by_symbol: dict[str, list] = {}
+    for t in trades:
+        sym  = t.get("symbol", "")
+        side = t.get("side", "")
+        ts   = _safe(t.get("created_at", 0)) / 1000  # ms → s
+        by_symbol.setdefault(sym, []).append((ts, side, _safe(t.get("pnl"))))
 
-    # Sortino Ratio (하방 변동성만 패널티)
-    sortino = 0.0
-    if losses and n > 1:
-        mean_r       = sum(pnl_hits) / n
-        down_var     = sum(l ** 2 for l in losses) / len(losses)
-        downside_std = math.sqrt(down_var) if down_var > 0 else 0.0
-        sortino      = (mean_r / downside_std) * math.sqrt(n) if downside_std > 0 else 999.0
-    elif not losses:
-        sortino = 999.0
+    for sym, events in by_symbol.items():
+        events.sort()
+        for i in range(1, len(events)):
+            dt = (events[i][0] - events[i-1][0]) / 60
+            if 0 < dt < 10080:  # 1주일 이내만
+                hold_times.append(dt)
 
-    # Calmar Ratio
-    calmar = total_pnl / mdd_abs if mdd_abs > 0 else 999.0
+    avg_hold_min = sum(hold_times) / len(hold_times) if hold_times else 60.0
 
-    # Ulcer Index (Peter Martin 1987)
-    drawdowns = []
-    peak2 = 0.0
-    for c in cumulative:
-        peak2 = max(peak2, c)
-        dd2   = (peak2 - c) / peak2 if peak2 > 0 else 0.0
-        drawdowns.append(dd2 * 100)
-    ulcer_index = math.sqrt(sum(d ** 2 for d in drawdowns) / len(drawdowns)) if drawdowns else 0.0
+    # 포지션 크기 분포 (슬리피지 영향 분석)
+    position_usdc_list = []
+    for t in trades:
+        amt = _safe(t.get("amount"))
+        ep  = _safe(t.get("entry_price")) or _safe(t.get("price"))
+        if amt > 0 and ep > 0:
+            position_usdc_list.append(amt * ep)
+    avg_position_usdc = (sum(position_usdc_list) / len(position_usdc_list)
+                         if position_usdc_list else 0)
 
-    # UPI (Ulcer Performance Index)
-    mean_r = sum(pnl_hits) / n
-    upi    = mean_r / ulcer_index if ulcer_index > 0 else 0.0
-
-    # Tail Ratio — 극단값 분포
-    tail_ratio = 0.0
-    if n >= 10:
-        s   = sorted(pnl_hits)
-        p5  = s[max(0, int(n * 0.05))]
-        p95 = s[min(n - 1, int(n * 0.95))]
-        tail_ratio = abs(p95 / p5) if p5 != 0 else 999.0
-
-    # Common Sense Ratio (Van Tharp) = PF × Tail Ratio
-    csr = profit_factor * tail_ratio if tail_ratio > 0 else 0.0
-
-    # ── 활동성 / 전략 순도 ─────────────────────────────────
-    tss = sorted([t.get("created_at", 0) for t in trades if t.get("created_at")])
-    span_hrs = (max(tss) - min(tss)) / 3_600_000 if len(tss) > 1 else 0.0
-    trades_per_day = len(trades) / (span_hrs / 24) if span_hrs > 0 else 0.0
-
-    sides  = [t.get("side", "") for t in trades]
-    opens  = sum(1 for s in sides if "open"  in s)
-    closes = sum(1 for s in sides if "close" in s)
-    longs  = sum(1 for s in sides if "long"  in s)
-    shorts = sum(1 for s in sides if "short" in s)
-    total_dir   = longs + shorts
-    close_ratio = closes / (opens + closes) if (opens + closes) > 0 else 0.0
-    dir_div     = min(longs, shorts) / max(longs, shorts) if max(longs, shorts) > 0 else 0.0
-    purity      = close_ratio * 0.6 + dir_div * 0.4
-
-    # 심볼 집중도
-    syms        = Counter(t.get("symbol", "") for t in trades)
-    top1_ratio  = syms.most_common(1)[0][1] / len(trades) if trades else 1.0
-
-    return {
-        # 기본
-        "sample_n":        n,
-        "total_pnl":       round(total_pnl, 4),
-        "total_fee":       round(total_fee, 4),
-        "net_pnl":         round(total_pnl - total_fee, 4),
-        "win_rate":        round(win_rate, 4),        # 0~1
-        "win_rate_pct":    round(win_rate * 100, 2),
-        "avg_win":         round(avg_win, 4),
-        "avg_loss":        round(avg_loss, 4),
-        "payoff_ratio":    round(payoff_ratio, 3),
-        # 수익성
-        "profit_factor":   round(profit_factor, 3),
-        "expectancy":      round(expectancy, 4),
-        "kelly":           round(kelly, 4),           # 0~무한
-        "kelly_pct":       round(kelly * 100, 2),
-        "ghpr_pct":        round(ghpr, 4),
-        # 위험
-        "mdd_pct":         round(mdd_pct, 2),
-        "recovery_factor": round(recovery_factor, 4),
-        "risk_of_ruin":    round(risk_of_ruin, 4),   # %
-        "max_consec_loss": max_consec_loss,
-        # 위험조정 수익
-        "sharpe":          round(sharpe, 4),
-        "sortino":         round(sortino, 4),
-        "calmar":          round(calmar, 4),
-        "ulcer_index":     round(ulcer_index, 4),
-        "upi":             round(upi, 4),
-        "tail_ratio":      round(tail_ratio, 4),
-        "common_sense_ratio": round(csr, 4),
-        # 활동성
-        "span_hrs":        round(span_hrs, 1),
-        "trades_per_day":  round(trades_per_day, 2),
-        # 전략 순도
-        "strategy_purity": round(purity, 3),
-        "close_ratio":     round(close_ratio, 3),
-        "direction_div":   round(dir_div, 3),
-        "top_symbol_ratio":round(top1_ratio, 3),
-    }
+    return dict(
+        trade_count     = len(pnls),
+        win_rate        = round(win_rate, 4),
+        profit_factor   = round(min(profit_factor, 999), 4),
+        avg_win         = round(avg_win, 4),
+        avg_loss        = round(avg_loss, 4),
+        expectancy      = round(expectancy, 4),
+        max_consecutive_loss = max_streak,
+        liquidation_rate= round(liq_rate, 4),
+        avg_hold_min    = round(avg_hold_min, 2),
+        avg_position_usdc = round(avg_position_usdc, 2),
+        gross_profit    = round(gross_win, 2),
+        gross_loss      = round(-gross_loss, 2),
+    )
 
 
-# ═══════════════════════════════════════════════════════════
-# 2. CRS-v2 복합 점수
-# ═══════════════════════════════════════════════════════════
+# ────────────────────────────────────────────
+# 5차원 점수 계산
+# ────────────────────────────────────────────
 
-def compute_crs_v2(
-    trades:   list,
-    pnl_1d:   float = 0.0,
-    pnl_7d:   float = 0.0,
-    pnl_30d:  float = 0.0,
-    equity:   float = 0.0,
-) -> dict:
+def _score_momentum(p30: float, p7: float, p1: float, roi30: float) -> tuple[float, list]:
     """
-    CRS-v2: Composite Reliability Score (0~100)
-    팔로워 관점에서 트레이더 신뢰성을 평가한다.
+    모멘텀 신뢰성 (25%)
+    핵심: 성과가 최근에도 유지되고 있는가?
 
-    등급:
-        S (80+) : 최대 15% 복사
-        A (70+) : 최대 10% 복사
-        B (60+) : 최대  7% 복사
-        C (50+) : 최대  5% 복사
-        D       : 팔로우 불가
+    함정 탐지:
+    - 비활성형: p7 ≈ 0 (최근에 아무것도 안 함)
+    - 하락전환형: p7 << 0 (최근 급락)
+    - 단발성: p7/p30 > 1.0 (한 주에 다 벌고 끝)
     """
-    m = compute_all_metrics(trades)
-    if "error" in m:
-        return _failed(m["error"])
+    warnings = []
+    if p30 <= 0:
+        return 0.0, ["30일 수익 없음"]
 
-    flags = []
+    m7_30 = p7 / p30  # 7일이 30일에서 차지하는 비중
 
-    # ── Hard Filter (즉시 실격) ──────────────────────────
-    if m["sample_n"] < 30:
-        return _failed("데이터 부족 (<30건)")
+    # 이상적: 0.15 ~ 0.45 (7일이 30일의 15~45% 기여 → 꾸준히 버는 중)
+    # 위험:   m7_30 < 0    (최근 손실)
+    # 의심:   m7_30 ≈ 0    (비활성)
+    # 단발:   m7_30 > 0.8  (한 주에 다 벌었음)
 
-    if m["strategy_purity"] < 0.25:
-        return _failed("펀딩비/보유 전략 의심 (purity<0.25)")
+    if m7_30 < 0:
+        ratio_score = _norm(m7_30, -0.5, 0, invert=True) * 0.4
+        warnings.append(f"최근 7일 손실 (30일 대비 {m7_30:.0%})")
+    elif m7_30 < 0.05:
+        ratio_score = 20.0
+        warnings.append(f"최근 비활성 (7일 기여 {m7_30:.1%})")
+    elif m7_30 > 0.80:
+        ratio_score = 55.0
+        warnings.append(f"단발성 의심 (7일에 {m7_30:.0%} 집중)")
+    else:
+        # 이상적 범위 0.15~0.45에서 100점
+        ratio_score = _norm(abs(m7_30 - 0.30), 0, 0.25, invert=True)
 
-    # 팔로워 실수익 EPT 계산
-    avg_pos_size = (abs(m["avg_win"]) + abs(m["avg_loss"])) / 2.0
-    follower_cost_usd = avg_pos_size * FOLLOWER_COST
-    ept_net = m["expectancy"] - follower_cost_usd
+    # 1일 모멘텀 가점/감점 (최근 하루 방향)
+    if p1 > 0:
+        day_bonus = min(15.0, p1 / max(p30, 1) * 100)
+    elif p1 < 0:
+        day_bonus = max(-20.0, p1 / max(p30, 1) * 100)
+        if p1 < -p30 * 0.05:
+            warnings.append(f"오늘 손실 ${p1:,.0f}")
+    else:
+        day_bonus = 0
 
-    if ept_net <= 0:
-        flags.append(f"⚠️ 팔로워 EPT 음수 (${ept_net:.4f}/trade)")
-
-    # ── 점수 계산 (100점 만점) ───────────────────────────
-
-    # A. 수익성 (35점)
-    pf_norm      = min(m["profit_factor"] / 10.0, 1.0)   # PF 10 = 만점
-    sharpe_norm  = min(m["sharpe"] / 3.0, 1.0)           # Sharpe 3 = 만점
-    score_pf     = pf_norm * 15
-    score_sharpe = sharpe_norm * 10
-    score_ept    = 10.0 if ept_net > 0 else 0.0
-
-    # B. 위험조정 수익 (30점)
-    sortino_norm  = min(m["sortino"] / 10.0, 1.0)        # Sortino 10 = 만점
-    csr_norm      = min(m["common_sense_ratio"] / 10.0, 1.0)  # CSR 10 = 만점
-    rf_norm       = min(m["recovery_factor"] / 5.0, 1.0) # RF 5 = 만점
-    score_sortino = sortino_norm * 15
-    score_csr     = csr_norm * 10
-    score_rf      = rf_norm * 5
-
-    # C. 위험 (20점)
-    ror_norm        = max(0.0, 1.0 - m["risk_of_ruin"] / 100)
-    mdd_norm        = max(0.0, 1.0 - m["mdd_pct"] / 100)        # 수익률 기반 MDD
-    consec_norm     = max(0.0, 1.0 - m["max_consec_loss"] / 20)
-    score_ror       = ror_norm * 10
-    score_mdd       = mdd_norm * 5
-    score_consec    = consec_norm * 5
-
-    # D. 전략 순도 / 활동성 (15점)
-    purity_norm      = m["strategy_purity"]
-    sample_norm      = min(m["sample_n"] / 100.0, 1.0)
-    score_purity     = purity_norm * 10
-    score_sample     = sample_norm * 5
-
-    raw = (score_pf + score_sharpe + score_ept +
-           score_sortino + score_csr + score_rf +
-           score_ror + score_mdd + score_consec +
-           score_purity + score_sample)
-
-    # ── 페널티 ───────────────────────────────────────────
-    if m["max_consec_loss"] > 15:
-        raw *= 0.85
-        flags.append(f"⚠️ 연속 손실 {m['max_consec_loss']}회")
-
-    if m["risk_of_ruin"] > 20:
-        raw *= 0.80
-        flags.append(f"⚠️ 파산위험 {m['risk_of_ruin']:.1f}%")
-
-    if m["top_symbol_ratio"] > 0.80:
-        flags.append(f"⚠️ 단일 심볼 집중 {m['top_symbol_ratio']*100:.0f}%")
-
-    # 일관성: 7d/30d PnL 비율
-    consistency = _consistency(pnl_1d, pnl_7d, pnl_30d)
-    if consistency < 0.5:
-        raw *= 0.90
-        flags.append("⚠️ 수익 일관성 낮음")
-
-    crs = min(max(raw, 0.0), 100.0)
-
-    # ── 등급 ─────────────────────────────────────────────
-    grade = "D"
-    for g, info in sorted(GRADES.items(), key=lambda x: x[1]["min_crs"], reverse=True):
-        if crs >= info["min_crs"]:
-            grade = g
-            break
-
-    max_ratio         = GRADES[grade]["max_ratio"]
-    kelly_safe        = m["kelly"] * 0.25
-    recommended_ratio = round(min(kelly_safe, max_ratio), 4)
-
-    return {
-        "crs":   round(crs, 1),
-        "grade": grade,
-        "grade_label":  GRADES[grade]["label"],
-        "max_copy_ratio":         max_ratio,
-        "recommended_copy_ratio": recommended_ratio,
-        "ept_net":   round(ept_net, 4),
-        "flags":     flags,
-        "metrics":   m,
-        "consistency": round(consistency, 3),
-        "score_breakdown": {
-            "profitability":  round(score_pf + score_sharpe + score_ept, 2),
-            "risk_adjusted":  round(score_sortino + score_csr + score_rf, 2),
-            "risk":           round(score_ror + score_mdd + score_consec, 2),
-            "purity_activity":round(score_purity + score_sample, 2),
-        },
-    }
+    score = max(0.0, min(100.0, ratio_score + day_bonus))
+    return round(score, 1), warnings
 
 
-# ── 적응형 복사 비율 ──────────────────────────────────────
-
-def adaptive_copy_ratio(crs_result: dict, current_drawdown_pct: float = 0.0) -> float:
+def _score_profitability(p30: float, roi30: float, p7: float,
+                         stats: dict) -> tuple[float, list]:
     """
-    현재 낙폭 상황을 반영한 동적 복사 비율
-    낙폭이 클수록 베팅 축소 (Kelly 원칙)
+    수익성 신뢰성 (30%)
+    개별 거래 stats가 있으면 Profit Factor / Expectancy로 보강
     """
-    base = crs_result.get("recommended_copy_ratio", 0.0)
-    if current_drawdown_pct > 20:
-        base *= 0.5
-    elif current_drawdown_pct > 10:
-        base *= 0.75
-    return round(base, 4)
+    warnings = []
+
+    # ROI 점수: 5%~100% → 정상 범위, 100% 초과는 의심
+    if roi30 > 200:
+        roi_score = 40.0  # 고ROI는 오히려 감점 (단발 투기 의심)
+        warnings.append(f"ROI {roi30:.0f}% — 단발 투기 의심")
+    elif roi30 > 50:
+        roi_score = 85.0
+    elif roi30 >= 5:
+        roi_score = _norm(roi30, 5, 50)
+    elif roi30 >= 0:
+        roi_score = _norm(roi30, 0, 5)
+    else:
+        roi_score = 0.0
+
+    # Profit Factor (개별 거래 데이터 있을 때)
+    pf = stats.get("profit_factor", 0)
+    if pf > 0:
+        pf_capped = min(pf, 5.0)
+        pf_score = _norm(math.log(pf_capped + 0.01),
+                         math.log(0.5), math.log(5.0))
+        if pf > 100:
+            warnings.append(f"Profit Factor {pf:.0f} — 이상치 의심")
+        elif pf > 2.0:
+            pass  # 강점
+        elif pf < 1.2:
+            warnings.append(f"Profit Factor {pf:.2f} 낮음")
+    else:
+        pf_score = 50.0  # 데이터 없으면 중립
+
+    # Expectancy (거래당 기대값)
+    exp = stats.get("expectancy", 0)
+    if exp > 0:
+        exp_score = min(100.0, _norm(exp, 0, 500))
+    elif exp < 0:
+        exp_score = 0.0
+        warnings.append(f"거래당 기대값 ${exp:.2f} (음수)")
+    else:
+        exp_score = 50.0
+
+    # 데이터 가중 합산
+    if stats:
+        score = roi_score * 0.35 + pf_score * 0.40 + exp_score * 0.25
+    else:
+        score = roi_score  # 개별 거래 없으면 ROI만
+    return round(score, 1), warnings
 
 
-def slippage_breakeven(metrics: dict) -> float:
-    """팔로워가 손익분기점이 되는 최대 슬리피지 (%)"""
-    ept      = metrics.get("expectancy", 0.0)
-    avg_pos  = (abs(metrics.get("avg_win", 0)) + abs(metrics.get("avg_loss", 0))) / 2.0
-    return round(ept / avg_pos * 100, 4) if avg_pos > 0 else 0.0
+def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float, list]:
+    """
+    리스크 신뢰성 (25%)
+    OI/Equity: 팔로워가 실제 따라갈 수 있는가 + 레버리지 과용
+    """
+    warnings = []
+
+    # OI/Equity 비율 (레버리지 proxy)
+    oi_ratio = oi / eq if eq > 0 else 0
+    if oi_ratio > 3.0:
+        oi_score = 0.0
+        warnings.append(f"OI/Equity {oi_ratio:.1f}x — 극단적 레버리지")
+    elif oi_ratio > 1.5:
+        oi_score = _norm(oi_ratio, 1.5, 3.0, invert=True) * 0.5
+        warnings.append(f"OI/Equity {oi_ratio:.1f}x (고위험)")
+    else:
+        oi_score = _norm(oi_ratio, 0, 1.5, invert=True)
+
+    # 청산 비율 (있으면)
+    liq_rate = stats.get("liquidation_rate", 0)
+    if liq_rate > 0.05:
+        liq_score = 0.0
+        warnings.append(f"청산 비율 {liq_rate:.1%} (신뢰 불가)")
+    elif liq_rate > 0.01:
+        liq_score = 30.0
+        warnings.append(f"청산 발생 {liq_rate:.1%}")
+    else:
+        liq_score = 100.0
+
+    # 최대 연속 손실
+    streak = stats.get("max_consecutive_loss", 0)
+    streak_score = _norm(streak, 0, 10, invert=True)
+    if streak > 5:
+        warnings.append(f"최대 연속 손실 {streak}건")
+
+    if stats:
+        score = oi_score * 0.45 + liq_score * 0.30 + streak_score * 0.25
+    else:
+        score = oi_score
+    return round(score, 1), warnings
 
 
-# ── 내부 헬퍼 ─────────────────────────────────────────────
+def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[float, list]:
+    """
+    일관성 신뢰성 (15%)
+    활동의 규칙성 — 꾸준히 매매하는가
+    """
+    warnings = []
 
-def _failed(reason: str) -> dict:
-    return {
-        "crs": 0.0, "grade": "D", "grade_label": "Excluded",
-        "max_copy_ratio": 0.0, "recommended_copy_ratio": 0.0,
-        "ept_net": 0.0, "flags": [f"❌ 실격: {reason}"],
-        "metrics": {}, "consistency": 0.0,
-        "score_breakdown": {"profitability": 0, "risk_adjusted": 0, "risk": 0, "purity_activity": 0},
-    }
+    # API의 consistency 필드 (1~5 스케일 추정)
+    cons_score = _norm(cons, 1, 5)
+    if cons <= 1:
+        warnings.append("활동 일관성 최하위 (비정기적 매매)")
 
+    # 거래 빈도 (있으면)
+    tc = stats.get("trade_count", 0)
+    if tc > 0:
+        if 10 <= tc <= 200:
+            freq_score = 100.0
+        elif tc < 5:
+            freq_score = 20.0
+            warnings.append(f"거래 {tc}건 — 표본 부족")
+        else:
+            freq_score = _norm(tc, 200, 500, invert=True)
+    else:
+        freq_score = 50.0
 
-def _consistency(pnl_1d: float, pnl_7d: float, pnl_30d: float) -> float:
-    """단기~장기 수익 방향 일관성 (0~1)"""
-    if pnl_30d <= 0:
-        return 0.0
-    if pnl_7d <= 0:
-        return 0.1
-    if pnl_1d <= 0:
-        return 0.5
-    ratio = pnl_7d / pnl_30d
-    return 1.0 if 0.05 <= ratio <= 0.7 else (0.8 if ratio > 0.7 else 0.6)
+    # 평균 보유 시간 (복사 가능성)
+    hold = stats.get("avg_hold_min", 60)
+    if hold < 3:
+        hold_score = 0.0
+        warnings.append(f"평균 보유 {hold:.1f}분 — 복사 불가")
+    elif hold < 10:
+        hold_score = 40.0
+        warnings.append(f"평균 보유 {hold:.1f}분 — 슬리피지 위험")
+    else:
+        hold_score = min(100.0, _norm(hold, 10, 480))
 
-
-# ── 텍스트 요약 ───────────────────────────────────────────
-
-def format_crs(result: dict, alias: str = "") -> str:
-    m   = result.get("metrics", {})
-    crs = result["crs"]
-    g   = result["grade"]
-    sb  = result["score_breakdown"]
-
-    lines = [
-        f"{'='*55}",
-        f"  {alias}  CRS: {crs:.1f}/100  [{g} — {result['grade_label']}]",
-        f"{'='*55}",
-        f"  추천 복사비율: {result['recommended_copy_ratio']*100:.2f}%",
-        f"  팔로워 EPT:   ${result['ept_net']:+.4f}/trade",
-        f"",
-        f"  [점수 분해]",
-        f"    수익성 ({sb['profitability']:.1f}/35):  PF={m.get('profit_factor',0):.2f}  Sharpe={m.get('sharpe',0):.2f}  EPT양수={result['ept_net']>0}",
-        f"    위험조정({sb['risk_adjusted']:.1f}/30): Sortino={m.get('sortino',0):.2f}  CSR={m.get('common_sense_ratio',0):.2f}  RF={m.get('recovery_factor',0):.2f}",
-        f"    위험     ({sb['risk']:.1f}/20):  RoR={m.get('risk_of_ruin',0):.1f}%  MDD={m.get('mdd_pct',0):.1f}%  연속손실={m.get('max_consec_loss',0)}회",
-        f"    순도     ({sb['purity_activity']:.1f}/15): Purity={m.get('strategy_purity',0):.2f}  표본={m.get('sample_n',0)}건",
-    ]
-    if result["flags"]:
-        lines.append(f"  [플래그]")
-        for f in result["flags"]:
-            lines.append(f"    {f}")
-    return "\n".join(lines)
+    if stats:
+        score = cons_score * 0.30 + freq_score * 0.35 + hold_score * 0.35
+    else:
+        score = cons_score
+    return round(score, 1), warnings
 
 
-# ═══════════════════════════════════════════════════════════
-# 테스트 실행
-# ═══════════════════════════════════════════════════════════
-if __name__ == "__main__":
-    import json, time, ssl, urllib.request
+def _score_copyability(stats: dict, p30: float) -> tuple[float, list]:
+    """
+    복사 가능성 (5%)
+    팔로워가 실제로 이 트레이더를 따라갈 수 있는가
+    (포지션 크기, 보유시간, 슬리피지 추정)
+    """
+    warnings = []
+    if not stats:
+        return 60.0, []
 
-    _ctx = ssl.create_default_context()
-    _ctx.check_hostname = False
-    _ctx.verify_mode    = ssl.CERT_NONE
+    avg_pos = stats.get("avg_position_usdc", 0)
+    hold    = stats.get("avg_hold_min", 60)
 
-    def _fetch(path, delay=3):
-        time.sleep(delay)
-        target = f"https://api.pacifica.fi/api/v1/{path}"
-        proxy  = f"https://api.codetabs.com/v1/proxy?quest={target}"
-        req    = urllib.request.Request(proxy, headers={"User-Agent": "CopyPerp/1.0"})
-        with urllib.request.urlopen(req, context=_ctx, timeout=20) as resp:
-            r = json.loads(resp.read().decode("utf-8", "ignore"))
-        return r.get("data") if isinstance(r, dict) and "data" in r else r
+    # 포지션 크기: $50~$5000이 이상적
+    if 50 <= avg_pos <= 5000:
+        pos_score = 100.0
+    elif avg_pos < 10:
+        pos_score = 20.0
+        warnings.append(f"평균 포지션 ${avg_pos:.0f} — 너무 소규모")
+    elif avg_pos > 50000:
+        pos_score = 30.0
+        warnings.append(f"평균 포지션 ${avg_pos:,.0f} — 슬리피지 심각")
+    else:
+        pos_score = 70.0
 
-    lb = _fetch("leaderboard?limit=100", delay=3)
-    lb_map = {t["address"]: t for t in lb} if lb else {}
+    # 보유시간 기반 복사 가능성
+    if hold < 3:
+        copy_score = 0.0
+    elif hold < 15:
+        copy_score = 50.0
+    else:
+        copy_score = 100.0
 
-    targets = [
-        ("YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E", "Whale-Alpha"),
-        ("GTU92nBC8LMyt9W4Qqc319BFR1vpkNNPAbt4QCnX7kZ6", "Multi-Strategy"),
-        ("Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "Multi-Pos"),
-    ]
+    score = pos_score * 0.50 + copy_score * 0.50
+    return round(score, 1), warnings
 
-    print("\n🔬 CRS-v2 신뢰성 점수 계산\n")
-    for addr, alias in targets:
-        trades = _fetch(f"trades/history?account={addr}&limit=100", delay=3)
-        if not trades:
-            print(f"{alias}: 거래 없음\n")
-            continue
-        lb_info = lb_map.get(addr, {})
-        result  = compute_crs_v2(
-            trades  = trades,
-            pnl_1d  = float(lb_info.get("pnl_1d",  0) or 0),
-            pnl_7d  = float(lb_info.get("pnl_7d",  0) or 0),
-            pnl_30d = float(lb_info.get("pnl_30d", 0) or 0),
-            equity  = float(lb_info.get("equity_current", 0) or 0),
+
+# ────────────────────────────────────────────
+# 메인 CRS 계산
+# ────────────────────────────────────────────
+
+@dataclass
+class CRSResult:
+    address:      str
+    alias:        str = ""
+
+    # 종합
+    crs:          float = 0.0   # Composite Reliability Score (0~100)
+    grade:        str   = "D"
+    disqualified: bool  = False
+    disq_reason:  str   = ""
+    recommended_copy_ratio: float = 0.0
+
+    # 차원별
+    momentum_score:     float = 0.0   # 25%
+    profitability_score:float = 0.0   # 30%
+    risk_score:         float = 0.0   # 25%
+    consistency_score:  float = 0.0   # 15%
+    copyability_score:  float = 0.0   # 5%
+
+    # 강점 / 경고
+    strengths: list = field(default_factory=list)
+    warnings:  list = field(default_factory=list)
+
+    # 원시 지표 (참고용)
+    raw: dict = field(default_factory=dict)
+
+    # 거래 통계 (있을 때)
+    trade_stats: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        # raw는 별도 키로만
+        return d
+
+    def summary_line(self) -> str:
+        stars = "⭐" * {"S":5,"A":4,"B":3,"C":2,"D":1}.get(self.grade, 1)
+        flags = " ".join(["⚠️" + w[:20] for w in self.warnings[:2]])
+        return (
+            f"[{self.grade}] {stars} {self.alias or self.address[:10]:<12} "
+            f"CRS={self.crs:.1f} | "
+            f"mom={self.momentum_score:.0f} profit={self.profitability_score:.0f} "
+            f"risk={self.risk_score:.0f} cons={self.consistency_score:.0f} | "
+            f"copy={self.recommended_copy_ratio*100:.1f}% {flags}"
         )
-        print(format_crs(result, alias))
-        sb = slippage_breakeven(result["metrics"])
-        print(f"  손익분기 슬리피지: {sb:.4f}%\n")
+
+
+def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
+    """
+    메인 CRS 계산 함수
+
+    raw: leaderboard API 응답 한 줄 (address, pnl_30d, pnl_7d, pnl_1d, roi_30d,
+                                      equity, oi, consistency, ...)
+    trades: trades/history API 배열 (선택 — 있으면 정밀도 대폭 향상)
+    """
+    addr  = raw.get("address", "")
+    alias = raw.get("alias", "") or raw.get("address", "")[:8]
+
+    p30   = _safe(raw.get("pnl_30d"))
+    p7    = _safe(raw.get("pnl_7d"))
+    p1    = _safe(raw.get("pnl_1d"))
+    p_at  = _safe(raw.get("pnl_all_time"))
+    roi30 = _safe(raw.get("roi_30d"))
+    eq    = _safe(raw.get("equity", 100000))
+    oi    = _safe(raw.get("oi"))
+    cons  = int(_safe(raw.get("consistency", 3)))
+
+    result = CRSResult(address=addr, alias=alias)
+    result.raw = {
+        "pnl_30d": p30, "pnl_7d": p7, "pnl_1d": p1,
+        "roi_30d": roi30, "equity": eq, "oi": oi,
+        "consistency": cons,
+    }
+
+    # ── 하드 필터 ─────────────────────────────────
+    oi_ratio    = oi / eq if eq > 0 else 0
+    mom_ratio   = p7 / p30 if p30 > 0 else 0
+
+    reasons = []
+    if eq < HARD_FILTER["min_equity_usdc"]:
+        reasons.append(f"자산 ${eq:,.0f} < ${HARD_FILTER['min_equity_usdc']:,}")
+    if p30 < HARD_FILTER["min_pnl_30d"]:
+        reasons.append(f"30일 PnL ${p30:,.0f} < ${HARD_FILTER['min_pnl_30d']:,}")
+    if oi_ratio > HARD_FILTER["max_oi_equity_ratio"]:
+        reasons.append(f"OI/Equity {oi_ratio:.1f}x > {HARD_FILTER['max_oi_equity_ratio']}x")
+    if cons < HARD_FILTER["min_consistency"]:
+        reasons.append(f"일관성 {cons} < {HARD_FILTER['min_consistency']}")
+    if p30 > 0 and mom_ratio < HARD_FILTER["min_momentum_ratio"]:
+        reasons.append(f"최근 하락 {mom_ratio:.0%} (30일 대비 -30% 초과)")
+    if roi30 > HARD_FILTER["max_roi_30d"]:
+        reasons.append(f"ROI {roi30:.0f}% 이상치 (단발 투기 의심)")
+
+    if reasons:
+        result.disqualified = True
+        result.disq_reason  = " | ".join(reasons)
+        result.grade        = "D"
+        result.crs          = 0.0
+        return result
+
+    # ── 개별 거래 통계 ─────────────────────────────
+    stats: dict = {}
+    if trades:
+        stats = calc_trade_stats(trades)
+        result.trade_stats = stats
+
+    # ── 5차원 점수 ─────────────────────────────────
+    m_score, m_warn = _score_momentum(p30, p7, p1, roi30)
+    p_score, p_warn = _score_profitability(p30, roi30, p7, stats)
+    r_score, r_warn = _score_risk(eq, oi, roi30, stats)
+    c_score, c_warn = _score_consistency(cons, p30, p7, stats)
+    cp_score, cp_warn = _score_copyability(stats, p30)
+
+    result.momentum_score      = m_score
+    result.profitability_score = p_score
+    result.risk_score          = r_score
+    result.consistency_score   = c_score
+    result.copyability_score   = cp_score
+
+    # 가중 합산
+    crs = (
+        m_score  * 0.25 +
+        p_score  * 0.30 +
+        r_score  * 0.25 +
+        c_score  * 0.15 +
+        cp_score * 0.05
+    )
+    result.crs = round(crs, 1)
+
+    # ── 등급 ─────────────────────────────────────
+    for g, threshold in GRADE.items():
+        if crs >= threshold:
+            result.grade = g
+            break
+    result.recommended_copy_ratio = MAX_COPY_RATIO[result.grade]
+
+    # ── 강점 / 경고 수집 ──────────────────────────
+    all_warn = m_warn + p_warn + r_warn + c_warn + cp_warn
+
+    strengths = []
+    if roi30 > 30:
+        strengths.append(f"ROI {roi30:.1f}%")
+    if stats.get("profit_factor", 0) > 2.0:
+        strengths.append(f"PF {stats['profit_factor']:.1f}")
+    if stats.get("win_rate", 0) > 0.65:
+        strengths.append(f"승률 {stats['win_rate']:.0%}")
+    if m_score > 70:
+        strengths.append("꾸준한 모멘텀")
+    if r_score > 80:
+        strengths.append("리스크 안정")
+    if cons >= 4:
+        strengths.append(f"일관성 {cons}/5")
+
+    result.strengths = strengths
+    result.warnings  = all_warn
+    return result
+
+
+def rank_by_crs(trader_list: list[dict],
+                trades_map: dict[str, list] | None = None) -> tuple[list[CRSResult], list[CRSResult]]:
+    """
+    트레이더 목록 → CRS 계산 후 (통과, 제외) 분리 반환
+
+    trades_map: {address: [trade, ...]} — trades/history 있을 때
+    """
+    passed, excluded = [], []
+    for raw in trader_list:
+        addr = raw.get("address", "")
+        trades = (trades_map or {}).get(addr, [])
+        r = compute_crs(raw, trades or None)
+        (excluded if r.disqualified else passed).append(r)
+
+    passed.sort(key=lambda x: x.crs, reverse=True)
+    return passed, excluded
+
+
+# ────────────────────────────────────────────
+# 테스트 실행
+# ────────────────────────────────────────────
+if __name__ == "__main__":
+    import json
+
+    with open("backtest_result.json") as f:
+        data = json.load(f)
+
+    traders = data.get("traders", [])
+    active  = [t for t in traders if _safe(t.get("pnl_30d")) > 0]
+    print(f"전체: {len(traders)}명 | 30일 플러스: {len(active)}명\n")
+
+    passed, excluded = rank_by_crs(active)
+
+    print(f"{'='*75}")
+    print(f" CRS 상위 트레이더 ({len(passed)}명 통과 / {len(excluded)}명 제외)")
+    print(f"{'='*75}")
+    for i, r in enumerate(passed[:12], 1):
+        pnl30 = r.raw.get("pnl_30d", 0)
+        roi30 = r.raw.get("roi_30d", 0)
+        print(f"#{i:02d} {r.summary_line()}")
+        if r.strengths:
+            print(f"     ✅ {' | '.join(r.strengths)}")
+        if r.warnings:
+            print(f"     ⚠️  {' | '.join(r.warnings[:3])}")
+        print()
+
+    print(f"{'='*75}")
+    print(f" 제외 트레이더 ({len(excluded)}명)")
+    print(f"{'='*75}")
+    for r in excluded[:10]:
+        print(f"  ❌ [{r.alias}] {r.disq_reason}")
+
+    # JSON 저장
+    output = {
+        "passed":   [r.to_dict() for r in passed],
+        "excluded": [{"address": r.address, "alias": r.alias,
+                      "reason": r.disq_reason} for r in excluded],
+        "summary":  {
+            "total": len(traders),
+            "active": len(active),
+            "passed": len(passed),
+            "excluded_hard": len(excluded),
+            "tier_dist": {g: sum(1 for r in passed if r.grade == g)
+                          for g in ["S","A","B","C"]},
+        }
+    }
+    with open("crs_result.json", "w") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
+    print(f"\n✅ 결과 저장: crs_result.json")
+    print(f"   티어 분포: {output['summary']['tier_dist']}")
