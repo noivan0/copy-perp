@@ -107,10 +107,10 @@ app.add_middleware(
 )
 
 # 라우터 등록
+app.include_router(ranked_router)   # /traders/ranked — traders보다 먼저 (경로 충돌 방지)
 app.include_router(traders_router)
 app.include_router(builder_router)
 app.include_router(followers_router)
-app.include_router(ranked_router)
 
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None

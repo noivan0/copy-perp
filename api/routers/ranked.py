@@ -54,6 +54,32 @@ def _tier_label(grade: str) -> str:
     return labels.get(grade, "❓ Unknown")
 
 
+async def _fetch_rows_from_db(limit: int = 200) -> list:
+    """DB에서 active 트레이더 rows 가져오기"""
+    try:
+        from api.main import get_db
+        db = await get_db()
+        async with db.execute(
+            "SELECT * FROM traders WHERE active=1 ORDER BY pnl_30d DESC LIMIT ?", (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning(f"DB 조회 실패: {e}")
+        return []
+
+
+async def _fetch_rows_from_api(limit: int = 200) -> list:
+    """Pacifica API에서 leaderboard 가져오기"""
+    try:
+        from pacifica.client import PacificaClient
+        client = PacificaClient()
+        return client.get_leaderboard(limit=limit) or []
+    except Exception as e:
+        logger.warning(f"Pacifica API 조회 실패: {e}")
+        return []
+
+
 @router.get("")
 async def get_ranked_traders(
     limit: int = Query(20, ge=1, le=100),
@@ -67,46 +93,27 @@ async def get_ranked_traders(
     - min_grade: 최소 등급 필터 (S/A/B/C/D), 기본 C 이상
     - exclude_disqualified: 하드 필터 제외 트레이더 숨김 (기본 true)
     """
-    from api.main import _db
-    from pacifica.client import PacificaClient
+    # DB 우선, 없으면 API
+    rows = await _fetch_rows_from_db(200)
+    source = "db"
+    if not rows:
+        rows = await _fetch_rows_from_api(200)
+        source = "api"
 
-    ranked = []
-
-    # 1차: DB leaderboard 우선
-    if _db:
-        try:
-            async with _db.execute(
-                "SELECT * FROM traders WHERE active=1 ORDER BY score DESC LIMIT 200"
-            ) as cur:
-                rows = await cur.fetchall()
-            if rows:
-                for row in rows:
-                    ranked.append(_leaderboard_row_to_crs(dict(row)))
-        except Exception as e:
-            logger.warning(f"DB 조회 실패: {e}")
-
-    # 2차: DB 비어있으면 실시간 Pacifica API
-    if not ranked:
-        try:
-            client = PacificaClient()
-            lb = client.get_leaderboard(limit=200)
-            if lb:
-                for row in lb:
-                    ranked.append(_leaderboard_row_to_crs(row))
-        except Exception as e:
-            logger.warning(f"Pacifica API 조회 실패: {e}")
-
-    if not ranked:
+    if not rows:
         return {"data": [], "count": 0, "source": "empty", "message": "트레이더 데이터 없음"}
 
+    ranked = [_leaderboard_row_to_crs(r) for r in rows]
+
     # 필터링
-    min_threshold = GRADE.get(min_grade.upper(), 0)
+    grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
+    min_threshold = grade_order.get(min_grade.upper(), 0)
     filtered = []
     for t in ranked:
         if exclude_disqualified and t.get("disqualified"):
             continue
         grade = t.get("grade", "D")
-        if GRADE.get(grade, 0) >= min_threshold:
+        if grade_order.get(grade, 0) >= min_threshold:
             filtered.append(t)
 
     # CRS 점수 기준 내림차순 정렬
@@ -116,44 +123,27 @@ async def get_ranked_traders(
         "data": filtered[:limit],
         "count": len(filtered),
         "total_analyzed": len(ranked),
-        "source": "crs_ranked",
-        "grade_filter": min_grade.upper(),
+        "source": source,
     }
 
 
 @router.get("/summary")
 async def get_ranked_summary():
     """등급별 요약 통계"""
-    from api.main import _db
-    from pacifica.client import PacificaClient
-
-    all_rows = []
-
-    if _db:
-        try:
-            async with _db.execute("SELECT * FROM traders WHERE active=1 LIMIT 300") as cur:
-                rows = await cur.fetchall()
-            all_rows = [dict(r) for r in rows]
-        except Exception:
-            pass
-
-    if not all_rows:
-        try:
-            client = PacificaClient()
-            all_rows = client.get_leaderboard(limit=200) or []
-        except Exception:
-            pass
+    rows = await _fetch_rows_from_db(300)
+    if not rows:
+        rows = await _fetch_rows_from_api(200)
 
     summary = {g: {"count": 0, "avg_crs": 0.0, "avg_roi_30d": 0.0, "traders": []} for g in ["S", "A", "B", "C", "D"]}
 
-    for row in all_rows:
+    for row in rows:
         crs_data = _leaderboard_row_to_crs(row)
         grade = crs_data.get("grade", "D")
         if grade not in summary:
             grade = "D"
         summary[grade]["count"] += 1
         summary[grade]["avg_crs"] += crs_data.get("crs", 0)
-        summary[grade]["avg_roi_30d"] += row.get("roi_30d", 0) or 0
+        summary[grade]["avg_roi_30d"] += (row.get("roi_30d") or 0)
         if grade in ["S", "A"] and len(summary[grade]["traders"]) < 5:
             summary[grade]["traders"].append({
                 "address": crs_data["address"],
@@ -164,7 +154,6 @@ async def get_ranked_summary():
                 "recommended_copy_ratio": crs_data.get("recommended_copy_ratio", 0),
             })
 
-    # 평균 계산
     for g in summary:
         n = summary[g]["count"]
         if n > 0:
@@ -172,34 +161,33 @@ async def get_ranked_summary():
             summary[g]["avg_roi_30d"] = round(summary[g]["avg_roi_30d"] / n, 2)
 
     return {
+        "total": len(rows),
         "summary": summary,
-        "total_analyzed": len(all_rows),
-        "grade_thresholds": GRADE,
-        "max_copy_ratio": MAX_COPY_RATIO,
     }
 
 
 @router.get("/{address}")
-async def get_trader_crs(address: str):
+async def get_ranked_trader_detail(address: str):
     """개별 트레이더 CRS 상세 분석"""
-    from api.main import _db
-    from pacifica.client import PacificaClient
-
     row = None
 
-    if _db:
-        try:
-            async with _db.execute(
-                "SELECT * FROM traders WHERE address = ?", (address,)
-            ) as cur:
-                r = await cur.fetchone()
-            if r:
-                row = dict(r)
-        except Exception:
-            pass
+    # DB 우선
+    try:
+        from api.main import get_db
+        db = await get_db()
+        async with db.execute(
+            "SELECT * FROM traders WHERE address = ?", (address,)
+        ) as cur:
+            r = await cur.fetchone()
+        if r:
+            row = dict(r)
+    except Exception as e:
+        logger.warning(f"DB 조회 실패: {e}")
 
+    # API fallback
     if not row:
         try:
+            from pacifica.client import PacificaClient
             client = PacificaClient()
             account_data = client.get_account(address)
             if account_data:
@@ -212,16 +200,17 @@ async def get_trader_crs(address: str):
 
     crs_data = _leaderboard_row_to_crs(row)
 
-    # trades/history 추가 분석 (가능한 경우)
+    # trades/history 추가 분석
     trades = []
     try:
+        from pacifica.client import PacificaClient
         client = PacificaClient()
         trades = client.get_trades_history(address, limit=100) or []
     except Exception:
         pass
 
     if trades:
-        from core.reliability import compute_crs, calc_trade_stats
+        from core.reliability import calc_trade_stats
         trade_stats = calc_trade_stats(trades)
         crs_data["trade_stats"] = trade_stats
         crs_data["trades_analyzed"] = len(trades)
