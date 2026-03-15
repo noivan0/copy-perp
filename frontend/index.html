@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Copy Perp — Decentralized Copy Trading on Pacifica</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #080c18; --card: #0d1425; --border: #1a2640;
@@ -741,13 +742,143 @@ document.getElementById('login-modal').addEventListener('click', function(e) {
   if (e.target === this) closeLoginModal();
 });
 
+// ── CRS 랭킹 ──────────────────────────────────────
+async function fetchCrsRanking() {
+  try {
+    const r = await fetch(`${API}/traders/ranked?limit=10&min_grade=C`);
+    const d = await r.json();
+    const traders = d.data || [];
+    if (!traders.length) {
+      document.getElementById('crs-table').innerHTML = '<div style="color:var(--muted);font-size:13px;">트레이더 데이터 없음</div>';
+      return;
+    }
+    const gradeBadge = (g) => {
+      const map = { S: '#f59e0b', A: '#22c55e', B: '#00d4ff', C: '#94a3b8' };
+      const c = map[g] || '#94a3b8';
+      return `<span style="background:${c}20;color:${c};border:1px solid ${c}40;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;">${g}</span>`;
+    };
+    document.getElementById('crs-table').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="color:var(--muted);border-bottom:1px solid var(--border);">
+            <th style="padding:6px 4px;text-align:left;">#</th>
+            <th style="padding:6px 4px;text-align:left;">트레이더</th>
+            <th style="padding:6px 4px;text-align:center;">등급</th>
+            <th style="padding:6px 4px;text-align:right;">CRS</th>
+            <th style="padding:6px 4px;text-align:right;">추천비중</th>
+            <th style="padding:6px 4px;text-align:right;">30d PnL</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${traders.map((t, i) => {
+            const pnl = parseFloat(t.pnl_30d || 0);
+            const pnlCls = pnl >= 0 ? 'up' : 'down';
+            const pnlStr = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toLocaleString('en', {maximumFractionDigits:0});
+            const addr = (t.alias || t.address || '').substring(0, 10);
+            return `<tr style="border-bottom:1px solid var(--border)20;">
+              <td style="padding:7px 4px;color:var(--muted);">${i+1}</td>
+              <td style="padding:7px 4px;">${addr}…</td>
+              <td style="padding:7px 4px;text-align:center;">${gradeBadge(t.grade || 'C')}</td>
+              <td style="padding:7px 4px;text-align:right;color:var(--cyan);font-weight:600;">${(t.crs||0).toFixed(1)}</td>
+              <td style="padding:7px 4px;text-align:right;">${((t.copy_ratio_pct)||0).toFixed(1)}%</td>
+              <td style="padding:7px 4px;text-align:right;" class="${pnlCls}">${pnlStr}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch(e) {
+    document.getElementById('crs-table').innerHTML = `<div style="color:var(--muted);font-size:13px;">CRS 데이터 로드 실패</div>`;
+  }
+}
+
+// ── 포트폴리오 최적 배분 ──────────────────────────
+let _portfolioChart = null;
+async function fetchOptimalPortfolio() {
+  try {
+    const r = await fetch(`${API}/portfolio/optimal?max_traders=5&min_grade=B`);
+    const d = await r.json();
+    const traders = d.traders || [];
+
+    if (!traders.length) {
+      document.getElementById('portfolio-list').innerHTML = `<div style="color:var(--muted);font-size:13px;">${d.message || '데이터 없음'}</div>`;
+      return;
+    }
+
+    // 리스트 렌더링
+    document.getElementById('portfolio-list').innerHTML = traders.map(t => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)20;">
+        <div>
+          <span style="font-size:13px;font-weight:600;">${t.alias || t.address.substring(0,10)+'…'}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:6px;">${t.tier_label}</span>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:13px;color:var(--cyan);font-weight:700;">${t.weight_pct}%</div>
+          <div style="font-size:11px;color:var(--muted);">CRS ${t.crs}</div>
+        </div>
+      </div>
+    `).join('');
+
+    // 메타 정보
+    document.getElementById('portfolio-meta').innerHTML =
+      `분석 트레이더: ${d.total_traders_analyzed}명 · 예상 Sharpe: <span style="color:var(--green)">${d.expected_sharpe}</span> · 방법: ${d.method}`;
+
+    // Chart.js 도넛 차트
+    const labels = traders.map(t => t.alias || t.address.substring(0,8));
+    const data   = traders.map(t => t.weight_pct);
+    const colors = ['#00d4ff','#22c55e','#f59e0b','#a855f7','#ef4444','#06b6d4','#84cc16','#f97316','#ec4899','#6366f1'];
+
+    const ctx = document.getElementById('portfolio-chart').getContext('2d');
+    if (_portfolioChart) _portfolioChart.destroy();
+    _portfolioChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data, backgroundColor: colors.slice(0, traders.length), borderWidth: 0 }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        cutout: '65%',
+      }
+    });
+  } catch(e) {
+    document.getElementById('portfolio-list').innerHTML = `<div style="color:var(--muted);font-size:13px;">포트폴리오 로드 실패: ${e.message}</div>`;
+  }
+}
+
+// ── Mainnet 동기화 ─────────────────────────────────
+async function syncMainnet() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 동기화 중...';
+  try {
+    const r = await fetch(`${API}/traders/ranked/sync-mainnet`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) {
+      toast(`⚠️ Mainnet: ${d.error}`);
+    } else {
+      toast(`✅ Mainnet ${d.synced}명 동기화 완료!`);
+      fetchCrsRanking();
+      fetchOptimalPortfolio();
+    }
+  } catch(e) {
+    toast('❌ 동기화 실패: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Mainnet Sync';
+  }
+}
+
 // ── 초기화 ────────────────────────────────────────
 fetchMarkets();
 fetchLeaderboard();
 fetchStats();
+fetchCrsRanking();
+fetchOptimalPortfolio();
 setInterval(fetchMarkets, 5000);
 setInterval(fetchLeaderboard, 15000);
 setInterval(fetchStats, 10000);
+setInterval(fetchCrsRanking, 30000);
 </script>
 </body>
 </html>
