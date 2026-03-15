@@ -24,7 +24,7 @@ load_dotenv()
 from db.database import init_db, add_trader, add_follower
 from core.copy_engine import CopyEngine
 from core.position_monitor import PositionMonitor
-from core.data_collector import DataCollector
+from core.data_collector import poll_once, get_price_cache, is_connected
 from core.mock import MOCK_TRADERS, mock_fill_event
 
 logging.basicConfig(
@@ -69,38 +69,45 @@ async def run_mock_demo(db, engine):
     log.info(f"성공: {filled} / 실패: {failed}")
 
     # Fuul 포인트
-    from fuul.referral import fuul
+    from fuul.referral import get_fuul
+    _fuul = get_fuul()
     vol = sum(float(dict(t).get("amount", 0)) * 1000 for t in trades)
-    await fuul.track_trade_volume(trader["address"], vol)
-    pts = fuul.get_points(trader["address"])
+    pts = _fuul.get_points(trader["address"])
     log.info(f"Fuul 포인트 (트레이더): {pts:.2f}")
-    log.info(f"레퍼럴 링크: {fuul.generate_referral_link(follower_addr)}")
+    log.info(f"레퍼럴 링크: {_fuul.generate_referral_link(follower_addr)}")
 
     log.info("\n✅ Mock 플로우 완료")
     return trades
 
 
 async def run_data_collector_demo():
-    """DataCollector — 실시간 시그널 감지 데모 (5초)"""
-    log.info("\n--- DataCollector 시작 (5초) ---")
-    collector = DataCollector()
+    """DataCollector — REST 폴링 1회 실행 데모"""
+    log.info("\n--- DataCollector 폴링 (1회) ---")
+    n = await poll_once()
+    log.info(f"  업데이트: {n}개 심볼 | connected={is_connected()}")
 
-    async def stop_after():
-        await asyncio.sleep(5)
-        await collector.stop()
+    cache = get_price_cache()
 
-    asyncio.create_task(stop_after())
-    await collector.start()
-
+    # 펀딩비 TOP 3
     log.info("\n=== 펀딩비 TOP 3 ===")
-    for m in collector.get_top_funding(3):
-        log.info(f"  {m['symbol']:8} funding={m['funding']:+.5f} OI={m['open_interest']:.0f}")
+    items = sorted(cache.values(), key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
+    for m in items[:3]:
+        log.info(f"  {m['symbol']:8} funding={float(m['funding']):+.5f} OI={float(m['open_interest']):.0f}")
 
+    # Oracle-Mark 괴리 TOP 3
     log.info("=== Oracle-Mark 괴리 TOP 3 ===")
-    for m in collector.get_top_divergence(3):
-        log.info(f"  {m['symbol']:8} div={m['divergence']:+.4%} mark={m['mark']:.4f}")
+    div_items = sorted(
+        [m for m in cache.values() if float(m.get("oracle", 0)) > 0],
+        key=lambda x: abs(float(x.get("mark", 0)) - float(x.get("oracle", 0))) / max(float(x.get("oracle", 1)), 0.0001),
+        reverse=True
+    )
+    for m in div_items[:3]:
+        mark = float(m.get("mark", 0))
+        oracle = float(m.get("oracle", 1))
+        div = (mark - oracle) / oracle
+        log.info(f"  {m['symbol']:8} div={div:+.4%} mark={mark:.4f}")
 
-    return collector.market_data
+    return cache
 
 
 async def run_api_server():
@@ -114,7 +121,10 @@ async def run_api_server():
 
 
 async def run_live(db, engine):
-    """실제 API 모드 — PositionMonitor로 트레이더 감시"""
+    """실제 API 모드 — RestPositionMonitor로 트레이더 감시 (WS 차단 환경)"""
+    from core.position_monitor import RestPositionMonitor
+    from core.data_collector import start_polling
+
     trader = os.getenv("TRADER_ADDRESS") or os.getenv("ACCOUNT_ADDRESS", "")
     follower = os.getenv("ACCOUNT_ADDRESS", "")
 
@@ -127,18 +137,16 @@ async def run_live(db, engine):
                        copy_ratio=float(os.getenv("COPY_RATIO", "0.5")),
                        max_position_usdc=float(os.getenv("MAX_POSITION_USDC", "50")))
 
-    collector = DataCollector(db)
-    monitor = PositionMonitor(trader or follower, engine.on_fill)
+    monitor = RestPositionMonitor(trader or follower, engine.on_fill)
 
     log.info("Copy Perp LIVE 가동 — Ctrl+C로 종료")
     try:
         await asyncio.gather(
-            collector.start(),
+            start_polling(interval=30),
             monitor.start(),
         )
     except asyncio.CancelledError:
-        await collector.stop()
-        await monitor.stop()
+        monitor._running = False
 
 
 async def main():

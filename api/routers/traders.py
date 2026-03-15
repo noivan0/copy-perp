@@ -56,12 +56,12 @@ async def list_traders(limit: int = 20, mock: bool = False):
 @router.post("")
 async def register_trader(body: TraderRegister, background_tasks: BackgroundTasks):
     from api.main import _db, _engine, _monitors
-    from core.position_monitor import PositionMonitor
+    from core.position_monitor import RestPositionMonitor  # WS 차단 환경 → REST 폴링 사용
 
     await add_trader(_db, body.address, body.alias)
 
     if body.address not in _monitors:
-        monitor = PositionMonitor(body.address, _engine.on_fill)
+        monitor = RestPositionMonitor(body.address, _engine.on_fill)
         _monitors[body.address] = monitor
         background_tasks.add_task(monitor.start)
 

@@ -164,10 +164,14 @@ async def record_copy_trade(conn, trade: dict) -> None:
 async def get_leaderboard(conn, limit: int = 20) -> list:
     """복합 점수 기준 정렬: roi_30d*0.6 + roi_7d*0.3 + (1d 양수 보너스)
     전략팀 분석 기준: ROI 60% + 일관성 40%
+
+    수정 이력:
+    - 2025-03-16: roi_30d, roi_7d, roi_1d, score, active, profit_factor 필드 추가
+                  (프론트엔드 Leaderboard 컴포넌트 요구 필드 충족)
     """
     # pnl_1d/equity 컬럼이 없는 구형 DB와 호환되는 쿼리
     async with conn.execute(
-        """SELECT address, alias, win_rate, total_pnl, followers,
+        """SELECT address, alias, win_rate, total_pnl, followers, active,
                   COALESCE(pnl_1d, 0) as pnl_1d,
                   COALESCE(pnl_7d, 0) as pnl_7d,
                   COALESCE(pnl_30d, 0) as pnl_30d,
@@ -176,12 +180,30 @@ async def get_leaderboard(conn, limit: int = 20) -> list:
                   COALESCE(volume_7d, 0) as volume_7d,
                   COALESCE(volume_30d, 0) as volume_30d,
                   COALESCE(oi_current, 0) as oi_current,
+                  -- roi_30d: equity 기반 ROI (퍼센트)
+                  CASE WHEN COALESCE(equity, 0) > 0
+                       THEN ROUND(COALESCE(pnl_30d, 0) / equity * 100, 2)
+                       ELSE COALESCE(roi_30d, 0)
+                  END AS roi_30d,
+                  -- roi_7d
+                  CASE WHEN COALESCE(equity, 0) > 0
+                       THEN ROUND(COALESCE(pnl_7d, 0) / equity * 100, 2)
+                       ELSE 0
+                  END AS roi_7d,
+                  -- roi_1d
+                  CASE WHEN COALESCE(equity, 0) > 0
+                       THEN ROUND(COALESCE(pnl_1d, 0) / equity * 100, 2)
+                       ELSE 0
+                  END AS roi_1d,
+                  -- profit_factor: 단순화 (양수 PnL/손실 비율, 데이터 없으면 0)
+                  0.0 AS profit_factor,
+                  -- score: composite_score (프론트엔드 정렬용)
                   CASE WHEN COALESCE(equity, 0) > 0
                        THEN (COALESCE(pnl_30d,0)/equity)*0.6 + (COALESCE(pnl_7d,0)/equity)*0.3 + (CASE WHEN COALESCE(pnl_1d,0) > 0 THEN 0.1 ELSE 0 END)
                        ELSE total_pnl
-                  END AS composite_score
+                  END AS score
            FROM traders WHERE active = 1
-           ORDER BY composite_score DESC LIMIT ?""",
+           ORDER BY score DESC LIMIT ?""",
         (limit,)
     ) as cur:
         return await cur.fetchall()

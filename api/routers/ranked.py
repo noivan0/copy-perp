@@ -166,6 +166,66 @@ async def get_ranked_summary():
     }
 
 
+@router.post("/sync-mainnet")
+async def sync_mainnet_traders():
+    """Mainnet 리더보드를 DB에 동기화"""
+    import os
+    from pacifica.client import PacificaClient
+
+    # mainnet 클라이언트
+    saved_network = os.environ.get('NETWORK', 'testnet')
+    os.environ['NETWORK'] = 'mainnet'
+    try:
+        client = PacificaClient()
+        lb = client.get_leaderboard(limit=100) or []
+    finally:
+        os.environ['NETWORK'] = saved_network
+
+    if not lb:
+        return {"synced": 0, "error": "mainnet 데이터 없음"}
+
+    from api.main import get_db
+    db = await get_db()
+    synced = 0
+
+    for row in lb:
+        addr = row.get('address', '')
+        if not addr:
+            continue
+        alias = (row.get('username') or addr[:8])
+        equity = float(row.get('equity_current') or 0)
+        oi = float(row.get('oi_current') or 0)
+        pnl_1d = float(row.get('pnl_1d') or 0)
+        pnl_7d = float(row.get('pnl_7d') or 0)
+        pnl_30d = float(row.get('pnl_30d') or 0)
+        pnl_all = float(row.get('pnl_all_time') or 0)
+        vol_30d = float(row.get('volume_30d') or 0)
+
+        await db.execute("""
+            INSERT INTO traders (address, alias, equity, oi, pnl_1d, pnl_7d, pnl_30d, pnl_all_time, volume_30d, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(address) DO UPDATE SET
+                alias=excluded.alias,
+                equity=excluded.equity,
+                oi=excluded.oi,
+                pnl_1d=excluded.pnl_1d,
+                pnl_7d=excluded.pnl_7d,
+                pnl_30d=excluded.pnl_30d,
+                pnl_all_time=excluded.pnl_all_time,
+                volume_30d=excluded.volume_30d,
+                last_synced=datetime('now')
+        """, (addr, alias, equity, oi, pnl_1d, pnl_7d, pnl_30d, pnl_all, vol_30d))
+        synced += 1
+
+    await db.commit()
+
+    # 상위 5명 CRS 계산
+    top_rows = await _fetch_rows_from_db(5)
+    top5 = [_leaderboard_row_to_crs(r) for r in top_rows[:5]]
+
+    return {"synced": synced, "top5": [{"alias": t.get("alias"), "crs": t.get("crs"), "grade": t.get("grade")} for t in top5]}
+
+
 @router.get("/{address}")
 async def get_ranked_trader_detail(address: str):
     """개별 트레이더 CRS 상세 분석"""

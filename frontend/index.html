@@ -228,6 +228,35 @@
       <div class="card-title">📊 Markets</div>
       <div id="market-list"><div style="color:var(--muted);font-size:14px;">연결 중...</div></div>
     </div>
+
+    <!-- CRS 신뢰도 랭킹 -->
+    <div class="card" id="crs-section" style="margin-top:20px;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>🎯 CRS 신뢰도 랭킹</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button onclick="syncMainnet()" id="sync-btn" style="background:#00d4ff20;color:var(--cyan);border:1px solid #00d4ff40;padding:5px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">⚡ Mainnet Sync</button>
+          <span class="status-chip green" style="font-size:11px;">CRS v2</span>
+        </div>
+      </div>
+      <div id="crs-table" style="margin-top:12px;">
+        <div style="color:var(--muted);font-size:14px;">불러오는 중...</div>
+      </div>
+    </div>
+
+    <!-- 포트폴리오 최적 배분 -->
+    <div class="card" id="portfolio-section" style="margin-top:20px;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>📈 최적 포트폴리오 배분</span>
+        <button onclick="fetchOptimalPortfolio()" style="background:#22c55e20;color:var(--green);border:1px solid #22c55e40;padding:5px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">새로고침</button>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;margin-top:12px;flex-wrap:wrap;">
+        <canvas id="portfolio-chart" width="180" height="180" style="flex-shrink:0;"></canvas>
+        <div id="portfolio-list" style="flex:1;min-width:180px;">
+          <div style="color:var(--muted);font-size:14px;">불러오는 중...</div>
+        </div>
+      </div>
+      <div id="portfolio-meta" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+    </div>
   </div>
 
   <!-- Right: Sidebar -->
