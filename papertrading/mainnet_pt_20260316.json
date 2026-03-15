@@ -1,0 +1,88 @@
+{
+  "timestamp": "2026-03-15T16:36:34",
+  "duration_min": 3,
+  "network": "mainnet",
+  "traders_count": 13,
+  "traders": [
+    {
+      "address": "5RmsTTwkXQgKcTv5BK6CZEjHQMBVLVQVt8po3h5cQabB",
+      "alias": "monogram",
+      "chg_pct": 0.0,
+      "eq": 92283
+    },
+    {
+      "address": "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+      "alias": "YjCD9Gek",
+      "chg_pct": -0.303,
+      "eq": 936492
+    },
+    {
+      "address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+      "alias": "Ph9yECGo",
+      "chg_pct": 0.11,
+      "eq": 174150
+    },
+    {
+      "address": "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV",
+      "alias": "6uC2TdJx",
+      "chg_pct": -2.501,
+      "eq": 82975
+    },
+    {
+      "address": "AEEqcwDj1fwEqHNUUPtMDCfSPXHt5s4A6yx3o3hFDRLb",
+      "alias": "AEEqcwDj",
+      "chg_pct": -0.781,
+      "eq": 303925
+    },
+    {
+      "address": "GTU92nBC8LMy7Tpya7uZfsTMvvdCzK4mH1r4EFcBwKjj",
+      "alias": "GTU92nBC",
+      "chg_pct": -0.205,
+      "eq": 505987
+    },
+    {
+      "address": "5RX2DD425DHjqPv7GZQV1q4vu9MevNrb3oJkRi9tVXmb",
+      "alias": "5RX2DD42",
+      "chg_pct": 0.308,
+      "eq": 115984
+    },
+    {
+      "address": "C45As2diKNQHZikhvKJiKe2u5MxfD8GKCvmiFUJLHKhJ",
+      "alias": "C45As2di",
+      "chg_pct": 0.21,
+      "eq": 75418
+    },
+    {
+      "address": "DrNBiFihydX12wJ2mTdQrsiXfPvAnU9WfrYsSH5UDCvL",
+      "alias": "DrNBiFih",
+      "chg_pct": -0.541,
+      "eq": 75896
+    },
+    {
+      "address": "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",
+      "alias": "BkUTkCt4",
+      "chg_pct": -0.093,
+      "eq": 50825
+    },
+    {
+      "address": "xTfdyNb16wMhkL3rB4WBJ3MFvyZ7qj7U4PqW8NGBM2k",
+      "alias": "xTfdyNb1",
+      "chg_pct": 0.0,
+      "eq": 44539
+    },
+    {
+      "address": "2rEEo6bXeXLaQVXPeN5VnXrz4pVFCRbFQVGCzuMhw3Y",
+      "alias": "2rEEo6bX",
+      "chg_pct": -0.369,
+      "eq": 152795
+    },
+    {
+      "address": "Ep1d8JdFw4FnGETFPrL7XvWu8LkRHpP3ZCZhGx9aRwkF",
+      "alias": "Ep1d8JdF",
+      "chg_pct": 0.022,
+      "eq": 257408
+    }
+  ],
+  "avg_chg_pct": -0.319,
+  "note": "3분 스냅샷. 단기 변동성 관찰용. mainnet equity 기반."
+}
