@@ -89,11 +89,19 @@ async def get_optimal_portfolio(
 
 @router.get("/backtest")
 async def backtest_portfolio(
-    traders: str = Query(..., description="콤마로 구분된 트레이더 주소"),
+    traders: str = Query(None, description="콤마로 구분된 트레이더 주소 (없으면 최적 포트폴리오 자동 사용)"),
     copy_ratio: float = Query(0.1, ge=0.01, le=1.0),
 ):
-    """지정 트레이더 30d PnL 기반 간단 백테스트"""
-    addrs = [a.strip() for a in traders.split(",") if a.strip()]
+    """지정 트레이더 30d PnL 기반 간단 백테스트. traders 미지정 시 최적 포트폴리오 자동 사용."""
+    # traders 미지정 시 DB에서 CRS 상위 5명 자동 선택
+    if not traders:
+        qualified = await _get_qualified_traders(min_crs=50.0)
+        qualified.sort(key=lambda x: x["crs"].crs, reverse=True)
+        addrs = [x["crs"].address for x in qualified[:5]]
+        if not addrs:
+            return {"error": "조건 충족 트레이더 없음. traders 파라미터로 직접 지정하세요."}
+    else:
+        addrs = [a.strip() for a in traders.split(",") if a.strip()]
     if not addrs:
         return {"error": "트레이더 주소를 입력하세요"}
 
