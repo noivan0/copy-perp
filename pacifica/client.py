@@ -520,12 +520,28 @@ class PacificaClient:
                                  {"symbol": symbol, "leverage": lev})
 
     def get_leaderboard(self, limit: int = 10) -> list:
-        """Pacifica 온체인 리더보드 조회 (limit: 10, 100, 25000만 허용)"""
+        """Pacifica 온체인 리더보드 조회 (limit: 10, 100, 25000만 허용)
+        
+        NETWORK 분기:
+        - mainnet: /api/v1/leaderboard (info/ prefix 없음) — codetabs 프록시 경유
+        - testnet: /api/v1/leaderboard (동일 엔드포인트, CF SNI 경유)
+        
+        주의: testnet은 /info/leaderboard 아님 — 두 환경 모두 /leaderboard 사용
+        """
         # Pacifica API는 10, 100, 25000만 허용
         allowed = [10, 100, 25000]
         api_limit = min((x for x in allowed if x >= limit), default=100)
         try:
-            result = _request("GET", f"leaderboard?limit={api_limit}")
+            if NETWORK == "mainnet":
+                # mainnet: codetabs 프록시 우선 (직접 접근 검증됨)
+                try:
+                    result = _mainnet_proxy_get(f"leaderboard?limit={api_limit}")
+                except Exception:
+                    result = _proxy_get(f"leaderboard?limit={api_limit}")
+            else:
+                # testnet: CloudFront SNI → scrapling 프록시 fallback
+                result = _request("GET", f"leaderboard?limit={api_limit}")
+
             if isinstance(result, list):
                 return result[:limit]
             if isinstance(result, dict):
