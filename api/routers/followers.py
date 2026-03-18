@@ -21,7 +21,7 @@ import logging
 from typing import Optional
 
 import base58 as _base58
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Header
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -238,23 +238,31 @@ def _approve_builder_code_api(account: str, signature: str, timestamp: int,
 
 @router.post("/onboard")
 async def onboard_follower(
+    request: "Request",
     body: OnboardRequest,
     background_tasks: BackgroundTasks,
     x_privy_token: Optional[str] = Header(None, alias="X-Privy-Token"),
 ):
     """
     팔로워 온보딩 전체 플로우:
-    1. Solana 주소 형식 검증 (base58, 32-44자)
-    2. Privy JWT 선택적 검증 (헤더 있으면 검증)
-    3. Builder Code 승인 서명 자동 생성
-    4. Pacifica API approve 호출
-    5. DB 팔로워 등록 (privy_user_id 포함)
-    6. Tier1 트레이더 자동 팔로우 + 모니터링 시작
+    1. Rate limit 체크 (IP당 분당 5회)
+    2. Solana 주소 형식 검증 (base58, 32-44자)
+    3. Privy JWT 선택적 검증 (헤더 있으면 검증)
+    4. Builder Code 승인 서명 자동 생성
+    5. Pacifica API approve 호출
+    6. DB 팔로워 등록 (privy_user_id 포함)
+    7. Tier1 트레이더 자동 팔로우 + 모니터링 시작
     """
-    from api.main import _db, _engine, _monitors
+    from fastapi import Request as _Request
+    from api.main import _db, _engine, _monitors, _check_rate_limit
     from core.position_monitor import RestPositionMonitor
     from db.database import add_follower
     from fuul.referral import FuulReferral
+
+    # ── Rate Limit 체크 ─────────────────────────────────
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"onboard:{client_ip}", max_calls=5, window_sec=60):
+        raise HTTPException(429, "Too many requests")
 
     # ── 입력 검증 ────────────────────────────────────────
     # Step 0a: 팔로워 Solana 주소 검증 (base58 디코딩 + 32바이트 확인)

@@ -4,6 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Copy Perp — Decentralized Copy Trading on Pacifica</title>
+
+  <!-- SEO / Meta -->
+  <meta name="description" content="Copy the best perpetual traders on Pacifica DEX automatically. Decentralized copy trading with your funds staying in your wallet.">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#00d4ff">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Copy Perp — Decentralized Copy Trading on Pacifica">
+  <meta property="og:description" content="Copy top traders on Pacifica perpetuals DEX. Non-custodial, on-chain, powered by Builder Code.">
+  <meta property="og:image" content="https://copy-perp.vercel.app/og-image.png">
+  <meta property="og:url" content="https://copy-perp.vercel.app">
+  <meta property="og:site_name" content="Copy Perp">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Copy Perp — Decentralized Copy Trading on Pacifica">
+  <meta name="twitter:description" content="Copy top traders on Pacifica perpetuals DEX. Non-custodial, on-chain, powered by Builder Code.">
+  <meta name="twitter:image" content="https://copy-perp.vercel.app/og-image.png">
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -144,6 +166,43 @@
     .pos-row { display:flex; justify-content:space-between; align-items:center;
                padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .pos-row:last-child { border-bottom:none; }
+
+    /* ── Skeleton UI ── */
+    @keyframes shimmer {
+      0% { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #1a2640 25%, #243050 50%, #1a2640 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.4s infinite linear;
+      border-radius: 6px;
+    }
+    .skeleton-row { height: 54px; margin-bottom: 8px; }
+    .skeleton-text { height: 14px; margin-bottom: 8px; }
+    .skeleton-text.w60 { width: 60%; }
+    .skeleton-text.w40 { width: 40%; }
+
+    /* ── Toast variants ── */
+    #toast.error { border-color: var(--red); color: #fca5a5; }
+    #toast.success { border-color: var(--green); color: #86efac; }
+
+    /* ── Mobile: 44px min touch targets ── */
+    @media (max-width: 900px) {
+      .wallet-btn { min-height: 44px; padding: 10px 16px; }
+      .copy-btn { min-height: 44px; padding: 0 16px; font-size: 13px; }
+      .btn-primary, .btn-outline { min-height: 44px; }
+      .submit-btn { min-height: 44px; }
+      .login-btn { min-height: 52px; }
+      .ticker-bar { padding: 10px 16px; gap: 20px; }
+      header { padding: 12px 16px; }
+      .hero { padding: 40px 16px 32px; }
+      .hero h1 { font-size: 36px; }
+      .stats-row { flex-wrap: wrap; }
+      .stat-item { min-width: 45%; }
+      main { padding: 16px; gap: 16px; }
+      .card { padding: 16px; }
+    }
   </style>
   <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
@@ -221,13 +280,24 @@
         🏆 Top Traders
         <span class="status-chip green">Live</span>
       </div>
-      <div id="leaderboard"><div style="color:var(--muted);font-size:14px;">불러오는 중...</div></div>
+      <div id="leaderboard">
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+      </div>
     </div>
 
     <!-- Markets -->
     <div class="card">
       <div class="card-title">📊 Markets</div>
-      <div id="market-list"><div style="color:var(--muted);font-size:14px;">연결 중...</div></div>
+      <div id="market-list">
+        <div class="skeleton skeleton-text w60"></div>
+        <div class="skeleton skeleton-text w40"></div>
+        <div class="skeleton skeleton-text w60"></div>
+        <div class="skeleton skeleton-text w40"></div>
+      </div>
     </div>
 
     <!-- CRS 신뢰도 랭킹 -->
@@ -398,10 +468,13 @@ let _walletProvider = null;  // 'google' | 'twitter' | 'discord' | 'wallet'
 let _myTradesInterval = null;
 
 // ── 유틸 ─────────────────────────────────────────
-function toast(msg, duration=2800) {
+function toast(msg, duration=2800, type='') {
   const el = document.getElementById('toast');
-  el.textContent = msg; el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', duration);
+  el.textContent = msg;
+  el.className = type ? type : '';
+  el.style.display = 'block';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.style.display = 'none'; el.className = ''; }, duration);
 }
 
 function fmt(n, decimals=2) {
@@ -472,7 +545,7 @@ async function loginWithWallet() {
       return;
     } catch(e) {
       setWalletBtnState('disconnected');
-      toast('❌ Phantom 연결 실패: ' + e.message);
+      toast('❌ Phantom 연결 실패: ' + e.message, 3000, 'error');
       return;
     }
   } else if (window.backpack) {
@@ -484,7 +557,7 @@ async function loginWithWallet() {
       return;
     } catch(e) {
       setWalletBtnState('disconnected');
-      toast('❌ Backpack 연결 실패: ' + e.message);
+      toast('❌ Backpack 연결 실패: ' + e.message, 3000, 'error');
       return;
     }
   } else if (window.solana) {
@@ -496,13 +569,13 @@ async function loginWithWallet() {
       return;
     } catch(e) {
       setWalletBtnState('disconnected');
-      toast('❌ 지갑 연결 실패: ' + e.message);
+      toast('❌ 지갑 연결 실패: ' + e.message, 3000, 'error');
       return;
     }
   } else {
     // 지갑 없으면 설치 안내
     setWalletBtnState('disconnected');
-    toast('💡 Phantom 또는 Backpack 지갑을 설치해주세요');
+    toast('💡 Phantom 또는 Backpack 지갑을 설치해주세요', 4000);
     window.open('https://phantom.app', '_blank');
   }
 }
@@ -689,7 +762,12 @@ async function fetchMarkets() {
     // 오류 시 ticker 항목에 "—" 유지 (이미 초기값이 "—")
     document.getElementById('market-list').innerHTML =
       `<div style="color:var(--muted);font-size:14px;padding:8px 0;">마켓 데이터 로드 실패 (재시도 중...)</div>`;
+    // 첫 로드 실패 시만 토스트 (반복 폴링에서는 조용히 실패)
+    if (!window._marketLoadedOnce) {
+      toast('⚠️ 마켓 데이터 연결 실패 — 재시도 중', 3000, 'error');
+    }
   }
+  window._marketLoadedOnce = true;
 }
 
 // ── 트레이더 리더보드 ─────────────────────────────
@@ -1066,11 +1144,24 @@ _configReady.then(() => {
   fetchOptimalPortfolio();
 
   // Privy App ID가 config에서 넘어온 후 SDK 사전 로드 (타이밍 보장)
+  // privy.js가 <script src> 로 먼저 로드되지만, _getAppId()는 login 시점에 읽으므로 순서 OK
+  // 단, 사전 로드(prefetch)는 config 완료 후 여기서 트리거
   if (window.PRIVY_APP_ID && window.PrivyIntegration) {
-    // privy.js의 PRIVY_APP_ID는 const라 재할당 불가 → SDK만 강제 로드
-    // 실제 login 시 privyLogin()이 window.PRIVY_APP_ID를 확인
-    console.log('[Config] Privy App ID 확인됨 → SDK 로드 준비');
+    console.log('[Config] Privy App ID 확인됨 → SDK 사전 로드');
+    // _loadPrivySDK는 privy.js 내부 함수 — PrivyIntegration.login()을 통해 간접 트리거
+    // 더미 콜백 없이 SDK만 미리 로드: login('google', null) 내부에서 _loadPrivySDK 호출됨
+    // 여기서는 window.Privy가 없을 때만 스크립트 주입
+    if (!window.Privy) {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.privy.io/sdk/latest/privy.min.js';
+      s.async = true;
+      s.onload = () => console.log('[Config] Privy SDK 사전 로드 완료');
+      document.head.appendChild(s);
+    }
   }
+
+  // 통계 30초마다 자동 갱신
+  setInterval(fetchStats, 30000);
 });
 // SSE 실시간 스트림 — BTC 가격 + 통계 5초 푸시
 (function startSSE() {
