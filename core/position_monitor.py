@@ -348,4 +348,4 @@ class RestPositionMonitor(PositionMonitor):
                     await asyncio.sleep(backoff)
                     continue
 
-            await asyncio.sleep(3.0)  # 3초 간격 폴링 — 20명 × 20 req/min = 400 req/min (안전)
+            await asyncio.sleep(REST_POLL_INTERVAL)  # 2초 폴링 — REST_POLL_INTERVAL과 통일

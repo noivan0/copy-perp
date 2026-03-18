@@ -95,10 +95,10 @@ async def get_ranked_traders(
     - exclude_disqualified: 하드 필터 제외 트레이더 숨김 (기본 true)
     - Rate limit: IP당 분당 30회
     """
-    from api.main import _check_rate_limit
+    from api.main import _check_rate_limit, RATE_LIMIT_POLICY
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"ranked:{client_ip}", max_calls=30, window_sec=60):
-        raise HTTPException(429, "Too many requests")
+    if not _check_rate_limit(f"ranked:{client_ip}", *RATE_LIMIT_POLICY["ranked"]):
+        raise HTTPException(429, {"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"})
     # DB 우선, 없으면 API
     rows = await _fetch_rows_from_db(200)
     source = "db"
@@ -183,8 +183,13 @@ async def get_ranked_summary():
 
 
 @router.post("/sync-mainnet")
-async def sync_mainnet_traders():
-    """Mainnet 리더보드를 DB에 동기화"""
+async def sync_mainnet_traders(request: Request):
+    """Mainnet 리더보드를 DB에 동기화 (IP당 분당 2회)"""
+    from api.main import _check_rate_limit
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"sync_mainnet:{client_ip}", max_calls=2, window_sec=60):
+        from fastapi import HTTPException
+        raise HTTPException(429, "Too many requests")
     import os
     from pacifica.client import PacificaClient
 

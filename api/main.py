@@ -149,7 +149,15 @@ async def lifespan(app_):
         logger.info("  DB 연결 닫힘")
     logger.info("✅ Graceful shutdown 완료")
 
-app = FastAPI(title="Copy Perp API", version="1.1.0", docs_url="/docs", lifespan=lifespan)
+# DEBUG 모드에서만 /docs, /redoc 노출 (프로덕션 보안)
+_DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+app = FastAPI(
+    title="Copy Perp API",
+    version="1.1.0",
+    docs_url="/docs" if _DEBUG else None,
+    redoc_url="/redoc" if _DEBUG else None,
+    lifespan=lifespan,
+)
 
 # ── Request ID 미들웨어 ─────────────────────────────
 @app.middleware("http")
@@ -248,22 +256,22 @@ _rate_limit_store: dict = defaultdict(list)
 #   - 승인/서명:  중간 (분당 10회, 재시도 여유)
 RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
     # (max_calls, window_sec)
-    # 쓰기 — 엄격 (봇 방어)
-    "onboard":          (20,  60),   # 팔로워 온보딩: 분당 20회 (초기 접속 재시도 여유)
+    # ── 쓰기 — 봇 방어, 재시도 여유 포함 ──────────────────────────────────
+    "onboard":          (20,  60),   # 온보딩: 분당 20회 (재시도 포함)
     "follow":           (20,  60),   # 팔로우: 분당 20회
     "unfollow":         (20,  60),   # 언팔로우: 분당 20회
-    "builder_approve":  (10,  60),   # Builder Code 승인: 분당 10회 (서명 재시도 여유)
-    # 읽기 — 적절 (30초 폴링 기준: 2req/min × 다수 탭)
-    "trades":           (120, 60),   # 거래내역 조회: 분당 120회
-    "traders":          (120, 60),   # 트레이더 조회: 분당 120회
-    "stats":            (60,  60),   # 통계 조회: 분당 60회
-    "signals":          (30,  60),   # 시그널 조회: 분당 30회 (펀딩/OI 계산 비용)
+    "builder_approve":  (10,  60),   # Builder Code 승인: 분당 10회 (서명 재시도)
+    # ── 읽기 — 30초 폴링 기준 (2req/min × 최대 10탭 = 20/min) ────────────
+    "traders":          (120, 60),   # 트레이더 조회: 분당 120회 (충분)
     "markets":          (120, 60),   # 마켓 조회: 분당 120회 (30초 폴링 × 여러 탭)
+    "trades":           (60,  60),   # 거래내역: 분당 60회 (120은 과도)
+    "stats":            (60,  60),   # 통계 조회: 분당 60회
+    "signals":          (30,  60),   # 시그널: 분당 30회 (펀딩/OI 계산 비용)
     "referral":         (30,  60),   # 레퍼럴: 분당 30회
-    # 무거운 읽기
-    "ranked":           (20,  60),   # CRS 랭킹: 분당 20회 (계산 비용 높음)
-    # 헬스/모니터링 — DDoS 방어 상한
-    "health":           (180, 60),   # 헬스체크: 분당 180회 (k8s/uptime probe 허용)
+    # ── 무거운 읽기 — CRS 계산 비용 ──────────────────────────────────────
+    "ranked":           (30,  60),   # CRS 랭킹: 분당 30회 (코드-정책 통일, 충분)
+    # ── 헬스/모니터링 — k8s probe + DDoS 방어 ────────────────────────────
+    "health":           (300, 60),   # 헬스체크: 분당 300회 (5초 probe × 다수 인스턴스)
     "default":          (60,  60),   # 기본: 분당 60회
 }
 
