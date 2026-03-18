@@ -78,7 +78,10 @@ async def get_trader(address: str):
         row = await cur.fetchone()
 
     if row:
-        stats = await get_trader_stats(_db, address)
+        import asyncio
+        stats = await asyncio.get_event_loop().run_in_executor(
+            None, get_trader_stats, address
+        )
         return {"data": {**dict(row), **stats}, "source": "db"}
 
     # DB에 없으면 Mock에서 찾기

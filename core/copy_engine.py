@@ -17,7 +17,7 @@ from typing import Optional
 
 import aiosqlite
 
-from pacifica.client import PacificaClient, BUILDER_CODE
+from pacifica.client import PacificaClient, BUILDER_CODE, BUILDER_FEE_RATE
 from core.alerting import get_alert_manager
 from db.database import get_followers, record_copy_trade
 from core.retry import retry_sync, classify_error
@@ -225,6 +225,8 @@ class CopyEngine:
         client_order_id = str(uuid.uuid4())
         trade_id = str(uuid.uuid4())
 
+        status = "failed"
+        _error_msg: Optional[str] = None
         try:
             # builder_approved(구) 또는 builder_code_approved(신) 둘 중 하나라도 1이면 포함
             # mainnet에서 noivan 승인 완료 → 신규 팔로워는 온보딩 시 approve() 호출
@@ -284,7 +286,8 @@ class CopyEngine:
         except Exception as e:
             logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
             status = "failed"
-            get_alert_manager().order_failed(follower_addr, symbol, side, str(e))
+            _error_msg = str(e)
+            get_alert_manager().order_failed(follower_addr, symbol, side, _error_msg)
 
         # Fuul copy_trade 이벤트 (체결 성공 시)
         if status == "filled":
@@ -299,6 +302,21 @@ class CopyEngine:
                     amount_usdc=amount_usdc,
                     order_id=client_order_id,
                 )
+            except Exception:
+                pass
+
+        # Builder Fee 기록 (체결 성공 시)
+        if status == "filled" and price_f > 0:
+            try:
+                amount_usdc = float(copy_amount) * price_f
+                # Builder Fee = 주문금액 × 0.001 (0.1%)
+                fee_usdc = round(amount_usdc * float(BUILDER_FEE_RATE), 6)
+                await self._db.execute(
+                    "INSERT INTO fee_records (trade_id, builder_code, fee_usdc, created_at) "
+                    "VALUES (?, ?, ?, strftime('%s','now'))",
+                    (trade_id, BUILDER_CODE, fee_usdc)
+                )
+                await self._db.commit()
             except Exception:
                 pass
 
@@ -349,6 +367,7 @@ class CopyEngine:
             "entry_price": _entry,
             "exec_price": exec_price if exec_price > 0 else None,
             "created_at": int(time.time() * 1000),
+            "error_msg": _error_msg if status == "failed" else None,
         })
 
 
