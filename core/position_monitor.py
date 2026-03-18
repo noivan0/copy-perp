@@ -315,6 +315,15 @@ class RestPositionMonitor(PositionMonitor):
 
             except Exception as e:
                 self._fail_count += 1
+                err_str = str(e)
+                # 429 Rate Limit → Retry-After 대기
+                if "429" in err_str:
+                    import re as _re
+                    m = _re.search(r'retry after (\d+)', err_str)
+                    rl_wait = int(m.group(1)) if m else 60
+                    logger.warning(f"[REST] {self.trader[:12]} 429 Rate Limit → {rl_wait}초 대기")
+                    await asyncio.sleep(rl_wait)
+                    continue
                 backoff = self._next_backoff()
                 logger.debug(
                     f"[REST] {self.trader[:12]} 폴링 오류 (연속 {self._fail_count}회, "

@@ -280,6 +280,15 @@ RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
     "default":          (60,  60),   # 기본: 분당 60회
 }
 
+def _get_ratelimit_status_safe() -> dict:
+    """Pacifica rate limit 상태 — import 실패 시 빈 dict"""
+    try:
+        from pacifica.client import get_ratelimit_status
+        return get_ratelimit_status()
+    except Exception:
+        return {}
+
+
 def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:  # noqa: E501
     """True = 허용, False = 차단. Sliding window 방식."""
     now = _time_m.time()
@@ -481,9 +490,29 @@ async def _winrate_refresh_loop():
                         "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
                         (wr, wins, losses, addr)
                     )
-                    await asyncio.sleep(0.3)
+                    # Rate limit 기반 동적 대기
+                    # 1,000 credits/60초 → 트레이더당 1 credit 가정
+                    # 안전: 50명 기준 60/50 = 1.2초 간격
+                    from pacifica.client import get_ratelimit_status
+                    rl = get_ratelimit_status()
+                    if rl["credits_remaining"] < 100:
+                        # credit 부족 → reset_in 대기
+                        wait = max(rl["reset_in_seconds"], 5)
+                        logger.warning(f"[WinRate] credit 부족({rl['credits_remaining']}) → {wait}초 대기")
+                        await asyncio.sleep(wait)
+                    else:
+                        await asyncio.sleep(1.2)  # 안전 간격 (0.3→1.2초)
                 except Exception as e:
-                    logger.debug(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
+                    err_str = str(e)
+                    if "429" in err_str:
+                        # Retry-After 파싱
+                        import re
+                        m = re.search(r'retry after (\d+)', err_str)
+                        wait = int(m.group(1)) if m else 60
+                        logger.warning(f"[WinRate] 429 Rate Limit → {wait}초 대기")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.debug(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
 
             await db.commit()
             logger.info(f"[WinRate] {len(top_traders)}명 갱신 완료")
@@ -697,6 +726,7 @@ def health(request: Request) -> dict:
         "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
         "version": "1.1.0",
+        "pacifica_ratelimit": _get_ratelimit_status_safe(),
     }
 
 

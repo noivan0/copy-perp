@@ -57,6 +57,43 @@ _CF_HOST = os.getenv("PACIFICA_CF_HOST", "do5jt23sqak4.cloudfront.net")
 _PACIFICA_HOST = os.getenv("PACIFICA_HOST", "api.pacifica.fi" if NETWORK == "mainnet" else "test-api.pacifica.fi")
 CF_SNI_HOST = _CF_HOST  # SNI = CloudFront 도메인 (HMG 필터 통과)
 
+# ── Rate Limit 모니터링 (Pacifica: 1,000 credits/60초) ───────────
+_rl_state: dict = {
+    "remaining": 1000,   # 남은 credit
+    "reset_in":  0,      # 리셋까지 초
+    "last_429":  0.0,    # 마지막 429 시각
+    "total_calls": 0,    # 누적 호출 수
+}
+
+def _parse_ratelimit_headers(hdrs_raw: str) -> None:
+    """Pacifica rate limit 헤더 파싱: ratelimit: "credits";r=820;t=14"""
+    for line in hdrs_raw.split("\r\n"):
+        ll = line.lower()
+        if ll.startswith("ratelimit:") or ll.startswith("x-ratelimit"):
+            # "credits";r=820;t=14 파싱
+            import re
+            m = re.search(r'r=(\d+)', line)
+            if m: _rl_state["remaining"] = int(m.group(1))
+            m = re.search(r't=(\d+)', line)
+            if m: _rl_state["reset_in"] = int(m.group(1))
+        elif ll.startswith("retry-after:"):
+            try: _rl_state["reset_in"] = int(line.split(":", 1)[1].strip())
+            except: pass
+    _rl_state["total_calls"] += 1
+
+def get_ratelimit_status() -> dict:
+    """현재 rate limit 상태 반환 (health 엔드포인트용)"""
+    return {
+        "credits_remaining": _rl_state["remaining"],
+        "credits_total":     1000,
+        "reset_in_seconds":  _rl_state["reset_in"],
+        "total_api_calls":   _rl_state["total_calls"],
+    }
+
+# ── 마켓 정보 6시간 캐시 ─────────────────────────────────────────
+_market_info_cache: dict = {"data": None, "ts": 0.0}
+_MARKET_INFO_TTL = 6 * 3600  # 6시간
+
 # Mainnet 직접 접근 설정 (IP 직접 + Host 헤더)
 MAINNET_IP = os.getenv("PACIFICA_MAINNET_IP", "54.230.62.105")
 MAINNET_HOST = "api.pacifica.fi"
@@ -206,6 +243,9 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
     raw_body = data.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in data else b""
     hdrs_raw = data.split(b"\r\n\r\n", 1)[0].decode("utf-8", "ignore")
 
+    # Rate limit 헤더 파싱
+    _parse_ratelimit_headers(hdrs_raw)
+
     # gzip 디코딩
     for line in hdrs_raw.split("\r\n"):
         if "content-encoding" in line.lower() and "gzip" in line.lower():
@@ -223,6 +263,12 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
         if status_code >= 400:
             raise RuntimeError(f"HTTP {status_code}: {body_text[:300]}")
         return {"raw": body_text}
+
+    if status_code == 429:
+        # Retry-After 헤더에서 대기 시간 추출
+        _rl_state["last_429"] = __import__("time").time()
+        retry_after = _rl_state["reset_in"] or 60
+        raise RuntimeError(f"HTTP 429: Rate limit exceeded (retry after {retry_after}s)")
 
     if status_code >= 400:
         err = result.get("error", body_text) if isinstance(result, dict) else body_text
@@ -351,12 +397,17 @@ class PacificaClient:
     # ── 공개 API ──────────────────────────────────
 
     def get_markets(self) -> list:
-        """전체 마켓 목록 — GET /api/v1/info"""
+        """전체 마켓 목록 — GET /api/v1/info (6시간 캐시)"""
+        import time as _t
+        now = _t.time()
+        if _market_info_cache["data"] and now - _market_info_cache["ts"] < _MARKET_INFO_TTL:
+            return _market_info_cache["data"]
         result = _request("GET", "info")
-        # 응답 구조: {"success": true, "data": [...]} 또는 직접 list
-        if isinstance(result, list):
-            return result
-        return result.get("data", [])
+        data = result if isinstance(result, list) else result.get("data", [])
+        if data:
+            _market_info_cache["data"] = data
+            _market_info_cache["ts"] = now
+        return data
 
     def get_prices(self) -> list:
         """전체 마켓 가격/펀딩비 — GET /api/v1/info/prices"""
