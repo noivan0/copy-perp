@@ -29,7 +29,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 FUUL_API_BASE    = os.getenv("FUUL_API_URL", "https://api.fuul.xyz/api/v1")
-FUUL_API_KEY     = os.getenv("FUUL_API_KEY", "")
+FUUL_API_KEY     = ""  # Fuul 비활성화 (2026-03-18)
 FUUL_PROJECT_ID  = os.getenv("FUUL_PROJECT_ID", "")
 FUUL_SDK_VERSION = "7.18.0"
 
