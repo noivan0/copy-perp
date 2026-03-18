@@ -174,12 +174,30 @@ async def _sync_leaderboard_loop():
                         float(t.get("oi_current", 0) or 0),
                     )
                 )
-                # 기존 행은 PnL/equity 수치만 업데이트 (win_rate/win_count 보존)
+                # CRS 계산 → tier 결정
+                try:
+                    from core.reliability import compute_crs
+                    _crs_row = {
+                        "address": addr, "pnl_all_time": pnl_all, "pnl_30d": pnl_30d,
+                        "pnl_7d": pnl_7d, "pnl_1d": pnl_1d, "equity": equity,
+                        "win_rate": float(t.get("win_rate", 0) or 0),
+                        "oi_current": float(t.get("oi_current", 0) or 0),
+                        "roi_30d": pnl_30d / equity if equity > 0 else 0,
+                    }
+                    _crs_result = compute_crs(_crs_row)
+                    _tier = _crs_result.grade  # "S","A","B","C","D"
+                    _sharpe = _crs_result.crs / 10  # 대략적 sharpe
+                except Exception:
+                    _tier = "C"
+                    _sharpe = 0.0
+
+                # 기존 행은 PnL/equity 수치 + tier 업데이트 (win_rate/win_count 보존)
                 await _db.execute(
                     """UPDATE traders SET
                        alias=COALESCE(?,alias), total_pnl=?, pnl_1d=?, pnl_7d=?,
                        pnl_30d=?, pnl_all_time=?, equity=?, volume_7d=?,
-                       volume_30d=?, oi_current=?, active=1,
+                       volume_30d=?, oi_current=?, active=1, tier=?,
+                       sharpe=COALESCE(NULLIF(sharpe,0), ?),
                        last_synced=strftime('%s','now')
                        WHERE address=?""",
                     (
@@ -188,6 +206,7 @@ async def _sync_leaderboard_loop():
                         float(t.get("volume_7d", 0) or 0),
                         float(t.get("volume_30d", 0) or 0),
                         float(t.get("oi_current", 0) or 0),
+                        _tier, _sharpe,
                         addr,
                     )
                 )

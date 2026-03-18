@@ -179,42 +179,43 @@ class CopyEngine:
                 logger.debug(f"[{follower_addr[:8]}] max_pos 클램핑: {order_usdc:.2f} → {max_pos} USDC")
 
         # 3. 최소 수량 보장 (MIN_AMOUNT + min_order_size 둘 다 확인)
+        # mock_mode: 주문 실행 안 하므로 최솟값 검사 완화 (테스트에서 소액 허용)
         if clamped_amount < MIN_AMOUNT:
             logger.info(f"[{follower_addr[:8]}] 수량 {clamped_amount} < MIN({MIN_AMOUNT}) 스킵")
             return
-        # min_order_size(USDC) 보장 — lot_size 반올림 후 재확인
-        if price_f > 0:
+        # min_order_size(USDC) 보장 — 실제 모드에서만 적용
+        if not self.mock_mode and price_f > 0:
             order_usdc_check = clamped_amount * price_f
-            # min_order_size는 마켓별로 다름, 기본 $10
-            _min_usdc = MIN_ORDER_USDC  # 5.0 (config)
+            _min_usdc = MIN_ORDER_USDC  # $10 (Pacifica testnet 기준)
             if order_usdc_check < _min_usdc:
                 logger.info(f"[{follower_addr[:8]}] 주문금액 ${order_usdc_check:.2f} < 최소${_min_usdc} 스킵")
                 return
 
-        # 4. lot_size 정렬 (마켓 데이터에서 lot_size 조회 후 반올림)
+        # 4. lot_size 정렬 (실제 모드에서만 — mock은 API 호출 생략)
         import math
-        try:
-            from core.data_collector import get_price_cache
-            mkt = get_price_cache().get(symbol.upper(), {})
-            lot = float(mkt.get("lot_size", 0) or 0)
-            if lot <= 0:
-                # price_cache miss → Pacifica 마켓 API 직접 조회
-                from pacifica.client import PacificaClient
-                _mc = PacificaClient()
-                markets = _mc.get_markets()
-                m = next((m for m in markets if m.get("symbol") == symbol.upper()), {})
-                lot = float(m.get("lot_size", 0) or 0)
-                # 캐시에 저장
-                if lot > 0 and symbol.upper() in get_price_cache():
-                    get_price_cache()[symbol.upper()]["lot_size"] = str(lot)
-            if lot > 0:
-                decimals = max(0, -int(math.floor(math.log10(lot))))
-                clamped_amount = round(math.floor(clamped_amount / lot) * lot, decimals)
-                if clamped_amount <= 0:
-                    logger.info(f"[{follower_addr[:8]}] lot_size 반올림 후 0 → 스킵")
-                    return
-        except Exception as e:
-            logger.debug(f"lot_size 처리 오류 (무시): {e}")
+        if not self.mock_mode:
+            try:
+                from core.data_collector import get_price_cache
+                mkt = get_price_cache().get(symbol.upper(), {})
+                lot = float(mkt.get("lot_size", 0) or 0)
+                if lot <= 0:
+                    # price_cache miss → Pacifica 마켓 API 직접 조회
+                    from pacifica.client import PacificaClient
+                    _mc = PacificaClient()
+                    markets = _mc.get_markets()
+                    m = next((m for m in markets if m.get("symbol") == symbol.upper()), {})
+                    lot = float(m.get("lot_size", 0) or 0)
+                    # 캐시에 저장
+                    if lot > 0 and symbol.upper() in get_price_cache():
+                        get_price_cache()[symbol.upper()]["lot_size"] = str(lot)
+                if lot > 0:
+                    decimals = max(0, -int(math.floor(math.log10(lot))))
+                    clamped_amount = round(math.floor(clamped_amount / lot) * lot, decimals)
+                    if clamped_amount <= 0:
+                        logger.info(f"[{follower_addr[:8]}] lot_size 반올림 후 0 → 스킵")
+                        return
+            except Exception as e:
+                logger.debug(f"lot_size 처리 오류 (무시): {e}")
 
         copy_amount = str(round(clamped_amount, 8))
 
