@@ -706,51 +706,9 @@ async def health_detailed():
 
 
 # ── Builder Code 승인 (프론트에서 서명) ──────────────────
-class BuilderApproveRequest(BaseModel):
-    account: str
-    signature: str
-    builder_code: str = BUILDER_CODE
-    max_fee_rate: str = "0.001"
-    timestamp: int = 0
-    expiry_window: int = 5000
-    type: str = "approve_builder_code"
-    data: Optional[dict] = None
-
-
-@app.post("/builder/approve")
-async def builder_approve(body: BuilderApproveRequest):
-    """Builder Code 승인 — 프론트에서 서명 후 서버가 Pacifica API에 전달"""
-    from pacifica.builder_code import approve_builder_code
-    result = approve_builder_code(
-        account_address=body.account,
-        builder_code=body.builder_code,
-        max_fee_rate=body.max_fee_rate,
-        external_signature=body.signature,
-        timestamp=body.timestamp or int(time.time() * 1000),
-    )
-    if result.get("ok"):
-        # DB에 승인 상태 업데이트
-        db = await get_db()
-        await db.execute(
-            "UPDATE followers SET builder_code_approved=1 WHERE address=?",
-            (body.account,)
-        )
-        await db.commit()
-    return result
-
-
-@app.get("/builder/status/{address}")
-async def builder_status(address: str):
-    """Builder Code 승인 상태 조회"""
-    from pacifica.builder_code import check_builder_approvals
-    approvals = check_builder_approvals(address)
-    approved = any(a.get("builder_code") == BUILDER_CODE for a in approvals)
-    return {
-        "address": address,
-        "builder_code": BUILDER_CODE,
-        "approved": approved,
-        "approvals": approvals,
-    }
+# Builder Code 엔드포인트는 api/routers/builder.py (builder_router)에서 관리
+# /builder/approve, /builder/check, /builder/stats, /builder/trades, /builder/prepare-approval
+# 여기에 중복 정의하지 않음
 
 # ── 팔로워 온보딩 (프론트엔드 호환) ─────────────────────
 class OnboardRequest(BaseModel):
