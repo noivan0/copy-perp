@@ -100,7 +100,13 @@ async def lifespan(app_):
 app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs", lifespan=lifespan)
 
 # CORS — 프로덕션: 실제 도메인만 허용
-_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+_DEFAULT_ORIGINS = [
+    "http://localhost:8001",
+    "http://localhost:3000",
+    "https://copy-perp.vercel.app",
+]
+_env_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+_ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))  # 중복 제거 유지 순서
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
