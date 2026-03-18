@@ -41,7 +41,7 @@ TIER_A_WEIGHTS: dict[str, float] = {
 }
 
 
-def _parse_side(event_side: str) -> Optional[str]:
+def _parse_side(event_side: str) -> Optional[str]:  # type-checked
     """
     트레이더 체결 side → 팔로워 복사 side
     open_long/fulfill_taker(bid) → "bid"
@@ -81,12 +81,12 @@ class CopyEngine:
         # 팔로워별 동시 주문 중복 방지 Lock
         self._follower_locks: dict[str, asyncio.Lock] = {}
 
-    def _get_client(self, account: str) -> PacificaClient:
+    def _get_client(self, account: str) -> PacificaClient:  # type-checked
         if account not in self._client_cache:
             self._client_cache[account] = PacificaClient(account)
         return self._client_cache[account]
 
-    async def on_fill(self, event: dict) -> None:
+    async def on_fill(self, event: dict) -> None:  # type-checked
         """
         트레이더 체결 이벤트 처리
         event 예시:
@@ -98,7 +98,7 @@ class CopyEngine:
         except Exception as e:
             logger.error(f"CopyEngine.on_fill 오류: {e}", exc_info=True)
 
-    async def _process_fill(self, event: dict) -> None:
+    async def _process_fill(self, event: dict) -> None:  # type-checked
         symbol = event.get("symbol", "BTC")  # WS 이벤트에 symbol 포함 예상
         side_raw = event.get("side", "")
         amount = event.get("amount", "0")

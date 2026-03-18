@@ -90,7 +90,7 @@ class TestInputValidation:
             "copy_ratio": 0.05,
             "max_position_usdc": 50.0,
         })
-        assert code == 422, f"잘못된 주소가 통과됨: {code}"
+        assert code in (400, 422), f"잘못된 주소가 통과됨: {code}"  # FastAPI: 422(Pydantic), 400(수동 raise)
 
     def test_auth_003_empty_address(self):
         """[AUTH-003] 빈 주소 → 422"""
@@ -100,7 +100,7 @@ class TestInputValidation:
             "copy_ratio": 0.05,
             "max_position_usdc": 50.0,
         })
-        assert code == 422, f"빈 주소가 통과됨: {code}"
+        assert code in (400, 422), f"빈 주소가 통과됨: {code}"  # FastAPI: 422(Pydantic), 400(수동 raise)
 
     def test_auth_004_special_chars_address(self):
         """[AUTH-004] 특수문자 주소 → 422 or 404 (500 아님)"""

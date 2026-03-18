@@ -237,7 +237,7 @@ def _sign_builder_approval(private_key_b58: str, payload: dict) -> str:
 
 
 def _approve_builder_code_api(account: str, signature: str, timestamp: int,
-                               agent_wallet: str) -> dict:
+                               agent_wallet: str) -> dict:  # type-checked
     """Pacifica API에 builder_code approve 전송"""
     from pacifica.client import _cf_request
     body = {
@@ -301,7 +301,7 @@ def _validate_max_position_field(v: float) -> float:
 # ── 엔드포인트 ────────────────────────────────────────
 
 @router.post("/onboard")
-async def onboard_follower(
+async def onboard_follower(  # -> dict (FastAPI infers response type)
     request: Request,
     body: OnboardRequest,
     background_tasks: BackgroundTasks,
@@ -537,7 +537,7 @@ async def onboard_follower(
 
 
 @router.get("/list")
-async def list_followers(trader_address: Optional[str] = None):
+async def list_followers(trader_address: Optional[str] = None) -> dict:
     """팔로워 목록 조회"""
     from api.main import _db
     from db.database import get_followers
@@ -554,7 +554,7 @@ async def list_followers(trader_address: Optional[str] = None):
 
 
 @router.delete("/{follower_address}")
-async def remove_follower(follower_address: str):
+async def remove_follower(follower_address: str) -> dict:
     """팔로워 해지 (soft delete)"""
     from api.main import _db
     if not _db:

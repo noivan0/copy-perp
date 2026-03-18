@@ -10,7 +10,7 @@
 | 구글 계정 | nothinkivan@gmail.com |
 | 메인 지갑 주소 | `3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ` |
 | 연결 방식 | Privy (구글 소셜 로그인 → 지갑 자동 생성) |
-| Agent 주소 | `5RpcRYh1Xw9pMCuAQFdTGhocmeGsEbHg36jFP6nM8DU1` |
+| Agent 주소 | `9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi` |
 | 네트워크 | 테스트넷 (3/16~4/16), 메인넷 (제출 시 전환) |
 
 ---
