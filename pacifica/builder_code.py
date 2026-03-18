@@ -20,7 +20,7 @@ Builder Code를 주문에 포함하면 Pacifica 프로토콜이 자동으로
 
 ## 서명 구조 (Pacifica 표준)
 서명 대상: sort_keys({
-    "data": {"builder_code": "noivan", "max_fee_rate": "0.001"},
+    "data": {"builder_code": "noivan", "max_fee_rate": "0.01"},
     "expiry_window": 5000,
     "timestamp": <ms>,
     "type": "approve_builder_code"
@@ -31,7 +31,7 @@ Builder Code를 주문에 포함하면 Pacifica 프로토콜이 자동으로
     "account": "<solana_address>",
     "builder_code": "noivan",
     "expiry_window": 5000,
-    "max_fee_rate": "0.001",
+    "max_fee_rate": "0.01",
     "signature": "<base58>",
     "timestamp": <ms>,
     "type": "approve_builder_code"
@@ -53,7 +53,7 @@ from solders.keypair import Keypair
 logger = logging.getLogger(__name__)
 
 BUILDER_CODE    = os.getenv("BUILDER_CODE", "noivan")
-BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")   # 0.1%
+BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.01")   # 1%
 NETWORK         = os.getenv("NETWORK", "testnet")
 
 # HMG 우회 설정
@@ -377,7 +377,7 @@ def prepare_approval_message(
             "message": "<compact_sorted_json>",   # signMessage 입력값
             "timestamp": <ms>,
             "builder_code": "noivan",
-            "max_fee_rate": "0.001"
+            "max_fee_rate": "0.01"
         }
     """
     payload = build_sign_payload(builder_code, max_fee_rate)

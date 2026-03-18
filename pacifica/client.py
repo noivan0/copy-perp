@@ -555,7 +555,7 @@ def approve_builder_code(
     main_private_key: str,
     account_address: str,
     builder_code: str = "noivan",
-    max_fee_rate: str = "0.001",
+    max_fee_rate: str = "0.0001",
 ) -> dict:
     """
     Builder Code approve — **main account private key**로 서명 필요.
@@ -569,7 +569,7 @@ def approve_builder_code(
           "type": "approve_builder_code",
           "data": {
             "builder_code": "noivan",
-            "max_fee_rate": "0.001"
+            "max_fee_rate": "0.01"
           }
         }
         → 재귀 정렬 → compact JSON → Ed25519 sign → base58
@@ -582,7 +582,7 @@ def approve_builder_code(
           "timestamp": <ms>,
           "expiry_window": 5000,
           "builder_code": "noivan",     ← data 래퍼 제거, top-level
-          "max_fee_rate": "0.001"       ← data 래퍼 제거, top-level
+          "max_fee_rate": "0.01"       ← data 래퍼 제거, top-level
         }
 
     Returns:
