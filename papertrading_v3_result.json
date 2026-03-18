@@ -1,0 +1,101 @@
+{
+  "version": "v3_bayesian_kelly",
+  "strategy": "Bayesian + Kelly 0.25",
+  "generated_at": "2026-03-16T03:18:15.971845",
+  "initial_capital": 10000,
+  "period_days": 30,
+  "traders_count": 13,
+  "return_pct": 7.44,
+  "sharpe_ratio": 11.483,
+  "max_drawdown_pct": 1.05,
+  "final_equity": 10743.82,
+  "monte_carlo": {
+    "simulations": 1000,
+    "mean_return_pct": 10.27,
+    "p10_return_pct": 8.0,
+    "p90_return_pct": 12.49,
+    "survival_rate_pct": 100.0
+  },
+  "live_positions": 30,
+  "total_allocated": 15000.0,
+  "traders": [
+    {
+      "alias": "monogram",
+      "roi_30d": 79.41,
+      "trust_score": 0.7749,
+      "kelly_weight": 0.1229
+    },
+    {
+      "alias": "YjCD9Gek",
+      "roi_30d": 10.61,
+      "trust_score": 0.1061,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "Ph9yECGo",
+      "roi_30d": 48.84,
+      "trust_score": 0.4726,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "6uC2TdJx",
+      "roi_30d": 49.17,
+      "trust_score": 0.4862,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "AEEqcwDj",
+      "roi_30d": 18.39,
+      "trust_score": 0.1838,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "GTU92nBC",
+      "roi_30d": 8.49,
+      "trust_score": 0.0849,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "5RX2DD42",
+      "roi_30d": 34.46,
+      "trust_score": 0.3337,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "C45As2di",
+      "roi_30d": 27.78,
+      "trust_score": 0.2754,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "DrNBiFih",
+      "roi_30d": 20.95,
+      "trust_score": 0.2092,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "BkUTkCt4",
+      "roi_30d": 24.69,
+      "trust_score": 0.2458,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "xTfdyNb1",
+      "roi_30d": 22.99,
+      "trust_score": 0.2295,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "2rEEo6bX",
+      "roi_30d": 7.32,
+      "trust_score": 0.0732,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "Ep1d8JdF",
+      "roi_30d": 6.88,
+      "trust_score": 0.0688,
+      "kelly_weight": 0
+    }
+  ]
+}

@@ -160,9 +160,19 @@ async def get_ranked_summary():
             summary[g]["avg_crs"] = round(summary[g]["avg_crs"] / n, 1)
             summary[g]["avg_roi_30d"] = round(summary[g]["avg_roi_30d"] / n, 2)
 
+    total_analyzed = len(rows)
     return {
-        "total": len(rows),
+        "total": total_analyzed,
+        "total_analyzed": total_analyzed,   # 테스트 호환 필드
         "summary": summary,
+        "grade_thresholds": {               # 등급 기준 점수 공개
+            "S": GRADE["S"],
+            "A": GRADE["A"],
+            "B": GRADE["B"],
+            "C": GRADE["C"],
+            "D": GRADE["D"],
+        },
+        "max_copy_ratio": MAX_COPY_RATIO,   # 등급별 최대 copy_ratio
     }
 
 

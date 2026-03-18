@@ -1,0 +1,92 @@
+{
+  "version": "v2_kelly",
+  "strategy": "Kelly 0.25",
+  "generated_at": "2026-03-16T03:18:15.971354",
+  "initial_capital": 10000,
+  "period_days": 30,
+  "traders_count": 13,
+  "return_pct": 17.58,
+  "sharpe_ratio": 21.636,
+  "max_drawdown_pct": 0.21,
+  "final_equity": 11758.27,
+  "traders": [
+    {
+      "alias": "monogram",
+      "roi_30d": 79.41,
+      "trust_score": 0.9,
+      "kelly_weight": 0.1935
+    },
+    {
+      "alias": "YjCD9Gek",
+      "roi_30d": 10.61,
+      "trust_score": 0.4243,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "Ph9yECGo",
+      "roi_30d": 48.84,
+      "trust_score": 0.6919,
+      "kelly_weight": 0.0153
+    },
+    {
+      "alias": "6uC2TdJx",
+      "roi_30d": 49.17,
+      "trust_score": 0.6942,
+      "kelly_weight": 0.0181
+    },
+    {
+      "alias": "AEEqcwDj",
+      "roi_30d": 18.39,
+      "trust_score": 0.4787,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "GTU92nBC",
+      "roi_30d": 8.49,
+      "trust_score": 0.4094,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "5RX2DD42",
+      "roi_30d": 34.46,
+      "trust_score": 0.5912,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "C45As2di",
+      "roi_30d": 27.78,
+      "trust_score": 0.5445,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "DrNBiFih",
+      "roi_30d": 20.95,
+      "trust_score": 0.4966,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "BkUTkCt4",
+      "roi_30d": 24.69,
+      "trust_score": 0.5228,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "xTfdyNb1",
+      "roi_30d": 22.99,
+      "trust_score": 0.5109,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "2rEEo6bX",
+      "roi_30d": 7.32,
+      "trust_score": 0.4012,
+      "kelly_weight": 0
+    },
+    {
+      "alias": "Ep1d8JdF",
+      "roi_30d": 6.88,
+      "trust_score": 0.3982,
+      "kelly_weight": 0
+    }
+  ]
+}

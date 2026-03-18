@@ -710,72 +710,10 @@ async def health_detailed():
 # /builder/approve, /builder/check, /builder/stats, /builder/trades, /builder/prepare-approval
 # 여기에 중복 정의하지 않음
 
-# ── 팔로워 온보딩 (프론트엔드 호환) ─────────────────────
-class OnboardRequest(BaseModel):
-    follower_address: str
-    traders: list  # 트레이더 주소 리스트
-    copy_ratio: float = 0.1
-    max_position_usdc: float = 50.0
-    referrer_address: Optional[str] = None
-
-
-@app.post("/followers/onboard")
-async def onboard_follower(body: OnboardRequest, background_tasks: BackgroundTasks):
-    """팔로워 온보딩 — 여러 트레이더를 한번에 팔로우"""
-    db = await get_db()
-    results = []
-    errors = []
-
-    for trader_addr in body.traders:
-        try:
-            await add_trader(db, trader_addr)
-            await add_follower(
-                db,
-                address=body.follower_address,
-                trader_address=trader_addr,
-                copy_ratio=body.copy_ratio,
-                max_position_usdc=body.max_position_usdc,
-            )
-            # 모니터 시작
-            if trader_addr not in _monitors:
-                monitor = RestPositionMonitor(trader_addr, _engine.on_fill)
-                _monitors[trader_addr] = monitor
-                background_tasks.add_task(monitor.start)
-            results.append({"trader": trader_addr, "status": "ok"})
-        except Exception as e:
-            errors.append({"trader": trader_addr, "error": str(e)})
-
-    # 레퍼럴 추적
-    if body.referrer_address and results:
-        try:
-            await _fuul.track_referral(body.referrer_address, body.follower_address)
-        except Exception:
-            pass
-
-    return {
-        "ok": len(results) > 0,
-        "follower": body.follower_address,
-        "followed": results,
-        "errors": errors,
-        "copy_ratio": body.copy_ratio,
-        "max_position_usdc": body.max_position_usdc,
-        "builder_code": BUILDER_CODE,
-        "note": f"Builder Code '{BUILDER_CODE}' 승인 대기 중 — 주문 실행은 가능",
-    }
-
-
-@app.get("/followers/{address}")
-async def get_follower_info(address: str):
-    """팔로워 정보 조회"""
-    db = await get_db()
-    from core.stats import get_follower_stats
-    stats = await get_follower_stats(db, address)
-    link = _fuul.generate_referral_link(address)
-    return {
-        "address": address,
-        "referral_link": link,
-        "stats": stats,
-    }
+# 팔로워 온보딩 엔드포인트는 api/routers/followers.py (followers_router)에서 관리
+# POST /followers/onboard — 완전 구현 (Solana 주소 검증 + Builder Code + Privy JWT)
+# GET  /followers/list    — 팔로워 목록
+# DELETE /followers/{addr} — 팔로워 해지
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────

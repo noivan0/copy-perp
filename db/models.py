@@ -17,6 +17,21 @@ CREATE TABLE IF NOT EXISTS traders (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- equity_daily: 트레이더 일별 스냅샷 (Sharpe 정밀 계산용)
+-- QA 권고 2026-03-16: Pacifica API가 당일 데이터만 반환하므로
+-- 3분 sync 때마다 당일 스냅샷을 여기에 누적 → 7~14일 후 실측 Sharpe 가능
+CREATE TABLE IF NOT EXISTS equity_daily (
+    address         TEXT NOT NULL,
+    date            TEXT NOT NULL,          -- 'YYYY-MM-DD' (UTC)
+    equity          REAL DEFAULT 0,         -- 당일 자본 (USD)
+    pnl_1d          REAL DEFAULT 0,         -- 당일 PNL (pnl_1d from leaderboard)
+    pnl_7d          REAL DEFAULT 0,         -- 7일 PNL (서버 집계)
+    pnl_30d         REAL DEFAULT 0,         -- 30일 PNL (서버 집계)
+    oi_current      REAL DEFAULT 0,         -- 현재 OI
+    synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (address, date)
+);
+
 CREATE TABLE IF NOT EXISTS followers (
     id                  TEXT PRIMARY KEY,
     trader_id           TEXT REFERENCES traders(id),
@@ -121,6 +136,79 @@ class DB:
                 (follower_id,)
             )
             return [dict(r) for r in await cur.fetchall()]
+
+    # ── equity_daily 스냅샷 (QA 권고 2026-03-16) ──────────────────────
+    async def snapshot_equity_daily(self, traders: list[dict]):
+        """
+        매일 00:00 UTC (또는 3분 sync 시) 트레이더 equity 스냅샷 저장
+        INSERT OR REPLACE → 동일 (address, date)는 덮어쓰기
+
+        traders: leaderboard API 응답 목록
+          [{address, equity_current, pnl_1d, pnl_7d, pnl_30d, oi_current}]
+        """
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        async with aiosqlite.connect(self.path) as db:
+            for t in traders:
+                addr = t.get("address", "")
+                if not addr:
+                    continue
+                await db.execute("""
+                    INSERT OR REPLACE INTO equity_daily
+                    (address, date, equity, pnl_1d, pnl_7d, pnl_30d, oi_current)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    addr, today,
+                    float(t.get("equity_current") or 0),
+                    float(t.get("pnl_1d")         or 0),
+                    float(t.get("pnl_7d")          or 0),
+                    float(t.get("pnl_30d")         or 0),
+                    float(t.get("oi_current")      or 0),
+                ))
+            await db.commit()
+
+    async def get_equity_history(self, address: str, days: int = 30) -> list:
+        """
+        트레이더 equity 이력 조회 (Sharpe 계산용)
+        Returns: [{date, equity, pnl_1d, ...}] (최신 순)
+        """
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT * FROM equity_daily
+                WHERE address = ?
+                ORDER BY date DESC
+                LIMIT ?
+            """, (address, days))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def calc_sharpe_from_history(self, address: str) -> float:
+        """
+        equity_daily 이력으로 실측 Sharpe 계산
+        최소 5일 이력 필요 (그 미만이면 방법 2 추정값 반환)
+        """
+        import math
+        history = await self.get_equity_history(address, days=30)
+        if len(history) < 5:
+            return 0.0  # 호출자가 방법 2 추정값으로 대체
+
+        # pnl_1d 기반 일별 수익률 (equity 대비)
+        daily_returns = []
+        for h in history:
+            eq  = float(h.get("equity", 0))
+            p1d = float(h.get("pnl_1d", 0))
+            if eq > 0 and p1d != 0:
+                daily_returns.append(p1d / eq)
+
+        if len(daily_returns) < 3:
+            return 0.0
+
+        import numpy as np
+        arr = np.array(daily_returns)
+        std = np.std(arr)
+        if std < 1e-10:
+            return 0.0
+        return float(np.mean(arr) / std * math.sqrt(252))
 
     async def get_trader_leaderboard(self, limit: int = 20) -> list:
         async with aiosqlite.connect(self.path) as db:

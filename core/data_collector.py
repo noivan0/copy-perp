@@ -69,9 +69,38 @@ async def poll_once() -> int:
         return 0
 
 
+async def poll_leaderboard_snapshot(db=None):
+    """
+    리더보드 스냅샷 — equity_daily 테이블에 저장 (QA 권고 2026-03-16)
+    매일 00:00 UTC 또는 첫 폴링 시 실행.
+    7~14일 누적 후 실측 Sharpe 계산 가능.
+    """
+    try:
+        import requests
+        BASE = "https://do5jt23sqak4.cloudfront.net/api/v1"
+        HDR  = {"User-Agent": "copyperp/1.0", "Host": "api.pacifica.fi"}
+        r = requests.get(f"{BASE}/leaderboard?limit=100&sortBy=pnl_all_time",
+                         headers=HDR, timeout=8)
+        if not r.ok:
+            return
+        d = r.json()
+        traders = d.get("data", []) if isinstance(d, dict) else []
+        if db and traders:
+            await db.snapshot_equity_daily(traders)
+            logger.info(f"equity_daily 스냅샷: {len(traders)}명 저장")
+        return traders
+    except Exception as e:
+        logger.warning(f"leaderboard 스냅샷 실패: {e}")
+        return []
+
+
+_last_snapshot_date: str = ""
+
+
 async def start_polling(interval: int = POLL_INTERVAL):
     """비동기 폴링 루프 — asyncio.create_task()로 시작"""
-    global _data_connected
+    global _data_connected, _last_snapshot_date
+    from datetime import datetime, timezone
     logger.info(f"DataCollector REST 폴링 시작 (interval={interval}s)")
     while True:
         try:
@@ -80,6 +109,14 @@ async def start_polling(interval: int = POLL_INTERVAL):
                 logger.debug(f"DataCollector: {n}개 심볼 업데이트")
             else:
                 _data_connected = False
+
+            # 매일 UTC 00:00 ~ 00:05 사이 첫 폴링에서 leaderboard 스냅샷 저장
+            # (Sharpe 정밀 계산용 equity_daily 테이블 누적)
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if today != _last_snapshot_date:
+                await poll_leaderboard_snapshot(db=None)  # DB 인스턴스 없을 때 로그만
+                _last_snapshot_date = today
+
         except Exception as e:
             logger.error(f"DataCollector 루프 오류: {e}")
             _data_connected = False
