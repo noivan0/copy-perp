@@ -369,6 +369,29 @@ async def onboard_follower(
             logger.warning("Privy JWT 검증 실패 — 토큰 무시하고 계속 진행")
 
     follower = body.follower_address
+
+    # ── Step 0c: JWT 있는 경우 follower_address 소유권 검증 ──
+    # Privy JWT의 sub(did:privy:xxx)가 DB의 follower privy_user_id와 일치해야 함
+    # 최초 온보딩 시: 토큰만 있으면 통과 (privy_user_id 신규 등록)
+    # 재온보딩 시: 기존 privy_user_id와 일치해야 함
+    if privy_user_id and _db:
+        try:
+            async with _db.execute(
+                "SELECT privy_user_id FROM followers WHERE address=? AND active=1",
+                (follower,)
+            ) as cur:
+                row = await cur.fetchone()
+            if row and row[0] and row[0] != privy_user_id:
+                # 이미 다른 Privy 유저가 등록한 주소
+                logger.warning(f"Privy ID 불일치: 기존={row[0][:20]} 요청={privy_user_id[:20]}")
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "이 지갑 주소는 다른 Privy 계정으로 등록되어 있습니다.", "code": "ADDRESS_CONFLICT"}
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"Privy 소유권 검증 DB 오류 (무시): {e}")
     traders = body.traders or DEFAULT_TIER1
 
     result = {
