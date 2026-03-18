@@ -534,10 +534,13 @@ async function loginWith(provider) {
     return;
   }
 
-  // Privy 없으면 데모 fallback
-  await new Promise(r => setTimeout(r, 600));
-  const demoAddr = '3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ';
-  onWalletConnected(demoAddr, provider);
+  // Privy 없으면 데모 모달 (지갑 주소 직접 입력)
+  setWalletBtnState('disconnected');
+  if (window.PrivyIntegration) {
+    window.PrivyIntegration._showDemoLoginModal?.();
+  } else {
+    toast('💡 Privy SDK 로드 중... 잠시 후 다시 시도해주세요.', 3000);
+  }
 }
 
 async function loginWithWallet() {

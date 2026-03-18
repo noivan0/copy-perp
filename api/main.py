@@ -679,6 +679,16 @@ async def get_stats():
         }
     stats["ws_symbols"] = len(_get_pc())
     stats["active_monitors"] = len(_monitors)
+    # Builder Fee 수취 합계
+    try:
+        db2 = await get_db()
+        async with db2.execute("SELECT COALESCE(SUM(fee_usdc),0), COUNT(*) FROM fee_records") as cur:
+            fee_sum, fee_count = await cur.fetchone()
+        stats["builder_fee_total_usdc"] = round(float(fee_sum), 4)
+        stats["builder_fee_count"] = fee_count
+    except Exception:
+        stats["builder_fee_total_usdc"] = 0.0
+        stats["builder_fee_count"] = 0
     return stats
 
 
