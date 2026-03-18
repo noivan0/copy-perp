@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pacifica.client import (
     _sort_json_keys, _sign_request, _cf_request, check_builder_approvals,
-    BUILDER_CODE, ACCOUNT_ADDRESS, AGENT_WALLET_PUBKEY
+    BUILDER_CODE, ACCOUNT_ADDRESS, AGENT_WALLET_PUBKEY, BUILDER_FEE_RATE
 )
 from solders.keypair import Keypair
 import base58

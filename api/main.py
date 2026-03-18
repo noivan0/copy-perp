@@ -719,16 +719,6 @@ async def health_detailed():
 # DELETE /followers/{addr} — 팔로워 해지
 
 
-@app.get("/config")
-def get_config():
-    return {
-        "privy_app_id": os.getenv("PRIVY_APP_ID", ""),
-        "builder_code": BUILDER_CODE,
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
-        "network": os.getenv("NETWORK", "testnet"),
-    }
-
-
 # ── 클라이언트 설정 제공 ──────────────────────────────
 @app.get("/config")
 def get_config():

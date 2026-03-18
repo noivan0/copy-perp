@@ -278,6 +278,22 @@
       </div>
     </div>
 
+    <!-- My Trades -->
+    <div class="card" id="my-trades-card" style="display:none;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>📋 My Trades</span>
+        <button onclick="_walletAddress && fetchMyTrades(_walletAddress)"
+          style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">↻</button>
+      </div>
+      <div id="my-trades-list">
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0;">거래 내역 없음</div>
+      </div>
+      <div id="my-trades-pnl" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:var(--muted);">Total PnL</span>
+        <span id="my-trades-pnl-val" style="font-size:16px;font-weight:700;color:var(--muted);">—</span>
+      </div>
+    </div>
+
     <!-- Follow Form -->
     <div class="card" id="follow-section">
       <div class="card-title">⚡ Start Copying</div>
@@ -379,6 +395,7 @@ const RANK_LABELS = ['🥇','🥈','🥉'];
 // ── 지갑 상태 ─────────────────────────────────────
 let _walletAddress = null;
 let _walletProvider = null;  // 'google' | 'twitter' | 'discord' | 'wallet'
+let _myTradesInterval = null;
 
 // ── 유틸 ─────────────────────────────────────────
 function toast(msg, duration=2800) {
@@ -443,7 +460,8 @@ async function loginWith(provider) {
 
 async function loginWithWallet() {
   closeLoginModal();
-  
+  setWalletBtnState('connecting');
+
   // 실제 Solana 지갑 연결 (Phantom, Backpack, Solflare 등)
   if (window.solana && window.solana.isPhantom) {
     toast('⏳ Phantom 지갑 연결 중...');
@@ -453,6 +471,7 @@ async function loginWithWallet() {
       onWalletConnected(address, 'phantom');
       return;
     } catch(e) {
+      setWalletBtnState('disconnected');
       toast('❌ Phantom 연결 실패: ' + e.message);
       return;
     }
@@ -464,6 +483,7 @@ async function loginWithWallet() {
       onWalletConnected(address, 'backpack');
       return;
     } catch(e) {
+      setWalletBtnState('disconnected');
       toast('❌ Backpack 연결 실패: ' + e.message);
       return;
     }
@@ -475,11 +495,13 @@ async function loginWithWallet() {
       onWalletConnected(address, 'solana');
       return;
     } catch(e) {
+      setWalletBtnState('disconnected');
       toast('❌ 지갑 연결 실패: ' + e.message);
       return;
     }
   } else {
     // 지갑 없으면 설치 안내
+    setWalletBtnState('disconnected');
     toast('💡 Phantom 또는 Backpack 지갑을 설치해주세요');
     window.open('https://phantom.app', '_blank');
   }
@@ -598,6 +620,11 @@ function onWalletConnected(address, provider) {
   // 내 팔로잉 현황 조회
   fetchMyFollowing(address);
 
+  // My Trades 초기 로드 + 30초마다 자동 갱신
+  fetchMyTrades(address);
+  if (_myTradesInterval) clearInterval(_myTradesInterval);
+  _myTradesInterval = setInterval(() => fetchMyTrades(address), 30000);
+
   toast(`✅ 연결 완료 (${provider})`);
 }
 
@@ -685,7 +712,7 @@ async function fetchLeaderboard() {
             <div class="lb-pnl ${pnlCls}">${pnlStr}</div>
             <div class="lb-followers">${t.followers || 0} followers</div>
           </div>
-          <button class="copy-btn" onclick="event.stopPropagation();selectAndCopy('${t.address}')">Copy</button>
+          <button class="copy-btn" onclick="event.stopPropagation();selectAndCopy('${t.address}', this)">Copy</button>
         </div>
       `;
     }).join('');
@@ -711,11 +738,52 @@ function fillTrader(addr) {
   document.getElementById('follow-section').scrollIntoView({behavior:'smooth'});
 }
 
-function selectAndCopy(addr) {
+async function followTrader(addr, btnEl) {
   if (!_walletAddress) {
     openLoginModal();
     return;
   }
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.textContent = '⏳';
+  }
+  try {
+    const r = await fetch(`${API}/follow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        follower_address: _walletAddress,
+        trader_address: addr,
+      }),
+    });
+    const d = await r.json();
+    if (r.ok && d.ok !== false) {
+      if (btnEl) {
+        btnEl.textContent = 'Following ✓';
+        btnEl.style.background = '#22c55e';
+        btnEl.disabled = false;
+      }
+      toast(`✅ ${shortAddr(addr)} 팔로우 시작!`);
+      fetchMyFollowing(_walletAddress);
+      fetchMyTrades(_walletAddress);
+    } else {
+      if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
+      toast(`❌ 팔로우 실패: ${d.detail || d.error || '서버 오류'}`);
+    }
+  } catch(e) {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
+    toast('❌ 네트워크 오류: ' + e.message);
+  }
+}
+
+function selectAndCopy(addr, btnEl) {
+  if (!_walletAddress) {
+    openLoginModal();
+    return;
+  }
+  // 1. /follow 엔드포인트로 팔로우
+  followTrader(addr, btnEl);
+  // 2. 폼에도 채워두기
   fillTrader(addr);
 }
 
@@ -913,16 +981,76 @@ async function syncMainnet() {
   }
 }
 
+// ── My Trades ──────────────────────────────────────
+async function fetchMyTrades(address) {
+  const card = document.getElementById('my-trades-card');
+  const listEl = document.getElementById('my-trades-list');
+  const pnlEl = document.getElementById('my-trades-pnl-val');
+
+  if (!address) return;
+  card.style.display = 'block';
+
+  try {
+    const r = await fetch(`${API}/trades?follower=${encodeURIComponent(address)}&limit=5`);
+    const d = await r.json();
+    const trades = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
+
+    if (!trades.length) {
+      listEl.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0;">거래 내역 없음</div>';
+      pnlEl.textContent = '—';
+      pnlEl.style.color = 'var(--muted)';
+      return;
+    }
+
+    // 최근 5개
+    const recent = trades.slice(0, 5);
+    let totalPnl = 0;
+    listEl.innerHTML = recent.map(t => {
+      const pnl = parseFloat(t.pnl || t.realized_pnl || 0);
+      totalPnl += pnl;
+      const pnlCls = pnl >= 0 ? 'up' : 'down';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toFixed(2);
+      const side = (t.side || t.direction || '?').toUpperCase();
+      const sideCls = side === 'LONG' ? 'up' : 'down';
+      const sym = t.symbol || t.market || '?';
+      const ts = t.timestamp || t.created_at || '';
+      const timeStr = ts ? new Date(ts).toLocaleDateString('ko', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+      return `
+        <div class="pos-row">
+          <div>
+            <span style="font-weight:700;font-size:13px;">${sym}</span>
+            <span class="${sideCls}" style="font-size:11px;margin-left:6px;font-weight:600;">${side}</span>
+            ${timeStr ? `<div style="font-size:10px;color:var(--muted);">${timeStr}</div>` : ''}
+          </div>
+          <span class="${pnlCls}" style="font-size:13px;font-weight:700;">${pnlStr}</span>
+        </div>
+      `;
+    }).join('');
+
+    // 총 PnL
+    const totalCls = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const totalStr = (totalPnl >= 0 ? '+' : '') + '$' + Math.abs(totalPnl).toFixed(2);
+    pnlEl.textContent = totalStr;
+    pnlEl.style.color = totalCls;
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--muted);font-size:13px;">거래 로드 실패: ${e.message}</div>`;
+  }
+}
+
 // ── 초기화 ────────────────────────────────────────
-fetchMarkets();
-fetchLeaderboard();
-fetchStats();
-fetchCrsRanking();
-fetchOptimalPortfolio();
-setInterval(fetchMarkets, 5000);
+// config 로드 완료 후 데이터 fetch
+_configReady.then(() => {
+  fetchMarkets();
+  fetchLeaderboard();
+  fetchStats();
+  fetchCrsRanking();
+  fetchOptimalPortfolio();
+});
+setInterval(fetchMarkets, 30000);   // 30초마다 가격 갱신
 setInterval(fetchLeaderboard, 15000);
 setInterval(fetchStats, 10000);
 setInterval(fetchCrsRanking, 30000);
+// My Trades는 로그인 후 fetchMyTrades(_walletAddress) 호출 + 30초 자동 갱신
 </script>
 </body>
 </html>

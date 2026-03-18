@@ -4,7 +4,7 @@
 
 [![Testnet Live](https://img.shields.io/badge/Testnet-LIVE%20%E2%9C%85-brightgreen)](https://test-app.pacifica.fi)
 [![Orders Confirmed](https://img.shields.io/badge/Live%20Orders-Confirmed-blue)](https://test-app.pacifica.fi)
-[![Traders Monitored](https://img.shields.io/badge/Traders%20Monitored-109-purple)](https://github.com/noivan0/copy-perp)
+[![Traders Monitored](https://img.shields.io/badge/Traders%20Monitored-132-purple)](https://github.com/noivan0/copy-perp)
 [![Builder Code](https://img.shields.io/badge/Builder%20Code-noivan-orange)](https://pacifica.gitbook.io/docs/builder-program)
 
 Copy the best perpetual traders on Pacifica — automatically, on-chain, with your funds staying in your wallet.
@@ -47,13 +47,13 @@ Perpetual DEXs have the trading. They don't have the copy trading.
 │           ▼                                         │
 │  ┌─────────────────────┐                            │
 │  │   Position Monitor  │  REST 500ms polling        │
-│  │  (109 traders live) │  + WS account_positions    │
+│  │  (132 traders live) │  + WS account_positions    │
 │  └──────────┬──────────┘                            │
 │             │ position change event                 │
 │             ▼                                       │
 │  ┌─────────────────────┐                            │
 │  │    Copy Engine      │  ratio calc + Tier A weight│
-│  │  (8 active monitors)│  DataCollector mark price  │
+│  │  (10 active monitors)│  DataCollector mark price  │
 │  └──────────┬──────────┘                            │
 │             │ market_order()                        │
 │             ▼                                       │
@@ -73,7 +73,7 @@ Perpetual DEXs have the trading. They don't have the copy trading.
 **Stack:**
 - **Backend:** Python + FastAPI + aiosqlite
 - **Blockchain:** Pacifica Testnet (Solana, Ed25519 signing)
-- **Real-time:** REST 30s polling (68 symbols, DataCollector)
+- **Real-time:** REST 30s polling (69 symbols, DataCollector)
 - **Auth/Wallet:** Privy (Google/Twitter social login)
 - **Referral:** Fuul SDK
 - **Fee capture:** Pacifica Builder Code (`noivan`)
@@ -129,23 +129,27 @@ python3 scripts/demo_run.py --live      # Real testnet orders
 ║              Pacifica Hackathon 2026                 ║
 ╚══════════════════════════════════════════════════════╝
 
-[12:54:11] [Health] 서버 정상  BTC $72,639  심볼 68개  모니터 8개
-[12:54:11] [Stats]  트레이더 109명  팔로워 12명  누적 12건  거래량 $6,100
+[04:53:24] [Health] 서버 정상  BTC $74,156  심볼 69개  모니터 10개
+[04:53:24] [Stats]  트레이더 133명  팔로워 8명  누적 44건  거래량 $9,300
+
+  🏆 EcX5xSDT45Nv...  30일 ROI +83.3%  승률 89%
+  ⭐ 5RmsTTwkXQgK...  30일 ROI +79.4%  승률 0%
+  ✅ 8XAjtKhmJhgR...  30일 ROI +100.0%
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   🔔 포지션 감지!
      심볼  : BTC
      방향  : ▲ LONG
      변화량: 0.0500
-     가격  : $72,639.03
+     가격  : $74,156.20
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[CopyEngine] 팔로워 12명 대상 주문 계산 중...
-  ▲ [9mxJJAQw...] BTC LONG 0.000688 @ $72,639  → FILLED ✅  (522ms)
-  ▲ [Follower_B] BTC LONG 0.001377 @ $72,639  → FILLED ✅  (453ms)
+[CopyEngine] 팔로워 8명 대상 주문 계산 중...
+  ▲ [MockFoll...] BTC LONG 0.001349 @ $74,156.20  → FILLED ✅  (514ms)
+  ▲ [T3FOLLOW...] BTC LONG 0.000674 @ $74,156.20  → FILLED ✅  (493ms)
 
 📊 체결 요약
-  총 주문: 6건 | 체결 성공: 6건 | 거래량: $450 | Builder Fee: +$0.45
+  총 주문: 6건 | 체결 성공: 6건 | 거래량: $900 | Builder Fee: +$0.90
 ```
 
 ---
@@ -214,16 +218,18 @@ python3 scripts/demo_run.py --live      # Real testnet orders
 
 ---
 
-## 📊 Platform Stats (Live)
+## 📊 Platform Stats (Live — 2026-03-18 기준)
 
 | 항목 | 수치 |
 |------|------|
-| 모니터링 중인 트레이더 | **109명** |
-| 활성 팔로워 | **12명** |
-| 누적 Copy Trade | **15건** |
-| 총 거래량 | **$6,100 USDC** |
-| 실시간 심볼 | **68개** |
-| 활성 모니터 | **8개** |
+| 모니터링 중인 트레이더 | **132명** |
+| 활성 팔로워 | **7명** |
+| 누적 Copy Trade | **36건+** |
+| 총 거래량 | **$8,500+ USDC** |
+| 실시간 심볼 | **69개** |
+| 활성 모니터 | **10개** |
+| BTC 실시간가 | **$74,160** |
+| 상위 트레이더 30일 ROI | **+83.3% (EcX5xSDT)** |
 
 ---
 
@@ -232,7 +238,7 @@ python3 scripts/demo_run.py --live      # Real testnet orders
 ```bash
 python3 -m pytest tests/ -q
 
-# 24/24 PASSED
+# 42/42 PASSED in 27.18s
 # ✅ TC-001: basic copy (2 followers)
 # ✅ TC-002: side mapping
 # ✅ TC-003: liquidation skip
@@ -242,7 +248,7 @@ python3 -m pytest tests/ -q
 # ✅ TC-007: duplicate events — unique IDs
 # ✅ TC-008: DB field integrity
 # ✅ TC-009: 10 followers concurrent — 3ms
-# ✅ TC-010~024: stats, E2E mock, follower onboard
+# ✅ TC-010~042: stats, E2E mock, follower onboard, builder API, ranked leaderboard
 ```
 
 ---

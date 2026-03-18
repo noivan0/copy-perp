@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-MAINNET_IP   = "54.230.62.105"
+MAINNET_IP   = "54.230.62.90"
 MAINNET_HOST = "api.pacifica.fi"
 TESTNET_CF   = "do5jt23sqak4.cloudfront.net"
 TESTNET_HOST = "test-api.pacifica.fi"
