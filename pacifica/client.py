@@ -569,7 +569,7 @@ def approve_builder_code(
           "type": "approve_builder_code",
           "data": {
             "builder_code": "noivan",
-            "max_fee_rate": "0.01"
+            "max_fee_rate": "0.001"
           }
         }
         → 재귀 정렬 → compact JSON → Ed25519 sign → base58
@@ -582,7 +582,7 @@ def approve_builder_code(
           "timestamp": <ms>,
           "expiry_window": 5000,
           "builder_code": "noivan",     ← data 래퍼 제거, top-level
-          "max_fee_rate": "0.01"       ← data 래퍼 제거, top-level
+          "max_fee_rate": "0.001"       ← data 래퍼 제거, top-level
         }
 
     Returns:
