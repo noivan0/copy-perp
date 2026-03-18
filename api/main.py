@@ -414,7 +414,7 @@ def health():
         "mainnet_traders": mainnet_traders_count,    # mainnet 활성 트레이더 수
         "testnet_traders": testnet_traders_count,    # testnet 활성 트레이더 수
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.01"),
         "version": "1.0.0",
     }
 
@@ -724,7 +724,7 @@ def get_config():
     return {
         "privy_app_id": os.getenv("PRIVY_APP_ID", ""),
         "builder_code": BUILDER_CODE,
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.01"),
         "network": os.getenv("NETWORK", "testnet"),
     }
 
