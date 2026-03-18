@@ -414,7 +414,7 @@ def health():
         "mainnet_traders": mainnet_traders_count,    # mainnet 활성 트레이더 수
         "testnet_traders": testnet_traders_count,    # testnet 활성 트레이더 수
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.01"),
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
         "version": "1.0.0",
     }
 
@@ -724,9 +724,38 @@ def get_config():
     return {
         "privy_app_id": os.getenv("PRIVY_APP_ID", ""),
         "builder_code": BUILDER_CODE,
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.01"),
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
         "network": os.getenv("NETWORK", "testnet"),
     }
+
+
+# ── 클라이언트 설정 제공 ──────────────────────────────
+@app.get("/config")
+def get_config():
+    """프론트엔드가 서버에서 설정을 동적으로 받아가는 엔드포인트"""
+    return {
+        "privy_app_id":    os.getenv("PRIVY_APP_ID", ""),
+        "builder_code":    BUILDER_CODE,
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "network":         os.getenv("NETWORK", "testnet"),
+    }
+
+
+# ── Builder Code 자동 승인 헬퍼 ───────────────────────
+async def _auto_approve_builder(address: str):
+    """팔로워 온보딩 시 Builder Code 자동 승인 (백그라운드)"""
+    try:
+        from pacifica.builder_code import approve
+        from solders.keypair import Keypair
+        import base58 as _b58
+        pk = os.getenv("AGENT_PRIVATE_KEY", "")
+        if not pk:
+            return
+        kp     = Keypair.from_seed(_b58.b58decode(pk)[:32])
+        result = approve(account=address, keypair=kp)
+        logger.info(f"[Builder] 자동 승인: {address[:16]}... → ok={result.get('ok')}")
+    except Exception as e:
+        logger.debug(f"[Builder] 자동 승인 실패 (무시): {e}")
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────

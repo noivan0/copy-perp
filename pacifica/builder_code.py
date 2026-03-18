@@ -53,7 +53,7 @@ from solders.keypair import Keypair
 logger = logging.getLogger(__name__)
 
 BUILDER_CODE    = os.getenv("BUILDER_CODE", "noivan")
-BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.01")   # 1% (2026-03-18 확정)
+BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")   # 0.1% (최종 확정)
 NETWORK         = os.getenv("NETWORK", "testnet")
 
 # HMG 우회 설정
