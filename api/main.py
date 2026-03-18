@@ -72,6 +72,7 @@ from dotenv import load_dotenv
 _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(_env_path, override=True)
 
+import aiosqlite
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -279,7 +280,7 @@ RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
     "default":          (60,  60),   # 기본: 분당 60회
 }
 
-def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:
+def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:  # noqa: E501
     """True = 허용, False = 차단. Sliding window 방식."""
     now = _time_m.time()
     calls = _rate_limit_store[key]
@@ -321,7 +322,7 @@ def _require_rate_limit(key: str, max_calls: int = None, window_sec: int = 60, r
 
 
 # ── Solana 주소 검증 유틸 ────────────────────────────
-def _is_valid_solana_address(addr: str) -> bool:
+def _is_valid_solana_address(addr: str) -> bool:  # type-checked
     """base58 디코딩 + 32바이트 확인"""
     try:
         import base58 as _b58
@@ -330,7 +331,7 @@ def _is_valid_solana_address(addr: str) -> bool:
     except Exception:
         return False
 
-def _require_valid_solana_address(addr: str, field: str = "address") -> None:
+def _require_valid_solana_address(addr: str, field: str = "address") -> None:  # type-checked
     """주소 검증 실패 시 HTTPException(400) 발생"""
     if not addr or not isinstance(addr, str):
         raise HTTPException(
@@ -353,7 +354,7 @@ from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_
 _fuul = FuulReferral()
 
 
-async def get_db():
+async def get_db() -> aiosqlite.Connection:
     global _db
     if _db is None:
         _db = await init_db()
@@ -554,7 +555,7 @@ async def _auto_monitor_top_traders():
 
 
 # ── 입력값 검증 유틸 ─────────────────────────────────
-def _validate_copy_ratio(v: float) -> float:
+def _validate_copy_ratio(v: float) -> float:  # type-checked
     """copy_ratio: 0.01 ~ 1.0 범위 강제"""
     if v < 0.01 or v > 1.0:
         raise HTTPException(
@@ -563,7 +564,7 @@ def _validate_copy_ratio(v: float) -> float:
         )
     return v
 
-def _validate_max_position(v: float) -> float:
+def _validate_max_position(v: float) -> float:  # type-checked
     """max_position_usdc: 1 ~ 10000 범위 강제"""
     if v < 1 or v > 10000:
         raise HTTPException(
@@ -607,12 +608,12 @@ class ReferralTrackRequest(BaseModel):
 
 # ── 기본 엔드포인트 ───────────────────────────────────
 @app.get("/")
-def root():
+def root() -> dict:
     return {"status": "ok", "service": "Copy Perp", "version": "1.1.0", "docs": "/docs"}
 
 
 @app.get("/leaderboard")
-async def leaderboard_alias(limit: int = 20):
+async def leaderboard_alias(limit: int = 20) -> dict:
     """/traders의 alias — 프론트 호환성"""
     from db.database import get_leaderboard as _get_lb
     from pacifica.client import PacificaClient
@@ -637,11 +638,11 @@ async def leaderboard_alias(limit: int = 20):
 
 
 @app.get("/healthz")
-def healthz():
+def healthz() -> dict:
     return {"status": "ok"}
 
 @app.get("/health")
-def health(request: Request):
+def health(request: Request) -> dict:
     client_ip = request.client.host if request.client else "unknown"
     _require_rate_limit(f"health:{client_ip}")
     btc = _get_pc().get("BTC", {})
@@ -700,7 +701,7 @@ def health(request: Request):
 
 
 @app.get("/markets")
-def get_markets(request: Request, symbol: Optional[str] = None):
+def get_markets(request: Request, symbol: Optional[str] = None) -> dict:
     client_ip = request.client.host if request.client else "unknown"
     _require_rate_limit(f"markets:{client_ip}")
     if symbol:
@@ -716,7 +717,7 @@ def get_markets(request: Request, symbol: Optional[str] = None):
 
 
 @app.get("/signals")
-def get_signals(request: Request, top_n: int = 5):
+def get_signals(request: Request, top_n: int = 5) -> dict:
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
     client_ip = request.client.host if request.client else "unknown"
     _require_rate_limit(f"signals:{client_ip}")
@@ -728,6 +729,7 @@ def get_signals(request: Request, top_n: int = 5):
         reverse=True
     )[:top_n]
     return {
+        "ok": True,
         "funding_extremes": funding_top,
         "oracle_mark_divergence": divergence_top,
         "source": "live" if _get_pc() else "empty",
@@ -736,7 +738,7 @@ def get_signals(request: Request, top_n: int = 5):
 
 # ── 팔로우 ────────────────────────────────────────────
 @app.post("/follow")
-async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, request: Request):
+async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, request: Request) -> dict:
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 10회
@@ -801,7 +803,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
 
 
 @app.delete("/follow/{trader_address}")
-async def unfollow_trader(trader_address: str, request: Request, follower_address: str = "", body: Optional[UnfollowRequest] = None):
+async def unfollow_trader(trader_address: str, request: Request, follower_address: str = "", body: Optional[UnfollowRequest] = None) -> dict:
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 10회
@@ -853,7 +855,7 @@ async def list_trades(
     follower: Optional[str] = None,
     trader:   Optional[str] = None,
     status:   Optional[str] = None,
-):
+) -> dict:
     """Copy Trade 내역 조회 (필터: follower, trader, status)"""
     req_id = getattr(request.state, "request_id", "??")
 
@@ -913,7 +915,7 @@ async def list_trades(
 # ── 통계 ──────────────────────────────────────────────
 @app.get("/stats/overview")
 @app.get("/stats")
-async def get_stats(request: Request):
+async def get_stats(request: Request) -> dict:
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 60회
@@ -993,11 +995,14 @@ async def get_metrics():
 
 
 @app.get("/events")
-def get_events(limit: int = 50, level: Optional[str] = None):
+def get_events(limit: int = 50, level: Optional[str] = None) -> dict:
     """최근 시스템 이벤트 로그"""
     am = get_alert_manager()
+    events = am.get_recent_events(limit=limit, level=level)
     return {
-        "data": am.get_recent_events(limit=limit, level=level),
+        "ok": True,
+        "data": events,
+        "count": len(events),
         "summary": am.get_error_summary(),
     }
 
@@ -1047,12 +1052,13 @@ async def sse_stream():
 
 # ── 레퍼럴 ────────────────────────────────────────────
 @app.get("/fuul/leaderboard")
-def referral_leaderboard(limit: int = 10):
-    return {"data": _fuul.get_leaderboard(limit)}
+def referral_leaderboard(limit: int = 10) -> dict:
+    data = _fuul.get_leaderboard(limit)
+    return {"ok": True, "data": data, "count": len(data) if isinstance(data, list) else 0}
 
 
 @app.post("/fuul/track")
-async def track_referral(body: ReferralTrackRequest):
+async def track_referral(body: ReferralTrackRequest) -> dict:
     try:
         result = await _fuul.track_referral(body.referrer, body.referee)
         return result
@@ -1065,7 +1071,7 @@ async def track_referral(body: ReferralTrackRequest):
 
 
 @app.get("/referral/{address}")
-def get_referral(address: str):
+def get_referral(address: str) -> dict:
     try:
         link = _fuul.generate_referral_link(address)
         points = _fuul.get_points(address)
@@ -1079,7 +1085,7 @@ def get_referral(address: str):
 
 
 @app.get("/health/detailed")
-async def health_detailed():
+async def health_detailed() -> dict:
     """상세 헬스 체크"""
     import core.data_collector as _dc_mod
     from core.data_collector import get_price_cache
@@ -1155,12 +1161,18 @@ async def health_detailed():
 
 # ── 클라이언트 설정 제공 ──────────────────────────────
 @app.get("/config")
-def get_config():
+def get_config() -> dict:
+    privy_app_id = os.getenv("PRIVY_APP_ID", "")
+    fuul_key = os.getenv("FUUL_API_KEY", "")
     return {
-        "privy_app_id":    os.getenv("PRIVY_APP_ID", ""),
-        "builder_code":    BUILDER_CODE,
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
-        "network":         os.getenv("NETWORK", "testnet"),
+        "privy_app_id":      privy_app_id,
+        "privy_configured":  bool(privy_app_id),
+        "builder_code":      BUILDER_CODE,
+        "builder_fee_rate":  os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "network":           os.getenv("NETWORK", "testnet"),
+        "mock_mode":         not bool(os.getenv("AGENT_PRIVATE_KEY", "")),
+        "fuul_enabled":      bool(fuul_key),
+        "allowed_origins":   _ALLOWED_ORIGINS,
     }
 
 

@@ -172,10 +172,20 @@ async def revoke_builder_code(body: RevokeReq):
     return result
 
 
+_builder_stats_cache: dict = {"data": None, "ts": 0.0}
+_BUILDER_STATS_TTL = 60.0  # 60초 캐시
+
 @router.get("/stats")
 def builder_stats():
-    """noivan 빌더 코드 수익 통계"""
-    return get_builder_revenue(BUILDER_CODE)
+    """noivan 빌더 코드 수익 통계 (60초 캐시)"""
+    import time
+    now = time.time()
+    if _builder_stats_cache["data"] and now - _builder_stats_cache["ts"] < _BUILDER_STATS_TTL:
+        return {**_builder_stats_cache["data"], "cached": True}
+    data = get_builder_revenue(BUILDER_CODE)
+    _builder_stats_cache["data"] = data
+    _builder_stats_cache["ts"] = now
+    return {**data, "cached": False}
 
 
 @router.get("/trades")

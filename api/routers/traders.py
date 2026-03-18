@@ -66,9 +66,16 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
                 wr  = float(r.get("win_rate", 0) or 0)
                 eq  = float(r.get("equity", 0) or 0)
                 roi = pnl / eq if eq > 0 else 0
+                # total_trades = win_count + lose_count (DB에 total_trades 컬럼 없음)
+                win  = int(r.get("win_count", 0) or 0)
+                lose = int(r.get("lose_count", 0) or 0)
+                total_trades = win + lose
                 # composite_score: WR 40% + ROI 40% + PnL 정규화 20%
                 composite = round(wr * 0.4 + min(roi, 2.0) * 0.4 + min(pnl / 100000, 1.0) * 0.2, 4)
-                return {**r, "composite_score": composite, "roi": round(roi, 4)}
+                return {**r,
+                        "composite_score": composite,
+                        "roi": round(roi, 4),
+                        "total_trades": total_trades}
             return {"data": [_enrich(dict(r)) for r in leaders], "source": "db", "count": len(leaders)}
     except Exception as e:
         logger.warning(f"[{req_id}] 트레이더 DB 조회 실패: {e}")

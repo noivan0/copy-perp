@@ -200,6 +200,8 @@ async def get_leaderboard(conn, limit: int = 20) -> list:
                   COALESCE(volume_7d, 0) as volume_7d,
                   COALESCE(volume_30d, 0) as volume_30d,
                   COALESCE(oi_current, 0) as oi_current,
+                  COALESCE(win_count, 0) as win_count,
+                  COALESCE(lose_count, 0) as lose_count,
                   -- roi_30d: equity 기반 ROI (퍼센트)
                   CASE WHEN COALESCE(equity, 0) > 0
                        THEN ROUND(COALESCE(pnl_30d, 0) / equity * 100, 2)
