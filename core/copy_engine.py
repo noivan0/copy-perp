@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # 안전 파라미터
 MAX_LEVERAGE = 5
-MIN_ORDER_USDC = 5.0    # 최소 주문 금액 (미만이면 스킵)
+MIN_ORDER_USDC = 10.0   # 최소 주문 금액 (Pacifica testnet min_order_size=$10)
 MAX_ORDER_USDC = 5000.0 # 단일 주문 최대 금액 (안전장치)
 MAX_SLIPPAGE = "1.0"    # 1% 슬리피지 허용
 MIN_AMOUNT = 0.0001     # 최소 수량 (소수점 정밀도)
