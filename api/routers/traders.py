@@ -6,7 +6,8 @@ GET  /traders/{address}            — 트레이더 상세 + 통계
 GET  /traders/{address}/trades     — 체결 이력
 GET  /traders/{address}/followers  — 팔로워 목록
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+import logging
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -15,6 +16,7 @@ from core.stats import compute_trader_stats, get_trader_stats
 from core.mock import MOCK_TRADERS, mock_fill_event
 from pacifica.client import PacificaClient
 
+logger = logging.getLogger(__name__)
 _pacifica = PacificaClient()
 
 router = APIRouter(prefix="/traders", tags=["traders"])
@@ -26,27 +28,48 @@ class TraderRegister(BaseModel):
 
 
 @router.get("")
-async def list_traders(limit: int = 20, mock: bool = False):
+async def list_traders(request: Request, limit: int = 20, mock: bool = False):
     """리더보드 — PnL 기준 정렬
     mock=true: Mock 데이터 강제 반환
     mock=false (기본): DB 우선, 비어있으면 Mock 폴백
     """
+    req_id = getattr(request.state, "request_id", "??")
+
+    # Rate limit: IP당 분당 60회
+    from api.main import _check_rate_limit
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"traders:{client_ip}", max_calls=60, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
+        )
+
+    # limit 검증
+    if limit < 1 or limit > 200:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "limit은 1~200 범위여야 합니다", "code": "INVALID_LIMIT"}
+        )
+
     if mock:
         sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
         return {"data": sorted_traders[:limit], "source": "mock", "count": len(sorted_traders[:limit])}
 
-    from api.main import _db
-    leaders = await get_leaderboard(_db, limit)
-    if leaders:
-        return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+    try:
+        from api.main import _db
+        leaders = await get_leaderboard(_db, limit)
+        if leaders:
+            return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+    except Exception as e:
+        logger.warning(f"[{req_id}] 트레이더 DB 조회 실패: {e}")
 
     # DB 비어있으면 실제 Pacifica 리더보드 시도
     try:
         real_lb = _pacifica.get_leaderboard(limit=limit)
         if real_lb:
             return {"data": real_lb, "source": "pacifica_live", "count": len(real_lb)}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[{req_id}] Pacifica 리더보드 조회 실패: {e}")
 
     # 최후 폴백: Mock 데이터
     sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
@@ -54,34 +77,72 @@ async def list_traders(limit: int = 20, mock: bool = False):
 
 
 @router.post("")
-async def register_trader(body: TraderRegister, background_tasks: BackgroundTasks):
-    from api.main import _db, _engine, _monitors
-    from core.position_monitor import RestPositionMonitor  # WS 차단 환경 → REST 폴링 사용
+async def register_trader(body: TraderRegister, background_tasks: BackgroundTasks, request: Request):
+    from api.main import _db, _engine, _monitors, _is_valid_solana_address
+    from core.position_monitor import RestPositionMonitor
 
-    await add_trader(_db, body.address, body.alias)
+    req_id = getattr(request.state, "request_id", "??")
+
+    # 주소 검증
+    if not _is_valid_solana_address(body.address):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "유효하지 않은 Solana 주소 (address)", "code": "INVALID_ADDRESS"}
+        )
+
+    try:
+        await add_trader(_db, body.address, body.alias)
+    except Exception as e:
+        logger.error(f"[{req_id}] 트레이더 등록 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "트레이더 등록에 실패했습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
 
     if body.address not in _monitors:
-        monitor = RestPositionMonitor(body.address, _engine.on_fill)
-        _monitors[body.address] = monitor
-        background_tasks.add_task(monitor.start)
+        try:
+            monitor = RestPositionMonitor(body.address, _engine.on_fill)
+            _monitors[body.address] = monitor
+            background_tasks.add_task(monitor.start)
+        except Exception as e:
+            logger.warning(f"[{req_id}] 모니터 시작 실패 (등록은 성공): {e}")
 
     return {"ok": True, "address": body.address, "alias": body.alias, "monitoring": True}
 
 
 @router.get("/{address}")
-async def get_trader(address: str):
+async def get_trader(address: str, request: Request):
     """트레이더 상세 + 성과 통계 — DB 우선, Mock 폴백"""
-    from api.main import _db
+    from api.main import _db, _is_valid_solana_address
+    import asyncio
 
-    # DB 우선 조회
-    async with _db.execute("SELECT * FROM traders WHERE address = ?", (address,)) as cur:
-        row = await cur.fetchone()
+    req_id = getattr(request.state, "request_id", "??")
+
+    if not _is_valid_solana_address(address):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "유효하지 않은 Solana 주소", "code": "INVALID_ADDRESS"}
+        )
+
+    try:
+        # DB 우선 조회
+        async with _db.execute("SELECT * FROM traders WHERE address = ?", (address,)) as cur:
+            row = await cur.fetchone()
+    except Exception as e:
+        logger.error(f"[{req_id}] 트레이더 조회 DB 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "트레이더 정보를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
 
     if row:
-        import asyncio
-        stats = await asyncio.get_event_loop().run_in_executor(
-            None, get_trader_stats, address
-        )
+        try:
+            stats = await asyncio.get_event_loop().run_in_executor(
+                None, get_trader_stats, address
+            )
+        except Exception as e:
+            logger.warning(f"[{req_id}] 트레이더 stats 조회 실패: {e}")
+            stats = {}
         return {"data": {**dict(row), **stats}, "source": "db"}
 
     # DB에 없으면 Mock에서 찾기
@@ -89,22 +150,47 @@ async def get_trader(address: str):
     if mock:
         return {"data": mock, "source": "mock"}
 
-    raise HTTPException(404, "트레이더를 찾을 수 없습니다")
+    raise HTTPException(
+        status_code=404,
+        detail={"error": "트레이더를 찾을 수 없습니다", "code": "NOT_FOUND"}
+    )
 
 
 @router.get("/{address}/trades")
-async def get_trader_trades(address: str, limit: int = 50):
+async def get_trader_trades(address: str, limit: int = 50, request: Request = None):
     from api.main import _db
-    async with _db.execute(
-        "SELECT * FROM copy_trades WHERE trader_address = ? ORDER BY created_at DESC LIMIT ?",
-        (address, limit)
-    ) as cur:
-        rows = await cur.fetchall()
-    return {"data": [dict(r) for r in rows], "count": len(rows)}
+    req_id = getattr(request.state, "request_id", "??") if request else "??"
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "limit은 1~500 범위여야 합니다", "code": "INVALID_LIMIT"}
+        )
+    try:
+        async with _db.execute(
+            "SELECT * FROM copy_trades WHERE trader_address = ? ORDER BY created_at DESC LIMIT ?",
+            (address, limit)
+        ) as cur:
+            rows = await cur.fetchall()
+        return {"data": [dict(r) for r in rows], "count": len(rows)}
+    except Exception as e:
+        logger.error(f"[{req_id}] 트레이더 거래 내역 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "거래 내역을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
 
 
 @router.get("/{address}/followers")
-async def get_trader_followers(address: str):
+async def get_trader_followers(address: str, request: Request = None):
     from api.main import _db
-    rows = await get_followers(_db, address)
-    return {"data": [dict(r) for r in rows], "count": len(rows)}
+    req_id = getattr(request.state, "request_id", "??") if request else "??"
+    try:
+        rows = await get_followers(_db, address)
+        return {"data": [dict(r) for r in rows], "count": len(rows)}
+    except Exception as e:
+        logger.error(f"[{req_id}] 팔로워 목록 조회 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "팔로워 목록을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
