@@ -47,6 +47,7 @@ async def poll_once() -> int:
             sym = item.get("symbol")
             if not sym:
                 continue
+            existing = _price_cache.get(sym, {})
             _price_cache[sym] = {
                 "symbol": sym,
                 "mark":          str(item.get("mark", item.get("mark_price", "0"))),
@@ -56,6 +57,9 @@ async def poll_once() -> int:
                 "volume_24h":    str(item.get("volume_24h", "0")),
                 "mid":           str(item.get("mid", "0")),
                 "updated_at":    time.time(),
+                # 마켓 메타(lot_size 등) — 별도 폴링에서 채워짐, 기존 값 보존
+                "lot_size":      existing.get("lot_size", item.get("lot_size", "0")),
+                "min_order_size": existing.get("min_order_size", item.get("min_order_size", "0")),
             }
             updated += 1
 
@@ -97,11 +101,35 @@ async def poll_leaderboard_snapshot(db=None):
 _last_snapshot_date: str = ""
 
 
+async def poll_market_meta():
+    """마켓 메타데이터(lot_size, min_order_size) 1회 로딩 → price_cache에 병합"""
+    global _price_cache
+    from pacifica.client import _cf_request
+    try:
+        result = _cf_request("GET", "info/markets")
+        markets = result.get("data", result) if isinstance(result, dict) else result
+        if not isinstance(markets, list):
+            return
+        for m in markets:
+            sym = m.get("symbol")
+            if not sym:
+                continue
+            if sym not in _price_cache:
+                _price_cache[sym] = {"symbol": sym}
+            _price_cache[sym]["lot_size"] = str(m.get("lot_size", "0"))
+            _price_cache[sym]["min_order_size"] = str(m.get("min_order_size", "0"))
+        logger.info(f"DataCollector: 마켓 메타 {len(markets)}개 로딩 완료")
+    except Exception as e:
+        logger.debug(f"마켓 메타 로딩 실패 (비필수): {e}")
+
+
 async def start_polling(interval: int = POLL_INTERVAL):
     """비동기 폴링 루프 — asyncio.create_task()로 시작"""
     global _data_connected, _last_snapshot_date
     from datetime import datetime, timezone
     logger.info(f"DataCollector REST 폴링 시작 (interval={interval}s)")
+    # 최초 1회 마켓 메타 로딩 (lot_size, min_order_size)
+    await poll_market_meta()
     while True:
         try:
             n = await poll_once()

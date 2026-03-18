@@ -647,30 +647,49 @@ async function fetchMyFollowing(address) {
 async function fetchMarkets() {
   try {
     const r = await fetch(`${API}/markets`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const arr = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
     const items = Object.fromEntries(arr.map(m => [m.symbol, m]));
 
     SYMBOLS.forEach(sym => {
       const el = document.getElementById(`t-${sym}`);
-      if (el && items[sym]) {
+      if (!el) return;
+      if (items[sym]) {
         const p = parseFloat(items[sym].mark);
-        el.textContent = p >= 1 ? '$' + p.toLocaleString('en',{maximumFractionDigits:p >= 100 ? 0 : 2})
-                                : '$' + p.toFixed(4);
+        if (!p || isNaN(p)) {
+          el.textContent = '로딩 중...';
+        } else {
+          el.textContent = p >= 1
+            ? '$' + p.toLocaleString('en', {maximumFractionDigits: p >= 100 ? 0 : 2})
+            : '$' + p.toFixed(4);
+        }
+      } else {
+        el.textContent = '—';
       }
     });
 
     const top = SYMBOLS.map(s => items[s]).filter(Boolean);
-    document.getElementById('market-list').innerHTML = top.map(m => `
-      <div class="market-row">
-        <span class="market-sym">${m.symbol}</span>
-        <span class="market-price">${fmt(m.mark, parseFloat(m.mark) > 1 ? 2 : 4)}</span>
-        <span class="market-funding">${fmtFunding(m.funding)}<span style="color:var(--muted)"> fr</span></span>
-      </div>
-    `).join('');
+    if (top.length === 0) {
+      document.getElementById('market-list').innerHTML =
+        '<div style="color:var(--muted);font-size:14px;padding:8px 0;">마켓 데이터 없음 (서버 연결 확인)</div>';
+    } else {
+      document.getElementById('market-list').innerHTML = top.map(m => `
+        <div class="market-row">
+          <span class="market-sym">${m.symbol}</span>
+          <span class="market-price">${fmt(m.mark, parseFloat(m.mark) > 1 ? 2 : 4)}</span>
+          <span class="market-funding">${fmtFunding(m.funding)}<span style="color:var(--muted)"> fr</span></span>
+        </div>
+      `).join('');
+    }
 
     document.getElementById('s-symbols').textContent = arr.length || 68;
-  } catch(e) { console.error('fetchMarkets:', e); }
+  } catch(e) {
+    console.error('fetchMarkets:', e);
+    // 오류 시 ticker 항목에 "—" 유지 (이미 초기값이 "—")
+    document.getElementById('market-list').innerHTML =
+      `<div style="color:var(--muted);font-size:14px;padding:8px 0;">마켓 데이터 로드 실패 (재시도 중...)</div>`;
+  }
 }
 
 // ── 트레이더 리더보드 ─────────────────────────────
@@ -1046,7 +1065,7 @@ _configReady.then(() => {
   fetchCrsRanking();
   fetchOptimalPortfolio();
 });
-setInterval(fetchMarkets, 30000);   // 30초마다 가격 갱신
+setInterval(fetchMarkets, 5000);    // 5초마다 가격 갱신
 setInterval(fetchLeaderboard, 15000);
 setInterval(fetchStats, 10000);
 setInterval(fetchCrsRanking, 30000);

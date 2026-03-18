@@ -7,6 +7,15 @@ QA팀장 작성 — CRS 신뢰도 랭킹 API 품질 게이트
 import socket
 import json
 import pytest
+from fastapi.testclient import TestClient
+from api.main import app as _fastapi_app
+
+
+@pytest.fixture(scope="module")
+def testclient():
+    """FastAPI TestClient 픽스처 — 실서버 없이 앱 내부 직접 호출 (lifespan 실행)"""
+    with TestClient(_fastapi_app) as c:
+        yield c
 
 
 def raw_get(path: str, timeout: int = 8) -> dict:
@@ -104,6 +113,7 @@ class TestRankedAPI:
 class TestRankedSummary:
     """GET /traders/ranked/summary"""
 
+    # ── 실서버(8001) 기반 테스트 (backend_ok 픽스처 사용) ──
     def test_summary_200(self, backend_ok):
         """요약 API 정상 응답"""
         resp = raw_get("/traders/ranked/summary")
@@ -135,3 +145,33 @@ class TestRankedSummary:
         resp = raw_get("/traders/ranked/summary")
         assert "grade_thresholds" in resp
         assert "max_copy_ratio" in resp
+
+    # ── TestClient 기반 테스트 (실서버 없이 동작) ──
+    def test_tc_summary_200(self, testclient):
+        """[TestClient] 요약 API 정상 응답 (실서버 불필요)"""
+        resp = testclient.get("/traders/ranked/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "summary" in data
+        assert "total_analyzed" in data
+
+    def test_tc_summary_total_matches(self, testclient):
+        """[TestClient] 등급별 합계 = total_analyzed"""
+        resp = testclient.get("/traders/ranked/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        total = data.get("total_analyzed", 0)
+        assert total > 0, f"total_analyzed=0 — DB 데이터 없음"
+        grade_sum = sum(data["summary"][g]["count"] for g in ["S", "A", "B", "C", "D"])
+        assert grade_sum == total, f"등급 합계 불일치: {grade_sum} != {total}"
+
+    def test_tc_summary_has_grade_thresholds(self, testclient):
+        """[TestClient] grade_thresholds 포함 확인"""
+        resp = testclient.get("/traders/ranked/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "grade_thresholds" in data, "grade_thresholds 필드 누락"
+        assert "max_copy_ratio" in data, "max_copy_ratio 필드 누락"
+        # 5개 등급 모두 threshold 존재
+        for g in ["S", "A", "B", "C", "D"]:
+            assert g in data["grade_thresholds"], f"grade_thresholds에 {g} 누락"
