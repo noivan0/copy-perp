@@ -537,6 +537,7 @@ async def list_trades(
 
 
 # ── 통계 ──────────────────────────────────────────────
+@app.get("/stats/overview")
 @app.get("/stats")
 async def get_stats():
     db = await get_db()
@@ -624,7 +625,8 @@ def get_referral(address: str):
 async def health_detailed():
     """상세 헬스 체크 — 모니터 상태, DB, 환경"""
     import os, time
-    from core.data_collector import get_price_cache, _last_poll_ts as _lpt
+    import core.data_collector as _dc_mod
+    from core.data_collector import get_price_cache
     
     db = await get_db()
     try:
@@ -666,8 +668,8 @@ async def health_detailed():
     except Exception:
         db_size = None
 
-    # 데이터 수신 상태
-    last_poll = _lpt
+    # 데이터 수신 상태 (모듈 변수 직접 참조로 최신값 보장)
+    last_poll = _dc_mod._last_poll_ts
 
     return {
         "status": "ok",
