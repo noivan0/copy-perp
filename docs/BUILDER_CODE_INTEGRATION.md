@@ -13,10 +13,10 @@ Pacifica builder code approve는 **account 소유자의 private key**로 서명�
 
 ```
 Account: 3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ (팔로워 지갑)
-Agent Wallet: 9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi (주문 서명용)
+API Key (AGENT_WALLET): 9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi (주문 서명용)
 
 approve_builder_code → 3AHZqroc...의 key로 서명 (main account)
-market_order        → 9mxJJAQw...의 key로 서명 (agent wallet)
+market_order        → 9mxJJAQw...의 key로 서명 (API Key)
 ```
 
 ### 승인된 Builder Code 적용 방법 (2단계)

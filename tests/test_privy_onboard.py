@@ -110,7 +110,7 @@ class TestPrivyWalletExtraction:
         import base58
         test_addresses = [
             "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ",  # 실제 주소
-            "9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi",  # agent wallet
+            "9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi",  # API Key (주문 서명용)
         ]
         for addr in test_addresses:
             assert 32 <= len(addr) <= 44, f"길이 이상: {addr}"

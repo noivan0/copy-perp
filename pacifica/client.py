@@ -43,7 +43,7 @@ PACIFICA_REST_URL_DIRECT = (
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
-AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 서명)
+AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # API Key 공개키 (주문 서명용)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")  # 기본 0.1%
 
@@ -387,7 +387,7 @@ class PacificaClient:
     """
     Pacifica 테스트넷 클라이언트
     - 공개 API: 서명 불필요
-    - 거래 API: Agent Wallet 서명
+    - 거래 API: API Key (AGENT_WALLET) 서명
     """
 
     def __init__(self, account_address: str = ACCOUNT_ADDRESS):
