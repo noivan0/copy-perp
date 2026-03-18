@@ -59,7 +59,16 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
         from api.main import _db
         leaders = await get_leaderboard(_db, limit)
         if leaders:
-            return {"data": [dict(r) for r in leaders], "source": "db", "count": len(leaders)}
+            def _enrich(r: dict) -> dict:
+                """composite_score 등 파생 필드 추가"""
+                pnl = float(r.get("total_pnl", 0) or 0)
+                wr  = float(r.get("win_rate", 0) or 0)
+                eq  = float(r.get("equity", 0) or 0)
+                roi = pnl / eq if eq > 0 else 0
+                # composite_score: WR 40% + ROI 40% + PnL 정규화 20%
+                composite = round(wr * 0.4 + min(roi, 2.0) * 0.4 + min(pnl / 100000, 1.0) * 0.2, 4)
+                return {**r, "composite_score": composite, "roi": round(roi, 4)}
+            return {"data": [_enrich(dict(r)) for r in leaders], "source": "db", "count": len(leaders)}
     except Exception as e:
         logger.warning(f"[{req_id}] 트레이더 DB 조회 실패: {e}")
 

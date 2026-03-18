@@ -118,9 +118,14 @@ async function _autoOnboard(address) {
     };
     if (signature) payload.client_signature = signature;
 
+    // Privy access_token → 서버 JWT 검증용 헤더로 전달
+    const _accessToken = _user?.access_token || '';
     const resp = await fetch(`${API_BASE}/followers/onboard`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':  'application/json',
+        ..._accessToken ? { 'X-Privy-Token': _accessToken } : {},
+      },
       body:    JSON.stringify(payload),
     });
     const data = await resp.json();

@@ -719,7 +719,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
 
 
 @app.delete("/follow/{trader_address}")
-async def unfollow_trader(trader_address: str, body: UnfollowRequest, request: Request):
+async def unfollow_trader(trader_address: str, request: Request, follower_address: str = "", body: Optional[UnfollowRequest] = None):
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 10회
@@ -737,11 +737,16 @@ async def unfollow_trader(trader_address: str, body: UnfollowRequest, request: R
             detail={"error": "유효하지 않은 trader_address", "code": "INVALID_ADDRESS"}
         )
 
+    # query param 또는 body 중 follower_address 우선순위: query > body
+    _follower_addr = follower_address or (body.follower_address if body else "")
+    if not _follower_addr:
+        raise HTTPException(status_code=422, detail={"error": "follower_address 필요", "code": "MISSING_PARAM"})
+
     try:
         db = await get_db()
         await db.execute(
             "UPDATE followers SET active=0 WHERE address=? AND trader_address=?",
-            (body.follower_address, trader_address)
+            (_follower_addr, trader_address)
         )
         await db.commit()
     except Exception as e:
