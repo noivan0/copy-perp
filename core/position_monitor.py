@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 import os as _os
 WS_URL = _os.getenv("PACIFICA_WS_URL", "wss://ws.pacifica.fi/ws")
-REST_POLL_INTERVAL = 0.5  # 500ms
+REST_POLL_INTERVAL = 2.0  # 2000ms — WS 끊김 burst 시 rate limit 안전 (9명 × 30 req/min)
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
@@ -348,4 +348,4 @@ class RestPositionMonitor(PositionMonitor):
                     await asyncio.sleep(backoff)
                     continue
 
-            await asyncio.sleep(2.0)  # 2초 간격 폴링
+            await asyncio.sleep(3.0)  # 3초 간격 폴링 — 20명 × 20 req/min = 400 req/min (안전)

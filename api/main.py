@@ -249,22 +249,22 @@ _rate_limit_store: dict = defaultdict(list)
 RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
     # (max_calls, window_sec)
     # 쓰기 — 엄격 (봇 방어)
-    "onboard":          (5,   60),   # 팔로워 온보딩: 분당 5회 (지갑 서명 민감)
-    "follow":           (10,  60),   # 팔로우: 분당 10회
-    "unfollow":         (10,  60),   # 언팔로우: 분당 10회
-    "builder_approve":  (3,   60),   # Builder Code 승인: 분당 3회 (서명 재시도)
+    "onboard":          (20,  60),   # 팔로워 온보딩: 분당 20회 (초기 접속 재시도 여유)
+    "follow":           (20,  60),   # 팔로우: 분당 20회
+    "unfollow":         (20,  60),   # 언팔로우: 분당 20회
+    "builder_approve":  (10,  60),   # Builder Code 승인: 분당 10회 (서명 재시도 여유)
     # 읽기 — 적절 (30초 폴링 기준: 2req/min × 다수 탭)
-    "trades":           (60,  60),   # 거래내역 조회: 분당 60회
-    "traders":          (60,  60),   # 트레이더 조회: 분당 60회
+    "trades":           (120, 60),   # 거래내역 조회: 분당 120회
+    "traders":          (120, 60),   # 트레이더 조회: 분당 120회
     "stats":            (60,  60),   # 통계 조회: 분당 60회
-    "signals":          (60,  60),   # 시그널 조회: 분당 60회
-    "markets":          (60,  60),   # 마켓 조회: 분당 60회
+    "signals":          (30,  60),   # 시그널 조회: 분당 30회 (펀딩/OI 계산 비용)
+    "markets":          (120, 60),   # 마켓 조회: 분당 120회 (30초 폴링 × 여러 탭)
     "referral":         (30,  60),   # 레퍼럴: 분당 30회
     # 무거운 읽기
     "ranked":           (20,  60),   # CRS 랭킹: 분당 20회 (계산 비용 높음)
     # 헬스/모니터링 — DDoS 방어 상한
-    "health":           (120, 60),   # 헬스체크: 분당 120회 (모니터링 도구 허용)
-    "default":          (30,  60),   # 기본: 분당 30회
+    "health":           (180, 60),   # 헬스체크: 분당 180회 (k8s/uptime probe 허용)
+    "default":          (60,  60),   # 기본: 분당 60회
 }
 
 def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:
