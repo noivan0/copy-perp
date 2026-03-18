@@ -44,6 +44,10 @@ def _setup_logging() -> None:
         level=log_level,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
+    # 써드파티 로거 노이즈 억제
+    logging.getLogger("scrapling").setLevel(logging.ERROR)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
     if not os.getenv("DEBUG", "false").lower() in ("1", "true"):
         fmt = _JSONFormatter()
         for handler in logging.root.handlers:
@@ -327,7 +331,7 @@ async def _winrate_refresh_loop():
                             c = ss.recv(16384)
                             if not c: break
                             data += c
-                    except Exception: pass
+                    except Exception as _e: logger.debug(f"ignored: {_e}")
                     ss.close()
                     body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
                     result = _j.loads(body.decode('utf-8', 'ignore'))
@@ -894,11 +898,13 @@ async def health_detailed():
 @app.get("/config")
 def get_config():
     """프론트엔드가 서버에서 설정을 동적으로 받아가는 엔드포인트"""
+    privy_app_id = os.getenv("PRIVY_APP_ID", "")
     return {
-        "privy_app_id":    os.getenv("PRIVY_APP_ID", ""),
-        "builder_code":    BUILDER_CODE,
-        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
-        "network":         os.getenv("NETWORK", "testnet"),
+        "privy_app_id":      privy_app_id,
+        "privy_configured":  bool(privy_app_id),
+        "builder_code":      BUILDER_CODE,
+        "builder_fee_rate":  os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "network":           os.getenv("NETWORK", "testnet"),
     }
 
 

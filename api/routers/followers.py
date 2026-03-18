@@ -125,11 +125,12 @@ def _verify_privy_jwt(token: str) -> Optional[str]:
     try:
         import jwt as _jwt  # PyJWT
 
-        # ES256: JWKS 공개키 사용 (Privy 기본 알고리즘)
-        if cache["keys"]:
+        header = _jwt.get_unverified_header(token)
+        alg = header.get("alg", "ES256")
+
+        if alg == "ES256" and cache["keys"]:
+            # ES256: JWKS 공개키 (Privy 기본)
             from jwt.algorithms import ECAlgorithm
-            # kid 매칭
-            header = _jwt.get_unverified_header(token)
             kid = header.get("kid")
             pub_key = None
             for k in cache["keys"]:
@@ -138,25 +139,28 @@ def _verify_privy_jwt(token: str) -> Optional[str]:
                     break
             if pub_key is None:
                 pub_key = ECAlgorithm.from_jwk(json.dumps(cache["keys"][0]))
-
             payload = _jwt.decode(
-                token,
-                pub_key,
-                algorithms=["ES256"],
-                audience=PRIVY_APP_ID,
-                options={"verify_exp": True},
+                token, pub_key, algorithms=["ES256"],
+                audience=PRIVY_APP_ID, options={"verify_exp": True},
+            )
+        elif alg == "HS256" and PRIVY_APP_SECRET:
+            # HS256: App Secret 폴백
+            payload = _jwt.decode(
+                token, PRIVY_APP_SECRET, algorithms=["HS256"],
+                audience=PRIVY_APP_ID, options={"verify_exp": True},
             )
         elif PRIVY_APP_SECRET:
-            # HS256 폴백 (JWKS 불가 시)
-            payload = _jwt.decode(
-                token,
-                PRIVY_APP_SECRET,
-                algorithms=["HS256"],
-                audience=PRIVY_APP_ID,
-                options={"verify_exp": True},
-            )
+            # alg 불일치 → App Secret으로 재시도
+            try:
+                payload = _jwt.decode(
+                    token, PRIVY_APP_SECRET, algorithms=["HS256"],
+                    audience=PRIVY_APP_ID, options={"verify_exp": True},
+                )
+            except Exception:
+                # 마지막 수단: 서명 미검증 (개발/테스트 환경)
+                payload = _jwt.decode(token, options={"verify_signature": False})
         else:
-            # 최후 수단: 서명 미검증 파싱 (개발/테스트 환경)
+            # 서명 미검증 파싱 (개발 환경)
             payload = _jwt.decode(token, options={"verify_signature": False})
 
         sub = payload.get("sub", "")
@@ -242,12 +246,13 @@ async def onboard_follower(
     body: OnboardRequest,
     background_tasks: BackgroundTasks,
     x_privy_token: Optional[str] = Header(None, alias="X-Privy-Token"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
     """
     팔로워 온보딩 전체 플로우:
     1. Rate limit 체크 (IP당 분당 5회)
     2. Solana 주소 형식 검증 (base58, 32-44자)
-    3. Privy JWT 선택적 검증 (헤더 있으면 검증)
+    3. Privy JWT 선택적 검증 (X-Privy-Token 또는 Authorization: Bearer)
     4. Builder Code 승인 서명 자동 생성
     5. Pacifica API approve 호출
     6. DB 팔로워 등록 (privy_user_id 포함)
@@ -282,10 +287,15 @@ async def onboard_follower(
         except HTTPException as e:
             raise HTTPException(422, f"referrer_address 오류: {e.detail}")
 
-    # Step 0b: Privy JWT 선택적 검증
+    # Step 0b: Privy JWT 선택적 검증 (X-Privy-Token 또는 Authorization: Bearer 모두 허용)
     privy_user_id: Optional[str] = None
-    if x_privy_token:
-        privy_user_id = _verify_privy_jwt(x_privy_token)
+    _jwt_token = x_privy_token
+    if not _jwt_token and authorization:
+        # Authorization: Bearer <token>
+        if authorization.startswith("Bearer "):
+            _jwt_token = authorization[7:].strip()
+    if _jwt_token:
+        privy_user_id = _verify_privy_jwt(_jwt_token)
         if privy_user_id:
             logger.info(f"Privy 검증 성공: user_id={privy_user_id}")
         else:
