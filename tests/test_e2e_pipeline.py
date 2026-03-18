@@ -128,8 +128,8 @@ class TestE2EPipelineHappyPath:
 
     def test_e2e_02_onboarding_via_api(self):
         """[E2E-02] API를 통한 팔로워 온보딩"""
-        trader = "E2E02TRADERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-        follower = "E2E02FOLLOWxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        trader = "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu"
+        follower = "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ"
 
         # /follow API 호출
         code, data = backend_post("/follow", {

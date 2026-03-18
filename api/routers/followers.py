@@ -23,7 +23,7 @@ from typing import Optional
 import base58 as _base58
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,20 @@ class OnboardRequest(BaseModel):
     referrer_address: Optional[str] = None
     traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 DEFAULT_TIER1
     privy_user_id: Optional[str] = None        # Privy 유저 ID (did:privy:xxx)
+
+    @field_validator("copy_ratio")
+    @classmethod
+    def validate_copy_ratio(cls, v):
+        if v < 0.01 or v > 1.0:
+            raise ValueError("copy_ratio는 0.01 ~ 1.0 범위여야 합니다")
+        return v
+
+    @field_validator("max_position_usdc")
+    @classmethod
+    def validate_max_position(cls, v):
+        if v < 1 or v > 10000:
+            raise ValueError("max_position_usdc는 1 ~ 10000 범위여야 합니다")
+        return v
 
 class FollowerListResponse(BaseModel):
     data: list

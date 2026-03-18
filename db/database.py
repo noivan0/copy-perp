@@ -87,23 +87,43 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
     await conn.executescript(CREATE_SQL)
     # 마이그레이션: 기존 DB에 누락된 컬럼 추가
     _migrations = [
+        # traders 컬럼
         "ALTER TABLE traders ADD COLUMN win_count INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN lose_count INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN last_synced INTEGER DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN tier TEXT DEFAULT 'C'",
+        "ALTER TABLE traders ADD COLUMN sharpe REAL DEFAULT 0",
+        # followers 컬럼
         "ALTER TABLE followers ADD COLUMN builder_code_approved INTEGER DEFAULT 0",
-        # Privy 연동: privy_user_id 저장
         "ALTER TABLE followers ADD COLUMN privy_user_id TEXT",
-        # Copy trade 실패 원인 기록
+        # copy_trades 컬럼
         "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
-        # PnL 추적용 진입가/체결가
         "ALTER TABLE copy_trades ADD COLUMN entry_price REAL",
         "ALTER TABLE copy_trades ADD COLUMN exec_price REAL",
+        # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
+        # fee_records는 CREATE_SQL에 이미 포함되어 있음
     ]
     for sql in _migrations:
         try:
             await conn.execute(sql)
         except Exception:
             pass  # 이미 컬럼 있으면 무시
+
+    # 인덱스 추가 (없으면 생성)
+    _indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_copy_trades_follower ON copy_trades(follower_address)",
+        "CREATE INDEX IF NOT EXISTS idx_copy_trades_created_at ON copy_trades(created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_copy_trades_status ON copy_trades(status)",
+        "CREATE INDEX IF NOT EXISTS idx_followers_active ON followers(active)",
+        "CREATE INDEX IF NOT EXISTS idx_followers_trader ON followers(trader_address)",
+        "CREATE INDEX IF NOT EXISTS idx_traders_active ON traders(active)",
+    ]
+    for sql in _indexes:
+        try:
+            await conn.execute(sql)
+        except Exception:
+            pass
+
     await conn.commit()
     return conn
 

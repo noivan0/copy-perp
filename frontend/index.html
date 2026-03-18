@@ -716,16 +716,53 @@ function onWalletConnected(address, provider) {
 async function fetchMyFollowing(address) {
   try {
     const r = await fetch(`${API}/followers/list`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    const mine = (d.data || []).filter(f => f.address === address);
+    const mine = (d.data || []).filter(f => f.address === address && f.active !== 0);
     document.getElementById('my-copying-count').textContent = mine.length + ' traders';
+
+    // 팔로잉 Set 업데이트
+    _followingSet = new Set(mine.map(f => f.trader_address));
 
     if (mine.length > 0) {
       document.getElementById('my-positions').innerHTML = mine.map(f =>
-        `<div style="font-size:12px;color:var(--sub);padding:4px 0;">${shortAddr(f.trader_address)} · ${(f.copy_ratio*100).toFixed(0)}%</div>`
+        `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">
+          <div style="font-size:12px;color:var(--sub);">${shortAddr(f.trader_address)} · ${(f.copy_ratio*100).toFixed(0)}%</div>
+          <button onclick="unfollowFromCard('${f.trader_address}', this)"
+            style="font-size:10px;background:#ef444415;color:var(--red);border:1px solid #ef444430;
+                   border-radius:4px;padding:2px 7px;cursor:pointer;">취소</button>
+        </div>`
       ).join('');
+    } else {
+      document.getElementById('my-positions').innerHTML = '<div style="font-size:12px;color:var(--muted);">팔로우 중인 트레이더 없음</div>';
     }
-  } catch(e) {}
+  } catch(e) {
+    console.warn('fetchMyFollowing 실패:', e);
+  }
+}
+
+async function unfollowFromCard(addr, btnEl) {
+  if (!_walletAddress) return;
+  if (!confirm(`${shortAddr(addr)} 팔로우를 취소하시겠습니까?`)) return;
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '...'; }
+  try {
+    const r = await fetch(`${API}/follow/${encodeURIComponent(addr)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ follower_address: _walletAddress }),
+    });
+    const d = await r.json();
+    if (r.ok && d.status === 'ok') {
+      toast(`✅ ${shortAddr(addr)} 팔로우 취소`, 2500, 'success');
+      fetchMyFollowing(_walletAddress);
+    } else {
+      if (btnEl) { btnEl.disabled = false; btnEl.textContent = '취소'; }
+      toast(`❌ ${d.error || '취소 실패'}`, 3000, 'error');
+    }
+  } catch(e) {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '취소'; }
+    toast('❌ 오류: ' + e.message, 3000, 'error');
+  }
 }
 
 // ── 마켓 데이터 ──────────────────────────────────
@@ -847,14 +884,19 @@ function fillTrader(addr) {
   document.getElementById('follow-section').scrollIntoView({behavior:'smooth'});
 }
 
+// 현재 팔로우 중인 트레이더 추적
+let _followingSet = new Set();
+
 async function followTrader(addr, btnEl) {
   if (!_walletAddress) {
     openLoginModal();
     return;
   }
+  // 중복 클릭 방지: 이미 로딩 중이면 무시
+  if (btnEl && btnEl.disabled) return;
   if (btnEl) {
     btnEl.disabled = true;
-    btnEl.textContent = '⏳';
+    btnEl.textContent = '⏳ 처리 중...';
   }
   try {
     const r = await fetch(`${API}/follow`, {
@@ -866,18 +908,23 @@ async function followTrader(addr, btnEl) {
       }),
     });
     const d = await r.json();
-    if (r.ok && d.ok !== false) {
+    if (r.ok && d.status === 'ok') {
+      _followingSet.add(addr);
       if (btnEl) {
-        btnEl.textContent = 'Following ✓';
+        btnEl.textContent = '✓ Following';
         btnEl.style.background = '#22c55e';
+        btnEl.style.color = '#fff';
         btnEl.disabled = false;
+        // 언팔로우 버튼으로 전환
+        btnEl.onclick = (e) => { e.stopPropagation(); unfollowTrader(addr, btnEl); };
       }
       toast(`✅ ${shortAddr(addr)} 팔로우 시작!`, 2800, 'success');
       fetchMyFollowing(_walletAddress);
       fetchMyTrades(_walletAddress);
     } else {
       if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
-      toast(`❌ 팔로우 실패: ${d.detail || d.error || '서버 오류'}`, 3000, 'error');
+      const errMsg = d.error || d.detail || '서버 오류';
+      toast(`❌ 팔로우 실패: ${errMsg}`, 3000, 'error');
     }
   } catch(e) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
@@ -885,9 +932,58 @@ async function followTrader(addr, btnEl) {
   }
 }
 
+async function unfollowTrader(addr, btnEl) {
+  if (!_walletAddress) return;
+  if (btnEl && btnEl.disabled) return;
+  if (!confirm(`${shortAddr(addr)} 팔로우를 취소하시겠습니까?`)) return;
+
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.textContent = '⏳ 취소 중...';
+  }
+  try {
+    const r = await fetch(`${API}/follow/${encodeURIComponent(addr)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ follower_address: _walletAddress }),
+    });
+    const d = await r.json();
+    if (r.ok && d.status === 'ok') {
+      _followingSet.delete(addr);
+      if (btnEl) {
+        btnEl.textContent = 'Copy';
+        btnEl.style.background = '';
+        btnEl.style.color = '';
+        btnEl.disabled = false;
+        btnEl.onclick = (e) => { e.stopPropagation(); selectAndCopy(addr, btnEl); };
+      }
+      toast(`✅ ${shortAddr(addr)} 팔로우 취소`, 2800, 'success');
+      fetchMyFollowing(_walletAddress);
+    } else {
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.textContent = '✓ Following';
+      }
+      const errMsg = d.error || d.detail || '서버 오류';
+      toast(`❌ 취소 실패: ${errMsg}`, 3000, 'error');
+    }
+  } catch(e) {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = '✓ Following';
+    }
+    toast('❌ 네트워크 오류: ' + e.message, 3000, 'error');
+  }
+}
+
 function selectAndCopy(addr, btnEl) {
   if (!_walletAddress) {
     openLoginModal();
+    return;
+  }
+  // 이미 팔로잉 중이면 언팔로우
+  if (_followingSet.has(addr)) {
+    unfollowTrader(addr, btnEl);
     return;
   }
   // 1. /follow 엔드포인트로 팔로우
@@ -975,18 +1071,44 @@ async function startCopying() {
 }
 
 // ── 에러 배너 ─────────────────────────────────────
-// fetch 실패 시 공통 에러 배너
-function showErrorBanner(msg) {
+let _errorBannerTimer = null;
+let _serverConnected = true;
+
+function showErrorBanner(msg, persistent = false) {
   let banner = document.getElementById('error-banner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'error-banner';
-    banner.style = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;text-align:center;padding:10px;z-index:9999;font-size:13px;';
+    banner.style = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;text-align:center;padding:10px 16px;z-index:9999;font-size:13px;display:flex;align-items:center;justify-content:center;gap:12px;';
+    banner.innerHTML = `<span id="error-banner-msg"></span><button onclick="document.getElementById('error-banner').style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>`;
     document.body.prepend(banner);
   }
-  banner.textContent = msg;
-  banner.style.display = 'block';
-  setTimeout(() => { if(banner) banner.style.display='none'; }, 5000);
+  document.getElementById('error-banner-msg').textContent = msg;
+  banner.style.display = 'flex';
+  if (!persistent) {
+    if (_errorBannerTimer) clearTimeout(_errorBannerTimer);
+    _errorBannerTimer = setTimeout(() => { if(banner) banner.style.display='none'; }, 6000);
+  }
+}
+
+function hideErrorBanner() {
+  const banner = document.getElementById('error-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function showServerDisconnectedBanner() {
+  if (_serverConnected) {
+    _serverConnected = false;
+    showErrorBanner('⚠️ 서버 연결이 끊겼습니다. 재연결 시도 중...', true);
+  }
+}
+
+function hideServerDisconnectedBanner() {
+  if (!_serverConnected) {
+    _serverConnected = true;
+    hideErrorBanner();
+    toast('✅ 서버 연결 복구', 2000, 'success');
+  }
 }
 
 // ── 레퍼럴 ────────────────────────────────────────
