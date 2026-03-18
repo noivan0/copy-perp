@@ -106,7 +106,7 @@ async def poll_market_meta():
     global _price_cache
     from pacifica.client import _cf_request
     try:
-        result = _cf_request("GET", "info/markets")
+        result = _cf_request("GET", "info")
         markets = result.get("data", result) if isinstance(result, dict) else result
         if not isinstance(markets, list):
             return
