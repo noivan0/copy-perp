@@ -325,12 +325,8 @@ async def onboard_follower(
 
     # ── Rate Limit 체크 ─────────────────────────────────
     client_ip = request.client.host if request.client else "unknown"
-    from api.main import RATE_LIMIT_POLICY
-    if not _check_rate_limit(f"onboard:{client_ip}", *RATE_LIMIT_POLICY["onboard"]):
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
-        )
+    from api.main import RATE_LIMIT_POLICY, _require_rate_limit
+    _require_rate_limit(f"onboard:{client_ip}", request=request)
 
     # ── 입력 검증 ────────────────────────────────────────
     # copy_ratio, max_position_usdc 범위 검증
