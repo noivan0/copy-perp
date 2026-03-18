@@ -1242,6 +1242,7 @@ _configReady.then(() => {
   es.onerror = () => {
     // SSE 실패 → 폴링 폴백
     es.close();
+    showErrorBanner('⚠️ 실시간 연결이 끊겼습니다. 폴링 모드로 전환합니다.');
     setInterval(fetchMarkets, 5000);
     setInterval(fetchStats, 10000);
   };
