@@ -132,6 +132,35 @@ app.include_router(traders_router)
 app.include_router(builder_router)
 app.include_router(followers_router)
 
+# ── 인메모리 Rate Limiter ────────────────────────────
+from collections import defaultdict
+import time as _time_m
+
+_rate_limit_store: dict = defaultdict(list)
+
+def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:
+    """True = 허용, False = 차단"""
+    now = _time_m.time()
+    calls = _rate_limit_store[key]
+    # 윈도우 밖 제거
+    _rate_limit_store[key] = [t for t in calls if now - t < window_sec]
+    if len(_rate_limit_store[key]) >= max_calls:
+        return False
+    _rate_limit_store[key].append(now)
+    return True
+
+
+# ── Solana 주소 검증 유틸 ────────────────────────────
+def _is_valid_solana_address(addr: str) -> bool:
+    """base58 디코딩 + 32바이트 확인"""
+    try:
+        import base58 as _b58
+        decoded = _b58.b58decode(addr)
+        return len(decoded) == 32
+    except Exception:
+        return False
+
+
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None
 _engine = None
@@ -396,7 +425,7 @@ async def leaderboard_alias(limit: int = 20):
 
 
 @app.get("/healthz")  # Kubernetes/LB 표준 헬스체크
-async def healthz():
+def healthz():
     return {"status": "ok"}
 
 @app.get("/health")
@@ -492,7 +521,16 @@ def get_signals(top_n: int = 5):
 
 # ── 팔로우 ────────────────────────────────────────────
 @app.post("/follow")
-async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks):
+async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, request: Request):
+    # Solana 주소 검증
+    if not _is_valid_solana_address(body.follower_address):
+        raise HTTPException(422, "유효하지 않은 Solana 주소 (follower_address)")
+    if not _is_valid_solana_address(body.trader_address):
+        raise HTTPException(422, "유효하지 않은 Solana 주소 (trader_address)")
+    # Rate limit: IP당 분당 10회
+    client_ip = request.client.host
+    if not _check_rate_limit(f"follow:{client_ip}", max_calls=10, window_sec=60):
+        raise HTTPException(429, "Too many requests")
     db = await get_db()
     await add_trader(db, body.trader_address)
     await add_follower(
