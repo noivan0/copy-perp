@@ -238,19 +238,41 @@ class CopyEngine:
                 logger.info(f"[MOCK][{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
             else:
                 client = self._get_client(follower_addr)
-                result = retry_sync(
-                    client.market_order,
-                    symbol=symbol,
-                    side=side,
-                    amount=copy_amount,
-                    slippage_percent=MAX_SLIPPAGE,
-                    builder_code=bc,
-                    client_order_id=client_order_id,
-                    max_retries=3,          # 최소 3회 보장
-                    base_delay=0.5,
-                    alert_on_final_fail=True,
-                    label=f"{follower_addr[:8]}/{symbol}",
-                )
+                # builder_code 포함으로 먼저 시도, "has not approved" 시 없이 재시도
+                try:
+                    result = retry_sync(
+                        client.market_order,
+                        symbol=symbol,
+                        side=side,
+                        amount=copy_amount,
+                        slippage_percent=MAX_SLIPPAGE,
+                        builder_code=bc,
+                        client_order_id=client_order_id,
+                        max_retries=2,
+                        base_delay=0.5,
+                        alert_on_final_fail=False,
+                        label=f"{follower_addr[:8]}/{symbol}",
+                    )
+                except Exception as first_err:
+                    err_str = str(first_err)
+                    if "has not approved builder code" in err_str and bc:
+                        # Builder Code 미승인 → 없이 재시도 (수수료 없이 주문 실행)
+                        logger.info(f"[{follower_addr[:8]}] Builder Code 미승인 → 없이 재시도")
+                        result = retry_sync(
+                            client.market_order,
+                            symbol=symbol,
+                            side=side,
+                            amount=copy_amount,
+                            slippage_percent=MAX_SLIPPAGE,
+                            builder_code=None,
+                            client_order_id=client_order_id,
+                            max_retries=2,
+                            base_delay=0.5,
+                            alert_on_final_fail=True,
+                            label=f"{follower_addr[:8]}/{symbol}",
+                        )
+                    else:
+                        raise
                 status = "filled" if result.get("data") else "failed"
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
                 if status == "filled":
