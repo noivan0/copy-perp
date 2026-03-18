@@ -41,9 +41,9 @@ PACIFICA_REST_URL_DIRECT = (
     else "https://test-api.pacifica.fi/api/v1"
 )
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
-ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
-AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
-AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # API Key 공개키 (주문 서명용)
+ACCOUNT_ADDRESS    = os.getenv("ACCOUNT_ADDRESS", "")    # 거래 주체 지갑 (자산 보유, 베타코드 등록)
+AGENT_PRIVATE_KEY  = os.getenv("AGENT_PRIVATE_KEY", "")  # API Key 개인키 (서명 전용)
+AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")      # API Key 공개키 (서명 검증용, 지갑 아님)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")  # 기본 0.1%
 
@@ -487,10 +487,10 @@ class PacificaClient:
         # payload에 builder_code가 있으면 서명 대상(data)에도 포함됨 — 공식 문서 기준
         _, signature = _sign_request(header, payload, self._kp)
         body = {
-            "account": self.account,
-            "agent_wallet": AGENT_WALLET_PUBKEY or None,
-            "signature": signature,
-            "timestamp": timestamp,
+            "account":      self.account,          # 거래 주체 = ACCOUNT_ADDRESS (3AHZqroc...)
+            "agent_wallet": AGENT_WALLET_PUBKEY or None,  # API Key 공개키 = 서명 검증용 (지갑 아님)
+            "signature":    signature,
+            "timestamp":    timestamp,
             "expiry_window": 5000,
         }
         # payload를 top-level로 flatten (data 래퍼 제거)
