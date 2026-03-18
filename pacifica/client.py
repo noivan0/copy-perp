@@ -555,7 +555,7 @@ def approve_builder_code(
     main_private_key: str,
     account_address: str,
     builder_code: str = "noivan",
-    max_fee_rate: str = "0.0001",
+    max_fee_rate: str = "0.001",
 ) -> dict:
     """
     Builder Code approve — **main account private key**로 서명 필요.
