@@ -860,16 +860,16 @@ async function followTrader(addr, btnEl) {
         btnEl.style.background = '#22c55e';
         btnEl.disabled = false;
       }
-      toast(`✅ ${shortAddr(addr)} 팔로우 시작!`);
+      toast(`✅ ${shortAddr(addr)} 팔로우 시작!`, 2800, 'success');
       fetchMyFollowing(_walletAddress);
       fetchMyTrades(_walletAddress);
     } else {
       if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
-      toast(`❌ 팔로우 실패: ${d.detail || d.error || '서버 오류'}`);
+      toast(`❌ 팔로우 실패: ${d.detail || d.error || '서버 오류'}`, 3000, 'error');
     }
   } catch(e) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Copy'; }
-    toast('❌ 네트워크 오류: ' + e.message);
+    toast('❌ 네트워크 오류: ' + e.message, 3000, 'error');
   }
 }
 
@@ -915,16 +915,16 @@ async function startCopying() {
     const d = await r.json();
 
     if (r.ok && d.ok !== false) {
-      toast(`✅ Copy 시작! ${shortAddr(trader)} 트레이더를 팔로우합니다`);
+      toast(`✅ Copy 시작! ${shortAddr(trader)} 트레이더를 팔로우합니다`, 2800, 'success');
       document.getElementById('f-trader').value = '';
       fetchMyFollowing(_walletAddress);
       fetchStats();
     } else {
       const errMsg = d.detail || d.error || d.message || '서버 오류';
-      toast(`❌ 오류: ${errMsg}`);
+      toast(`❌ 오류: ${errMsg}`, 3500, 'error');
     }
   } catch(e) {
-    toast('❌ 네트워크 오류: ' + e.message);
+    toast('❌ 네트워크 오류: ' + e.message, 3500, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Start Copying →';
