@@ -241,7 +241,7 @@ def log_result(tag: str, result: dict, description: str):
     try:
         commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
                                         cwd=Path(__file__).parent.parent.parent).decode().strip()
-    except:
+    except Exception:
         commit = "unknown"
 
     header = ["commit", "tag", "sharpe", "roi_pct", "win_rate", "profit_factor",

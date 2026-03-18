@@ -60,6 +60,10 @@ _setup_logging()
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
+# 서드파티 라이브러리 노이즈 억제
+logging.getLogger("scrapling").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -461,7 +465,8 @@ async def _winrate_refresh_loop():
                             c = ss.recv(16384)
                             if not c: break
                             data += c
-                    except Exception: pass
+                    except Exception as _recv_err:
+                        logger.debug(f"소켓 수신 오류 (무시): {_recv_err}")
                     ss.close()
                     body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
                     result = _j.loads(body.decode('utf-8', 'ignore'))
@@ -736,11 +741,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
 
     # Rate limit: IP당 분당 10회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"follow:{client_ip}", *RATE_LIMIT_POLICY["follow"]):
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
-        )
+    _require_rate_limit(f"follow:{client_ip}", request=request)
 
     # Solana 주소 검증
     if not _is_valid_solana_address(body.follower_address):
@@ -805,11 +806,7 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
 
     # Rate limit: IP당 분당 10회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"unfollow:{client_ip}", *RATE_LIMIT_POLICY["unfollow"]):
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
-        )
+    _require_rate_limit(f"unfollow:{client_ip}", request=request)
 
     # 주소 검증
     if not _is_valid_solana_address(trader_address):
@@ -862,11 +859,7 @@ async def list_trades(
 
     # Rate limit: IP당 분당 60회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"trades:{client_ip}", *RATE_LIMIT_POLICY["trades"]):
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
-        )
+    _require_rate_limit(f"trades:{client_ip}", request=request)
 
     # 입력 검증
     if limit < 1 or limit > 500:
@@ -925,11 +918,7 @@ async def get_stats(request: Request):
 
     # Rate limit: IP당 분당 60회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"stats:{client_ip}", *RATE_LIMIT_POLICY["stats"]):
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
-        )
+    _require_rate_limit(f"stats:{client_ip}", request=request)
 
     try:
         db = await get_db()
@@ -970,6 +959,8 @@ async def get_stats(request: Request):
     except Exception:
         stats["builder_fee_total_usdc"] = 0.0
         stats["builder_fee_count"] = 0
+    # 응답 표준화 — ok 필드 추가
+    stats["ok"] = True
     return stats
 
 

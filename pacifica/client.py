@@ -9,8 +9,11 @@ Agent: env AGENT_PRIVATE_KEY
 """
 
 import os
-import warnings; warnings.filterwarnings("ignore", category=UserWarning, module="scrapling")
-import logging as _logging; _logging.getLogger("scrapling").setLevel(_logging.ERROR)
+import warnings; warnings.filterwarnings("ignore")
+import logging as _logging
+_logging.getLogger("scrapling").setLevel(_logging.CRITICAL)
+_logging.getLogger("scrapling.engines").setLevel(_logging.CRITICAL)
+_logging.getLogger("scrapling.engines.toolbelt").setLevel(_logging.CRITICAL)
 import json
 import time
 import uuid
