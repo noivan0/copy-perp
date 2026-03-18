@@ -340,6 +340,22 @@ async def onboard_follower(
         except Exception:
             pass
 
+    # ── Step 6: Builder Code 자동 승인 (백그라운드) ──────
+    async def _auto_approve_builder(address: str):
+        try:
+            from pacifica.builder_code import approve
+            from solders.keypair import Keypair
+            import base58
+            pk = os.getenv("AGENT_PRIVATE_KEY", "")
+            if pk:
+                kp = Keypair.from_seed(base58.b58decode(pk)[:32])
+                res = approve(account=address, keypair=kp)
+                logger.info(f"Builder Code 자동 승인: {address[:16]} → {res.get('ok')}")
+        except Exception as e:
+            logger.debug(f"Builder Code 자동 승인 실패 (무시): {e}")
+
+    background_tasks.add_task(_auto_approve_builder, body.follower_address)
+
     result["ok"] = len(result["followers_registered"]) > 0
     result["note"] = (
         f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else '미승인 (주문은 가능, 수수료 수취 비활성)'}"

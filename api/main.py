@@ -413,6 +413,9 @@ def health():
         "db_size_bytes":   db_size_bytes,            # DB 파일 크기
         "mainnet_traders": mainnet_traders_count,    # mainnet 활성 트레이더 수
         "testnet_traders": testnet_traders_count,    # testnet 활성 트레이더 수
+        "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "version": "1.0.0",
     }
 
 
@@ -714,6 +717,16 @@ async def health_detailed():
 # POST /followers/onboard — 완전 구현 (Solana 주소 검증 + Builder Code + Privy JWT)
 # GET  /followers/list    — 팔로워 목록
 # DELETE /followers/{addr} — 팔로워 해지
+
+
+@app.get("/config")
+def get_config():
+    return {
+        "privy_app_id": os.getenv("PRIVY_APP_ID", ""),
+        "builder_code": BUILDER_CODE,
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "network": os.getenv("NETWORK", "testnet"),
+    }
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────

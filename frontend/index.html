@@ -351,9 +351,28 @@
 <script src="privy.js"></script>
 
 <script>
-const API = location.hostname === 'localhost' ? 'http://localhost:8001' : '/api';
-// PRIVY_APP_ID: 실제 배포 시 서버에서 주입 또는 아래 직접 입력
-window.PRIVY_APP_ID = window.PRIVY_APP_ID || '';
+// ── Config 동적 로드 (서버에서 Privy App ID 등 받아오기) ──
+let API = location.hostname === 'localhost' ? 'http://localhost:8001' : '';
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/config');
+    const cfg = await r.json();
+    window.PRIVY_APP_ID = cfg.privy_app_id || '';
+    window.API_BASE = location.hostname === 'localhost' ? 'http://localhost:8001' : '';
+    // API prefix
+    if (cfg.api_prefix) API = (window.API_BASE || '') + cfg.api_prefix;
+    else API = (window.API_BASE || '') + '/api';
+    console.log('[Config] Network:', cfg.network, '| Privy:', cfg.privy_app_id ? '설정됨' : '데모모드');
+  } catch(e) {
+    window.PRIVY_APP_ID = '';
+    API = location.hostname === 'localhost' ? 'http://localhost:8001' : '/api';
+    console.warn('[Config] 서버 설정 로드 실패 → 데모모드');
+  }
+}
+// DOMContentLoaded 전에 실행 (비동기, privy.js 초기화 전에 완료 목표)
+const _configReady = loadConfig();
+
 const SYMBOLS = ['BTC','ETH','SOL','SUI','DOGE','XAU','AVAX'];
 const RANK_LABELS = ['🥇','🥈','🥉'];
 
@@ -405,6 +424,7 @@ function closeLoginModal() {
 
 async function loginWith(provider) {
   closeLoginModal();
+  setWalletBtnState('connecting');
   toast(`⏳ ${provider} 로그인 중...`);
 
   // Privy 연동: App ID 있으면 실제 소셜 로그인, 없으면 데모 모달
@@ -529,15 +549,39 @@ async function signBuilderCodeApproval(builderCode = 'noivan', maxFeeRate = '0.0
   }
 }
 
+function setWalletBtnState(state, address) {
+  const btn = document.getElementById('wallet-btn');
+  if (state === 'disconnected') {
+    btn.textContent = 'Connect Wallet';
+    btn.className = 'wallet-btn';
+    btn.disabled = false;
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.onclick = openLoginModal;
+  } else if (state === 'connecting') {
+    btn.textContent = 'Connecting...';
+    btn.className = 'wallet-btn';
+    btn.disabled = true;
+    btn.style.background = 'var(--muted)';
+    btn.style.color = '#fff';
+    btn.onclick = null;
+  } else if (state === 'connected') {
+    btn.textContent = shortAddr(address);
+    btn.className = 'wallet-btn connected';
+    btn.disabled = false;
+    btn.style.background = '#22c55e20';
+    btn.style.color = 'var(--green)';
+    btn.style.border = '1px solid #22c55e40';
+    btn.onclick = () => scrollToFollow();
+  }
+}
+
 function onWalletConnected(address, provider) {
   _walletAddress = address;
   _walletProvider = provider;
 
   // 헤더 버튼 업데이트
-  const btn = document.getElementById('wallet-btn');
-  btn.textContent = shortAddr(address);
-  btn.className = 'wallet-btn connected';
-  btn.onclick = null;
+  setWalletBtnState('connected', address);
 
   // 팔로우 폼 표시
   document.getElementById('follow-login-prompt').style.display = 'none';
