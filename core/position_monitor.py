@@ -166,11 +166,19 @@ class PositionMonitor:
 
         for symbol, pos in curr.items():
             prev = self._prev_positions.get(symbol)
-            curr_size = float(pos.get("szi", pos.get("size", 0)) or 0)
-            prev_size = float(prev.get("szi", prev.get("size", 0)) or 0) if prev else 0
+            # Pacifica API: amount = 절댓값, side = bid(롱)/ask(숏)
+            # 부호 포함 크기: bid → +amount, ask → -amount
+            _amt = float(pos.get("amount", pos.get("szi", pos.get("size", 0))) or 0)
+            _side_raw = pos.get("side", "bid")
+            curr_size = _amt if _side_raw == "bid" else -_amt
+
+            _prev_amt = float(prev.get("amount", prev.get("szi", prev.get("size", 0))) or 0) if prev else 0
+            _prev_side = prev.get("side", "bid") if prev else "bid"
+            prev_size = _prev_amt if _prev_side == "bid" else -_prev_amt
 
             if abs(curr_size - prev_size) > 1e-8:
                 change_type = "open" if abs(curr_size) > abs(prev_size) else "reduce"
+                # 순 변화량이 양수면 롱 증가, 음수면 숏 증가
                 side = "open_long" if curr_size > prev_size else "open_short"
 
                 fill_event = {
@@ -191,7 +199,9 @@ class PositionMonitor:
         for symbol in list(self._prev_positions.keys()):
             if symbol not in curr:
                 prev = self._prev_positions[symbol]
-                prev_size = float(prev.get("szi", 0) or 0)
+                _p_amt = float(prev.get("amount", prev.get("szi", 0)) or 0)
+                _p_side = prev.get("side", "bid")
+                prev_size = _p_amt if _p_side == "bid" else -_p_amt
                 side = "close_long" if prev_size > 0 else "close_short"
                 fill_event = {
                     "account": self.trader,
