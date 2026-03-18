@@ -17,11 +17,41 @@ Copy Perp FastAPI 백엔드 v1.0
   POST /referral/track            레퍼럴 추적
 """
 import asyncio
+import json
 import logging
 import os
 import sys
 import time as _time_module
 import warnings
+
+
+# ── 프로덕션 로깅 설정 ────────────────────────────────────────────────────────
+class _JSONFormatter(logging.Formatter):
+    """구조화된 JSON 로그 포매터 (프로덕션 환경용)"""
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({
+            "ts":    _time_module.strftime("%Y-%m-%dT%H:%M:%SZ", _time_module.gmtime()),
+            "level": record.levelname,
+            "name":  record.name,
+            "msg":   record.getMessage(),
+        }, ensure_ascii=False)
+
+
+def _setup_logging() -> None:
+    """DEBUG=false(프로덕션)이면 JSON 포매터, 개발이면 일반 포매터 적용"""
+    log_level = logging.DEBUG if os.getenv("DEBUG", "false").lower() in ("1", "true") else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    )
+    if not os.getenv("DEBUG", "false").lower() in ("1", "true"):
+        fmt = _JSONFormatter()
+        for handler in logging.root.handlers:
+            handler.setFormatter(fmt)
+
+
+_setup_logging()
+# ─────────────────────────────────────────────────────────────────────────────
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")

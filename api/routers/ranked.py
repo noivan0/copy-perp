@@ -9,7 +9,7 @@ GET  /traders/ranked/{address} — 개별 트레이더 CRS 상세 분석
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from core.reliability import compute_crs, GRADE, MAX_COPY_RATIO
 
@@ -82,6 +82,7 @@ async def _fetch_rows_from_api(limit: int = 200) -> list:
 
 @router.get("")
 async def get_ranked_traders(
+    request: Request,
     limit: int = Query(20, ge=1, le=100),
     min_grade: str = Query("C", description="최소 등급 필터: S/A/B/C/D"),
     exclude_disqualified: bool = Query(True, description="하드 필터 제외 트레이더 숨김"),
@@ -92,7 +93,12 @@ async def get_ranked_traders(
     - 실시간 leaderboard 데이터 + CRS 알고리즘 적용
     - min_grade: 최소 등급 필터 (S/A/B/C/D), 기본 C 이상
     - exclude_disqualified: 하드 필터 제외 트레이더 숨김 (기본 true)
+    - Rate limit: IP당 분당 30회
     """
+    from api.main import _check_rate_limit
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"ranked:{client_ip}", max_calls=30, window_sec=60):
+        raise HTTPException(429, "Too many requests")
     # DB 우선, 없으면 API
     rows = await _fetch_rows_from_db(200)
     source = "db"

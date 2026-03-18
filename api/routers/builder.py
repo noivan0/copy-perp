@@ -25,7 +25,7 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from pacifica.builder_code import (
@@ -85,11 +85,17 @@ def prepare_approval(account: str):
 
 
 @router.post("/approve")
-async def approve_builder_code(body: ApproveReq):
+async def approve_builder_code(body: ApproveReq, request: Request):
     """
     팔로워가 Privy로 서명한 builder code 승인을 Pacifica에 전달.
     성공 시 DB builder_code_approved = 1 업데이트.
+    Rate limit: IP당 분당 3회
     """
+    from api.main import _check_rate_limit
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"builder_approve:{client_ip}", max_calls=3, window_sec=60):
+        raise HTTPException(429, "Too many requests")
+
     result = approve(
         account      = body.account,
         signature    = body.signature,

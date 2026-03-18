@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: copy-perp
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NETWORK
+        value: testnet
+      - key: BUILDER_CODE
+        value: noivan
+      - key: BUILDER_FEE_RATE
+        value: "0.001"
+      - key: PRIVY_APP_ID
+        value: cmmvoxcix058e0ckv7uhp9ip0
+      - key: ACCOUNT_ADDRESS
+        sync: false
+      - key: AGENT_WALLET
+        sync: false
+      - key: AGENT_PRIVATE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
