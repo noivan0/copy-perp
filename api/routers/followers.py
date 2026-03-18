@@ -59,7 +59,7 @@ def _validate_solana_address(address: str, field_name: str = "address") -> None:
     실패 시 HTTPException(422) 발생
     """
     if not address or not isinstance(address, str):
-        raise HTTPException(422, f"{field_name}가 필요합니다")
+        raise HTTPException(status_code=422, detail={"error": f"{field_name}가 필요합니다", "code": "VALIDATION_ERROR"})
 
     # 1차: regex 형식 검증
     if not _SOLANA_ADDR_RE.match(address):
@@ -238,6 +238,52 @@ def _approve_builder_code_api(account: str, signature: str, timestamp: int,
     return _cf_request("POST", "account/builder_codes/approve", body)
 
 
+# ── 인증/인가 헬퍼 ───────────────────────────────────
+
+def _require_auth(follower_address: str, privy_token: Optional[str]) -> Optional[str]:
+    """
+    Privy JWT 선택적 검증.
+    토큰이 있을 때만 검증 — 없으면 스킵 (선택적 인증).
+    토큰이 있고 유효하지 않으면 HTTPException(401) 발생.
+    반환: privy_user_id 또는 None
+    """
+    if not privy_token:
+        return None  # 토큰 없으면 스킵
+
+    user_id = _verify_privy_jwt(privy_token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "유효하지 않은 Privy 토큰입니다", "code": "AUTH_INVALID"}
+        )
+    # 검증 성공 로그 (user_id 마스킹)
+    masked_uid = user_id[:12] + "..." if len(user_id) > 12 else user_id
+    logger.info(f"Privy 인증 성공: user_id={masked_uid}, follower={follower_address[:12]}...")
+    return user_id
+
+
+# ── 입력값 검증 헬퍼 ──────────────────────────────────
+
+def _validate_copy_ratio_field(v: float) -> float:
+    """copy_ratio: 0.01 ~ 1.0 범위 강제"""
+    if v < 0.01 or v > 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "copy_ratio는 0.01 ~ 1.0 범위여야 합니다", "code": "INVALID_COPY_RATIO"}
+        )
+    return v
+
+
+def _validate_max_position_field(v: float) -> float:
+    """max_position_usdc: 1 ~ 10000 범위 강제"""
+    if v < 1 or v > 10000:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "max_position_usdc는 1 ~ 10000 범위여야 합니다", "code": "INVALID_MAX_POSITION"}
+        )
+    return v
+
+
 # ── 엔드포인트 ────────────────────────────────────────
 
 @router.post("/onboard")
@@ -266,9 +312,19 @@ async def onboard_follower(
     # ── Rate Limit 체크 ─────────────────────────────────
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"onboard:{client_ip}", max_calls=5, window_sec=60):
-        raise HTTPException(429, "Too many requests")
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
+        )
 
     # ── 입력 검증 ────────────────────────────────────────
+    # copy_ratio, max_position_usdc 범위 검증
+    _validate_copy_ratio_field(body.copy_ratio)
+    _validate_max_position_field(body.max_position_usdc)
+
+    # Privy JWT 선택적 인증 (토큰이 있는 경우만)
+    _require_auth(body.follower_address, x_privy_token)
+
     # Step 0a: 팔로워 Solana 주소 검증 (base58 디코딩 + 32바이트 확인)
     _validate_solana_address(body.follower_address, field_name="follower_address")
 
@@ -278,14 +334,14 @@ async def onboard_follower(
             try:
                 _validate_solana_address(str(trader_addr), field_name=f"traders[{idx}]")
             except HTTPException as e:
-                raise HTTPException(422, f"traders[{idx}] 주소 오류: {e.detail}")
+                raise HTTPException(status_code=422, detail={"error": f"traders[{idx}] 주소 오류: {e.detail}", "code": "INVALID_ADDRESS"})
 
     # referrer 주소 검증 (지정된 경우)
     if body.referrer_address:
         try:
             _validate_solana_address(body.referrer_address, field_name="referrer_address")
         except HTTPException as e:
-            raise HTTPException(422, f"referrer_address 오류: {e.detail}")
+            raise HTTPException(status_code=422, detail={"error": f"referrer_address 오류: {e.detail}", "code": "INVALID_ADDRESS"})
 
     # Step 0b: Privy JWT 선택적 검증 (X-Privy-Token 또는 Authorization: Bearer 모두 허용)
     privy_user_id: Optional[str] = None

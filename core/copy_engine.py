@@ -146,13 +146,33 @@ class CopyEngine:
         copy_ratio = float(follower["copy_ratio"])
         max_pos = float(follower["max_position_usdc"])
 
-        # ── 동시 주문 중복 방지 ──────────────────────────
+        # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
         if follower_addr not in self._follower_locks:
             self._follower_locks[follower_addr] = asyncio.Lock()
         lock = self._follower_locks[follower_addr]
         if lock.locked():
             logger.warning(f"[{follower_addr[:8]}] 이전 주문 처리 중 — 중복 주문 스킵")
             return
+        async with lock:
+            await self._execute_copy(
+                follower, follower_addr, copy_ratio, max_pos,
+                symbol, side, trader_amount, trader_address, symbol_price
+            )
+
+    async def _execute_copy(
+        self,
+        follower,
+        follower_addr: str,
+        copy_ratio: float,
+        max_pos: float,
+        symbol: str,
+        side: str,
+        trader_amount: str,
+        trader_address: str,
+        symbol_price: float,
+    ) -> None:
+        """Lock 획득 후 실제 복사 주문 실행 (내부 메서드)"""
+        import math
 
         # ── 리서치팀 가중치 적용 ──────────────────────────
         # Tier A 트레이더는 사전 정의된 가중치로 copy_ratio 보정
@@ -202,7 +222,6 @@ class CopyEngine:
                 return
 
         # 4. lot_size 정렬 (실제 모드에서만 — mock은 API 호출 생략)
-        import math
         if not self.mock_mode:
             try:
                 from core.data_collector import get_price_cache
@@ -321,12 +340,12 @@ class CopyEngine:
                 amount_usdc = float(copy_amount) * price_f
                 # Builder Fee = 주문금액 × 0.001 (0.1%)
                 fee_usdc = round(amount_usdc * float(BUILDER_FEE_RATE), 6)
-                await self._db.execute(
+                await self.db.execute(
                     "INSERT INTO fee_records (trade_id, builder_code, fee_usdc, created_at) "
                     "VALUES (?, ?, ?, strftime('%s','now'))",
                     (trade_id, BUILDER_CODE, fee_usdc)
                 )
-                await self._db.commit()
+                await self.db.commit()
             except Exception:
                 pass
 

@@ -264,16 +264,30 @@ if __name__ == "__main__":
 
 class RestPositionMonitor(PositionMonitor):
     """REST 폴링 전용 PositionMonitor (WS 차단 환경용)
-    
+
     WS 연결을 시도하지 않고 REST 폴링만 사용.
     HMG 웹필터 환경에서 안정적으로 동작.
-    연속 5회 이상 실패 시 60초 대기 후 자동 재시작.
+
+    Exponential backoff:
+      - 실패 1~3회: 1s, 2s, 4s 대기 (2^n)
+      - 실패 4~6회: 8s, 16s, 30s 대기 (max 30s)
+      - 연속 10회 이상 실패: 모니터 자동 재시작 + alerting 로그
     """
+
+    _BACKOFF_BASE = 1.0     # 초기 backoff 1초
+    _BACKOFF_MAX  = 30.0    # 최대 backoff 30초
+    _RESTART_THRESHOLD = 10 # 이 횟수 초과 시 자동 재시작
 
     def __init__(self, trader_address: str, on_fill: Callable):
         super().__init__(trader_address, on_fill)
         self._fail_count = 0
-        self._last_poll_time: Optional[float] = None  # 마지막 폴링 성공 시각 (epoch)
+        self._last_poll_time: Optional[float] = None
+        self._current_backoff = self._BACKOFF_BASE
+
+    def _next_backoff(self) -> float:
+        """exponential backoff 계산: 2^fail_count 초, max 30초"""
+        delay = min(self._BACKOFF_BASE * (2 ** max(self._fail_count - 1, 0)), self._BACKOFF_MAX)
+        return delay
 
     async def start(self):
         self._running = True
@@ -287,29 +301,51 @@ class RestPositionMonitor(PositionMonitor):
                     None, client.get_positions
                 )
                 await self._handle_positions(positions)
-                self._fail_count = 0  # 성공 시 카운터 초기화
-                self._last_poll_time = time.time()
-            except Exception as e:
-                self._fail_count += 1
-                logger.debug(f"REST 폴링 오류 (연속 {self._fail_count}회): {e}")
-                if self._fail_count > 5:
-                    logger.warning(
-                        f"[REST] {self.trader[:12]} 연속 {self._fail_count}회 실패 — "
-                        f"60초 대기 후 재시작"
-                    )
-                    try:
-                        from core.alerting import get_alert_manager
-                        get_alert_manager().monitor_disconnected(self.trader, str(e))
-                    except Exception:
-                        pass
-                    await asyncio.sleep(60)
-                    self._fail_count = 0
-                    client = PacificaClient(self.trader)  # 클라이언트 재생성
-                    logger.info(f"[REST] {self.trader[:12]} 재시작")
+                # 성공 시 카운터 및 backoff 초기화
+                if self._fail_count > 0:
+                    logger.info(f"[REST] {self.trader[:12]} 복구 완료 (실패 {self._fail_count}회 후)")
                     try:
                         from core.alerting import get_alert_manager
                         get_alert_manager().monitor_restored(self.trader)
                     except Exception:
                         pass
+                self._fail_count = 0
+                self._current_backoff = self._BACKOFF_BASE
+                self._last_poll_time = time.time()
+
+            except Exception as e:
+                self._fail_count += 1
+                backoff = self._next_backoff()
+                logger.debug(
+                    f"[REST] {self.trader[:12]} 폴링 오류 (연속 {self._fail_count}회, "
+                    f"backoff={backoff:.1f}s): {e}"
+                )
+
+                # 10회 초과 → 자동 재시작
+                if self._fail_count > self._RESTART_THRESHOLD:
+                    logger.warning(
+                        f"[REST] ⚠️ {self.trader[:12]} 연속 {self._fail_count}회 실패 — "
+                        f"모니터 자동 재시작 (backoff={backoff:.1f}s)"
+                    )
+                    try:
+                        from core.alerting import get_alert_manager
+                        get_alert_manager().monitor_disconnected(
+                            self.trader,
+                            f"연속 {self._fail_count}회 실패로 자동 재시작: {e}"
+                        )
+                    except Exception:
+                        pass
+
+                    # backoff 대기 후 클라이언트 재생성
+                    await asyncio.sleep(backoff)
+                    self._fail_count = 0
+                    self._current_backoff = self._BACKOFF_BASE
+                    client = PacificaClient(self.trader)
+                    logger.info(f"[REST] {self.trader[:12]} 재시작 완료")
                     continue
+                else:
+                    # 일반 backoff
+                    await asyncio.sleep(backoff)
+                    continue
+
             await asyncio.sleep(2.0)  # 2초 간격 폴링
