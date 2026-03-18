@@ -18,11 +18,13 @@
 'use strict';
 
 // ── 설정 ─────────────────────────────────────────
-const PRIVY_APP_ID      = window.PRIVY_APP_ID || '';
+// PRIVY_APP_ID: config 로드 전일 수 있으므로 getter로 동적 참조
 const PRIVY_CDN_URL     = 'https://cdn.privy.io/sdk/latest/privy.min.js';
 const API_BASE          = window.API_BASE || 'http://localhost:8001';
 const BUILDER_CODE      = 'noivan';
 const BUILDER_FEE_RATE  = '0.001';
+// 동적 getter — window.PRIVY_APP_ID는 /config 로드 후 설정됨
+function _getAppId() { return window.PRIVY_APP_ID || ''; }
 
 // ── 상태 ────────────────────────────────────────
 let _privy        = null;   // Privy SDK 인스턴스
@@ -32,7 +34,7 @@ let _callbacks    = [];     // 로그인 성공 콜백
 
 // ── Privy SDK 로드 ──────────────────────────────
 async function _loadPrivySDK() {
-  if (_privy || !PRIVY_APP_ID) return null;
+  if (_privy || !_getAppId()) return null;
 
   return new Promise((resolve, reject) => {
     // 이미 로드됐으면 스킵
@@ -56,7 +58,7 @@ async function _loadPrivySDK() {
 function _initPrivy() {
   if (!window.Privy || _privy) return;
   _privy = new window.Privy({
-    appId: PRIVY_APP_ID,
+    appId: _getAppId(),
     config: {
       loginMethods: ['google', 'twitter', 'email', 'wallet'],
       appearance: { theme: 'dark', accentColor: '#6366f1' },
@@ -66,7 +68,7 @@ function _initPrivy() {
     },
     onSuccess: _onPrivyLogin,
   });
-  console.log('[Privy] SDK 초기화 완료 (App ID:', PRIVY_APP_ID.slice(0, 8) + '...)');
+  console.log('[Privy] SDK 초기화 완료 (App ID:', _getAppId().slice(0, 8) + '...)');
 }
 
 // ── 로그인 성공 콜백 ────────────────────────────
@@ -142,7 +144,7 @@ async function _autoOnboard(address) {
  * }
  */
 async function _signBuilderCodeMessage(address) {
-  if (!_privy || !PRIVY_APP_ID) return null;
+  if (!_privy || !_getAppId()) return null;
 
   const timestamp = Date.now();
   const payload = {
@@ -168,7 +170,7 @@ async function _signBuilderCodeMessage(address) {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'privy-app-id':  PRIVY_APP_ID,
+      'privy-app-id':  _getAppId(),
       'Authorization': `Bearer ${_user?.access_token || ''}`,
     },
     body: JSON.stringify({
@@ -247,7 +249,7 @@ async function _demoLogin(address) {
 async function privyLogin(provider = 'google', onSuccess = null) {
   if (onSuccess) _callbacks.push(onSuccess);
 
-  if (!PRIVY_APP_ID) {
+  if (!_getAppId()) {
     _showDemoLoginModal();
     return;
   }
@@ -295,17 +297,17 @@ window.PrivyIntegration = {
   approveBuilderCode: privyApproveBuilderCode,
   onboard:            _autoOnboard,
   _demoLogin,          // 내부용
-  APP_ID:             PRIVY_APP_ID,
-  IS_DEMO_MODE:       !PRIVY_APP_ID,
+  APP_ID:             _getAppId(),
+  IS_DEMO_MODE:       !_getAppId(),
 };
 
 // 자동 초기화 (App ID 있으면 SDK 미리 로드)
-if (PRIVY_APP_ID) {
+if (_getAppId()) {
   _loadPrivySDK().catch(e => console.warn('[Privy] 사전 로드 실패:', e));
 }
 
 console.log(
-  `[Privy] 초기화 — ${PRIVY_APP_ID
-    ? '실제 모드 (App ID: ' + PRIVY_APP_ID.slice(0, 8) + '...)'
+  `[Privy] 초기화 — ${_getAppId()
+    ? '실제 모드 (App ID: ' + _getAppId().slice(0, 8) + '...)'
     : '데모 모드 (PRIVY_APP_ID 미설정)'}`
 );

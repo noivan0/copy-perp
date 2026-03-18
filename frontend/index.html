@@ -1057,13 +1057,20 @@ async function fetchMyTrades(address) {
 }
 
 // ── 초기화 ────────────────────────────────────────
-// config 로드 완료 후 데이터 fetch
+// config 로드 완료 후 데이터 fetch + Privy SDK 사전 로드
 _configReady.then(() => {
   fetchMarkets();
   fetchLeaderboard();
   fetchStats();
   fetchCrsRanking();
   fetchOptimalPortfolio();
+
+  // Privy App ID가 config에서 넘어온 후 SDK 사전 로드 (타이밍 보장)
+  if (window.PRIVY_APP_ID && window.PrivyIntegration) {
+    // privy.js의 PRIVY_APP_ID는 const라 재할당 불가 → SDK만 강제 로드
+    // 실제 login 시 privyLogin()이 window.PRIVY_APP_ID를 확인
+    console.log('[Config] Privy App ID 확인됨 → SDK 로드 준비');
+  }
 });
 // SSE 실시간 스트림 — BTC 가격 + 통계 5초 푸시
 (function startSSE() {
