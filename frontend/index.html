@@ -858,7 +858,9 @@ async function fetchLeaderboard() {
             <div class="lb-pnl ${pnlCls}">${pnlStr}</div>
             <div class="lb-followers">${t.followers || 0} followers</div>
           </div>
-          <button class="copy-btn" onclick="event.stopPropagation();selectAndCopy('${t.address}', this)">Copy</button>
+          <button class="copy-btn" onclick="event.stopPropagation();selectAndCopy('${t.address}', this)"
+            style="${_followingSet.has(t.address) ? 'background:#22c55e;' : ''}"
+          >${_followingSet.has(t.address) ? '✓ Following' : 'Copy'}</button>
         </div>
       `;
     }).join('');
@@ -1315,7 +1317,6 @@ async function fetchMyTrades(address) {
 }
 
 // ── 초기화 ────────────────────────────────────────
-// config 로드 완료 후 데이터 fetch + Privy SDK 사전 로드
 _configReady.then(() => {
   fetchMarkets();
   fetchLeaderboard();
@@ -1323,14 +1324,8 @@ _configReady.then(() => {
   fetchCrsRanking();
   fetchOptimalPortfolio();
 
-  // Privy App ID가 config에서 넘어온 후 SDK 사전 로드 (타이밍 보장)
-  // privy.js가 <script src> 로 먼저 로드되지만, _getAppId()는 login 시점에 읽으므로 순서 OK
-  // 단, 사전 로드(prefetch)는 config 완료 후 여기서 트리거
+  // Privy SDK 사전 로드
   if (window.PRIVY_APP_ID && window.PrivyIntegration) {
-    console.log('[Config] Privy App ID 확인됨 → SDK 사전 로드');
-    // _loadPrivySDK는 privy.js 내부 함수 — PrivyIntegration.login()을 통해 간접 트리거
-    // 더미 콜백 없이 SDK만 미리 로드: login('google', null) 내부에서 _loadPrivySDK 호출됨
-    // 여기서는 window.Privy가 없을 때만 스크립트 주입
     if (!window.Privy) {
       const s = document.createElement('script');
       s.src = 'https://cdn.privy.io/sdk/latest/privy.min.js';
@@ -1340,40 +1335,69 @@ _configReady.then(() => {
     }
   }
 
-  // 통계 30초마다 자동 갱신
-  setInterval(fetchStats, 30000);
-});
-// SSE 실시간 스트림 — BTC 가격 + 통계 5초 푸시
-(function startSSE() {
-  const es = new EventSource(`${API}/stream`);
-  es.onmessage = (e) => {
+  // ── 30초마다 자동 갱신: /stats, /traders ──────────────
+  setInterval(async () => {
     try {
-      const d = JSON.parse(e.data);
-      if (!d.btc_mark) return;
-      // BTC 가격 직접 업데이트
-      const priceEl = document.getElementById('btc-price');
-      if (priceEl) priceEl.textContent = '$' + Number(d.btc_mark).toLocaleString();
-      const fundingEl = document.getElementById('btc-funding');
-      if (fundingEl) fundingEl.textContent = (Number(d.btc_funding) * 100).toFixed(4) + '%';
-      // 통계 직접 업데이트
-      const traders = document.getElementById('stat-traders');
-      if (traders) traders.textContent = d.active_traders;
-      const followers = document.getElementById('stat-followers');
-      if (followers) followers.textContent = d.active_followers;
-      const trades = document.getElementById('stat-trades');
-      if (trades) trades.textContent = d.trades_filled;
-    } catch (err) { /* 무시 */ }
-  };
-  es.onerror = () => {
-    // SSE 실패 → 폴링 폴백
-    es.close();
-    showErrorBanner('⚠️ 실시간 연결이 끊겼습니다. 폴링 모드로 전환합니다.');
-    setInterval(fetchMarkets, 5000);
-    setInterval(fetchStats, 10000);
-  };
+      await fetchStats();
+      hideServerDisconnectedBanner();
+    } catch(e) {
+      showServerDisconnectedBanner();
+    }
+  }, 30000);
+
+  setInterval(async () => {
+    try {
+      await fetchLeaderboard();
+      hideServerDisconnectedBanner();
+    } catch(e) {
+      showServerDisconnectedBanner();
+    }
+  }, 30000);
+
+  setInterval(fetchCrsRanking, 30000);
+  setInterval(fetchMarkets, 15000);
+});
+
+// ── SSE 실시간 스트림 ────────────────────────────────
+(function startSSE() {
+  let es = null;
+  let _sseRetryCount = 0;
+
+  function connect() {
+    es = new EventSource(`${API}/stream`);
+    es.onopen = () => {
+      _sseRetryCount = 0;
+      hideServerDisconnectedBanner();
+    };
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!d.btc_mark) return;
+        const priceEl = document.getElementById('btc-price');
+        if (priceEl) priceEl.textContent = '$' + Number(d.btc_mark).toLocaleString();
+        const fundingEl = document.getElementById('btc-funding');
+        if (fundingEl) fundingEl.textContent = (Number(d.btc_funding) * 100).toFixed(4) + '%';
+        const traders = document.getElementById('stat-traders');
+        if (traders && d.active_traders != null) traders.textContent = d.active_traders;
+        const followers = document.getElementById('stat-followers');
+        if (followers && d.active_followers != null) followers.textContent = d.active_followers;
+        const trades = document.getElementById('stat-trades');
+        if (trades && d.trades_filled != null) trades.textContent = d.trades_filled;
+        hideServerDisconnectedBanner();
+      } catch (err) { /* 무시 */ }
+    };
+    es.onerror = () => {
+      es.close();
+      _sseRetryCount++;
+      const delay = Math.min(5000 * _sseRetryCount, 30000);
+      showServerDisconnectedBanner();
+      // 재연결 시도 (지수 backoff)
+      setTimeout(connect, delay);
+    };
+  }
+  connect();
 })();
-setInterval(fetchLeaderboard, 15000);
-setInterval(fetchCrsRanking, 30000);
+
 // My Trades는 로그인 후 fetchMyTrades(_walletAddress) 호출 + 30초 자동 갱신
 </script>
 </body>
