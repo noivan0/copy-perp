@@ -28,8 +28,8 @@ async def _get_qualified_traders(min_crs: float = 50.0) -> list:
                 crs = compute_crs(d)
                 if crs.crs >= min_crs and not crs.disqualified:
                     results.append({"row": d, "crs": crs})
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"무시된 예외: {e}")
         return results
     except Exception as e:
         logger.warning(f"DB 조회 실패: {e}")

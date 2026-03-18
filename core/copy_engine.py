@@ -331,8 +331,8 @@ class CopyEngine:
                     amount_usdc=amount_usdc,
                     order_id=client_order_id,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"무시된 예외: {e}")
 
         # Builder Fee 기록 (체결 성공 시)
         if status == "filled" and price_f > 0:
@@ -346,8 +346,8 @@ class CopyEngine:
                     (trade_id, BUILDER_CODE, fee_usdc)
                 )
                 await self.db.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"무시된 예외: {e}")
 
         # PnL 계산 (청산 이벤트 시)
         realized_pnl = None

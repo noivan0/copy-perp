@@ -98,6 +98,24 @@ async def lifespan(app_):
     _db = await init_db()
     _engine = CopyEngine(_db)
 
+    # startup에서 필수 환경변수 검증
+    REQUIRED_ENVS = {
+        "ACCOUNT_ADDRESS": "Pacifica 계정 주소 (Privy 지갑)",
+        "AGENT_PRIVATE_KEY": "Agent Key 개인키 (주문 서명)",
+        "AGENT_WALLET": "Agent 공개키",
+    }
+    missing = []
+    for key, desc in REQUIRED_ENVS.items():
+        if not os.getenv(key):
+            missing.append(f"  {key}: {desc}")
+    if missing:
+        logger.error("🚨 필수 환경변수 미설정:\n" + "\n".join(missing))
+        logger.error("→ .env 파일 확인 또는 환경변수 설정 후 재시작")
+        # 서버는 기동하되 WARNING으로 남김 (헬스체크에서 degraded 표시)
+        os.environ["_ENV_DEGRADED"] = "1"
+    else:
+        logger.info("✅ 환경변수 검증 완료")
+
     _network = os.getenv("NETWORK", "testnet")
     _rest_url = os.getenv("PACIFICA_REST_URL", "")
     _db_path  = os.getenv("DB_PATH", "copy_perp.db")
@@ -124,8 +142,8 @@ async def lifespan(app_):
         try:
             monitor._running = False
             logger.info(f"  모니터 중지: {addr[:16]}...")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"무시된 예외: {e}")
     if _db:
         await _db.close()
         logger.info("  DB 연결 닫힘")
@@ -223,22 +241,70 @@ import time as _time_m
 
 _rate_limit_store: dict = defaultdict(list)
 
+# ── Rate Limit 정책 테이블 ───────────────────────────
+# 엔드포인트 특성에 따라 차등 적용:
+#   - 쓰기/온보딩: 엄격 (분당 10~20회)
+#   - 읽기(조회): 관대 (분당 60~120회)
+#   - 승인/서명:  중간 (분당 10회, 재시도 여유)
+RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
+    # (max_calls, window_sec)
+    # 쓰기 — 엄격 (봇 방어)
+    "onboard":          (5,   60),   # 팔로워 온보딩: 분당 5회 (지갑 서명 민감)
+    "follow":           (10,  60),   # 팔로우: 분당 10회
+    "unfollow":         (10,  60),   # 언팔로우: 분당 10회
+    "builder_approve":  (3,   60),   # Builder Code 승인: 분당 3회 (서명 재시도)
+    # 읽기 — 적절 (30초 폴링 기준: 2req/min × 다수 탭)
+    "trades":           (60,  60),   # 거래내역 조회: 분당 60회
+    "traders":          (60,  60),   # 트레이더 조회: 분당 60회
+    "stats":            (60,  60),   # 통계 조회: 분당 60회
+    "signals":          (60,  60),   # 시그널 조회: 분당 60회
+    "markets":          (60,  60),   # 마켓 조회: 분당 60회
+    "referral":         (30,  60),   # 레퍼럴: 분당 30회
+    # 무거운 읽기
+    "ranked":           (20,  60),   # CRS 랭킹: 분당 20회 (계산 비용 높음)
+    # 헬스/모니터링 — DDoS 방어 상한
+    "health":           (120, 60),   # 헬스체크: 분당 120회 (모니터링 도구 허용)
+    "default":          (30,  60),   # 기본: 분당 30회
+}
+
 def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:
-    """True = 허용, False = 차단"""
+    """True = 허용, False = 차단. Sliding window 방식."""
     now = _time_m.time()
     calls = _rate_limit_store[key]
     _rate_limit_store[key] = [t for t in calls if now - t < window_sec]
     if len(_rate_limit_store[key]) >= max_calls:
         return False
     _rate_limit_store[key].append(now)
+    # 메모리 누수 방지: 1000개 키 초과 시 만료 항목 정리
+    if len(_rate_limit_store) > 1000:
+        expired = [k for k, v in list(_rate_limit_store.items())
+                   if not v or now - v[-1] > max(window_sec * 2, 300)]
+        for k in expired:
+            del _rate_limit_store[k]
     return True
 
-def _require_rate_limit(key: str, max_calls: int, window_sec: int = 60, request: Request = None) -> None:
-    """Rate limit 초과 시 HTTPException(429) 발생"""
+def _require_rate_limit(key: str, max_calls: int = None, window_sec: int = 60, request: Request = None) -> None:
+    """Rate limit 초과 시 HTTPException(429) 발생.
+    max_calls 생략 시 RATE_LIMIT_POLICY 테이블에서 자동 조회.
+    """
+    # 정책 테이블 자동 조회
+    endpoint = key.split(":")[0]  # "onboard:127.0.0.1" → "onboard"
+    if max_calls is None:
+        policy = RATE_LIMIT_POLICY.get(endpoint, RATE_LIMIT_POLICY["default"])
+        max_calls, window_sec = policy
+
     if not _check_rate_limit(key, max_calls, window_sec):
+        retry_after = window_sec  # 윈도우 종료까지 대기 권고
         raise HTTPException(
             status_code=429,
-            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
+            headers={"Retry-After": str(retry_after)},
+            detail={
+                "error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.",
+                "code": "RATE_LIMIT_EXCEEDED",
+                "retry_after_seconds": retry_after,
+                "limit": max_calls,
+                "window_seconds": window_sec,
+            }
         )
 
 
@@ -562,7 +628,9 @@ def healthz():
     return {"status": "ok"}
 
 @app.get("/health")
-def health():
+def health(request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    _require_rate_limit(f"health:{client_ip}")
     btc = _get_pc().get("BTC", {})
     monitors_detail = []
     for addr, mon in _monitors.items():
@@ -592,8 +660,8 @@ def health():
             mainnet_traders_count = active_cnt
         else:
             testnet_traders_count = active_cnt
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"무시된 예외: {e}")
 
     return {
         "status": "ok",
@@ -613,12 +681,15 @@ def health():
         "testnet_traders": testnet_traders_count,
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
         "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
         "version": "1.1.0",
     }
 
 
 @app.get("/markets")
-def get_markets(symbol: Optional[str] = None):
+def get_markets(request: Request, symbol: Optional[str] = None):
+    client_ip = request.client.host if request.client else "unknown"
+    _require_rate_limit(f"markets:{client_ip}")
     if symbol:
         data = _get_pc().get(symbol.upper())
         if not data:
@@ -632,8 +703,10 @@ def get_markets(symbol: Optional[str] = None):
 
 
 @app.get("/signals")
-def get_signals(top_n: int = 5):
+def get_signals(request: Request, top_n: int = 5):
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
+    client_ip = request.client.host if request.client else "unknown"
+    _require_rate_limit(f"signals:{client_ip}")
     items = list(_get_pc().values())
     funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
     divergence_top = sorted(
@@ -655,7 +728,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
 
     # Rate limit: IP당 분당 10회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"follow:{client_ip}", max_calls=10, window_sec=60):
+    if not _check_rate_limit(f"follow:{client_ip}", *RATE_LIMIT_POLICY["follow"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
@@ -724,7 +797,7 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
 
     # Rate limit: IP당 분당 10회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"unfollow:{client_ip}", max_calls=10, window_sec=60):
+    if not _check_rate_limit(f"unfollow:{client_ip}", *RATE_LIMIT_POLICY["unfollow"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
@@ -781,7 +854,7 @@ async def list_trades(
 
     # Rate limit: IP당 분당 60회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"trades:{client_ip}", max_calls=60, window_sec=60):
+    if not _check_rate_limit(f"trades:{client_ip}", *RATE_LIMIT_POLICY["trades"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
@@ -844,7 +917,7 @@ async def get_stats(request: Request):
 
     # Rate limit: IP당 분당 60회
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"stats:{client_ip}", max_calls=60, window_sec=60):
+    if not _check_rate_limit(f"stats:{client_ip}", *RATE_LIMIT_POLICY["stats"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}

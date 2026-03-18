@@ -49,8 +49,8 @@ def _fire_alert(level: str, msg: str) -> None:
     for hook in _alert_hooks:
         try:
             hook(level, msg)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"무시된 예외: {e}")
 
 
 def classify_error(exc: Exception) -> tuple[bool, float]:

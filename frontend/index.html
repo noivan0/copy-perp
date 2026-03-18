@@ -266,6 +266,7 @@
   <div class="stat-item"><div class="stat-val" id="s-traders">—</div><div class="stat-lbl">Active Traders</div></div>
   <div class="stat-item"><div class="stat-val" id="s-followers">—</div><div class="stat-lbl">Followers</div></div>
   <div class="stat-item"><div class="stat-val" id="s-volume">—</div><div class="stat-lbl">Volume Copied</div></div>
+  <div class="stat-item"><div class="stat-val" id="s-fee">$0.00</div><div class="stat-lbl">Builder Fee Earned</div></div>
   <div class="stat-item"><div class="stat-val" id="s-symbols">68</div><div class="stat-lbl">Markets</div></div>
 </div>
 
@@ -877,6 +878,11 @@ async function fetchStats() {
     if (d.total_volume_usdc != null)
       document.getElementById('s-volume').textContent =
         '$' + (d.total_volume_usdc / 1000).toFixed(1) + 'K';
+    if (d.builder_fee_total_usdc != null)
+      document.getElementById('s-fee').textContent =
+        '$' + Number(d.builder_fee_total_usdc).toFixed(2);
+    if (d.total_trades_filled != null)
+      document.getElementById('s-trades') && (document.getElementById('s-trades').textContent = d.total_trades_filled);
   } catch(e) {}
 }
 

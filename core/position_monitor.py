@@ -234,8 +234,8 @@ class PositionMonitor:
             try:
                 positions = client.get_positions()
                 await self._handle_positions(positions)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"무시된 예외: {e}")
             await asyncio.sleep(REST_POLL_INTERVAL)
 
 
@@ -307,8 +307,8 @@ class RestPositionMonitor(PositionMonitor):
                     try:
                         from core.alerting import get_alert_manager
                         get_alert_manager().monitor_restored(self.trader)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"무시된 예외: {e}")
                 self._fail_count = 0
                 self._current_backoff = self._BACKOFF_BASE
                 self._last_poll_time = time.time()
@@ -333,8 +333,8 @@ class RestPositionMonitor(PositionMonitor):
                             self.trader,
                             f"연속 {self._fail_count}회 실패로 자동 재시작: {e}"
                         )
-                    except Exception:
-                        pass
+                    except Exception as e2:
+                        logger.debug(f"무시된 예외: {e2}")
 
                     # backoff 대기 후 클라이언트 재생성
                     await asyncio.sleep(backoff)

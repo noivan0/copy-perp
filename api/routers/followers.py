@@ -325,7 +325,8 @@ async def onboard_follower(
 
     # ── Rate Limit 체크 ─────────────────────────────────
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"onboard:{client_ip}", max_calls=5, window_sec=60):
+    from api.main import RATE_LIMIT_POLICY
+    if not _check_rate_limit(f"onboard:{client_ip}", *RATE_LIMIT_POLICY["onboard"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
@@ -474,8 +475,8 @@ async def onboard_follower(
         try:
             fuul = FuulReferral()
             await fuul.track_referral(body.referrer_address, follower)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"무시된 예외: {e}")
 
     # ── Step 6: Builder Code 자동 승인 (백그라운드) ──────
     async def _auto_approve_builder(address: str):

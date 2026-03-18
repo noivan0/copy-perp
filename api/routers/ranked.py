@@ -268,8 +268,8 @@ async def get_ranked_trader_detail(address: str):
             account_data = client.get_account(address)
             if account_data:
                 row = {**account_data, "address": address}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"무시된 예외: {e}")
 
     if not row:
         raise HTTPException(404, f"트레이더를 찾을 수 없습니다: {address[:12]}...")
@@ -282,8 +282,8 @@ async def get_ranked_trader_detail(address: str):
         from pacifica.client import PacificaClient
         client = PacificaClient()
         trades = client.get_trades_history(address, limit=100) or []
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"무시된 예외: {e}")
 
     if trades:
         from core.reliability import calc_trade_stats

@@ -38,7 +38,8 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
     # Rate limit: IP당 분당 60회
     from api.main import _check_rate_limit
     client_ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(f"traders:{client_ip}", max_calls=60, window_sec=60):
+    from api.main import RATE_LIMIT_POLICY
+    if not _check_rate_limit(f"traders:{client_ip}", *RATE_LIMIT_POLICY["traders"]):
         raise HTTPException(
             status_code=429,
             detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
