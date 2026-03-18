@@ -79,7 +79,7 @@ def prepare_approval(account: str):
         message:      compact JSON 문자열 (signMessage 입력)
         timestamp:    ms (approve 요청 시 그대로 사용)
         builder_code: "noivan"
-        max_fee_rate: "0.001"
+        max_fee_rate: BUILDER_FEE_RATE
     """
     return prepare_approval_message(account)
 

@@ -38,6 +38,7 @@ ACCOUNT_ADDRESS = os.getenv("ACCOUNT_ADDRESS", "")
 AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
 AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")   # Agent 공개키 (주문 서명)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
+BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")  # 기본 0.1%
 
 # HMG 웹필터 우회:
 #   testnet: CloudFront 도메인(do5jt23sqak4.cloudfront.net) SNI + Host: test-api.pacifica.fi
@@ -555,7 +556,7 @@ def approve_builder_code(
     main_private_key: str,
     account_address: str,
     builder_code: str = "noivan",
-    max_fee_rate: str = "0.001",
+    max_fee_rate: str = BUILDER_FEE_RATE,
 ) -> dict:
     """
     Builder Code approve — **main account private key**로 서명 필요.
@@ -569,7 +570,7 @@ def approve_builder_code(
           "type": "approve_builder_code",
           "data": {
             "builder_code": "noivan",
-            "max_fee_rate": "0.001"
+            "max_fee_rate": BUILDER_FEE_RATE
           }
         }
         → 재귀 정렬 → compact JSON → Ed25519 sign → base58
@@ -582,7 +583,7 @@ def approve_builder_code(
           "timestamp": <ms>,
           "expiry_window": 5000,
           "builder_code": "noivan",     ← data 래퍼 제거, top-level
-          "max_fee_rate": "0.001"       ← data 래퍼 제거, top-level
+          "max_fee_rate": BUILDER_FEE_RATE       ← data 래퍼 제거, top-level
         }
 
     Returns:

@@ -23,10 +23,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from pacifica.client import approve_builder_code, check_builder_approvals
+from pacifica.builder_code import BUILDER_FEE_RATE
 
 ACCOUNT = os.getenv("ACCOUNT_ADDRESS", "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
-MAX_FEE_RATE = "0.001"
+MAX_FEE_RATE = BUILDER_FEE_RATE
 
 
 def main():

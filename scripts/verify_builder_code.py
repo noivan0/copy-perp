@@ -31,7 +31,7 @@ def verify_sign_structure():
     # 공식 문서 기준 서명 구조
     ts = 1748970123456  # 고정 타임스탬프 (재현성)
     sign_header = {"timestamp": ts, "expiry_window": 5000, "type": "approve_builder_code"}
-    sign_data   = {"builder_code": "noivan", "max_fee_rate": "0.001"}
+    sign_data   = {"builder_code": "noivan", "max_fee_rate": BUILDER_FEE_RATE}
 
     # sign_request 내부 로직 재현
     combined = {**sign_header, "data": sign_data}
@@ -141,7 +141,7 @@ def test_approve_dry_run():
             "timestamp": int(time.time() * 1000),
             "expiry_window": 5000,
             "builder_code": BUILDER_CODE,
-            "max_fee_rate": "0.001",
+            "max_fee_rate": BUILDER_FEE_RATE,
         })
         print(f"응답: {result}")
     except RuntimeError as e:
@@ -171,7 +171,7 @@ def do_approve(private_key: str, account: str):
         main_private_key=private_key,
         account_address=account,
         builder_code=BUILDER_CODE,
-        max_fee_rate="0.001",
+        max_fee_rate=BUILDER_FEE_RATE,
     )
     print(f"결과: {json.dumps(result, indent=2)}")
 
