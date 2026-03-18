@@ -10,5 +10,5 @@ pydantic==2.12.5
 anyio==4.12.1
 scrapling==0.4.2
 websockets==15.0.1
-PyJWT>=2.8.0
-cryptography>=41.0.0
+PyJWT==2.11.0
+cryptography==46.0.5
