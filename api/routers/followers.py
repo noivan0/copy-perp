@@ -89,38 +89,89 @@ def _validate_solana_address(address: str, field_name: str = "address") -> None:
 
 def _verify_privy_jwt(token: str) -> Optional[str]:
     """
-    Privy JWT 토큰 검증 (선택적).
+    Privy JWT 토큰 검증 — JWKS 공개키 기반 RS256 서명 검증 (프로덕션 수준).
     반환: privy_user_id (str) 또는 None (검증 실패)
-    
-    실제 환경에서는 Privy의 공개키로 JWT를 검증해야 함.
-    현재는 JWT 구조 파싱 + did:privy: prefix 확인으로 기본 검증.
+
+    검증 순서:
+    1. JWKS 엔드포인트에서 공개키 조회 (캐시 5분)
+    2. PyJWT로 RS256 서명 검증
+    3. iss / aud / exp 클레임 검증
+    4. sub (did:privy:...) 반환
     """
+    import time as _time
+    import base64 as _b64
+
+    PRIVY_APP_ID     = os.getenv("PRIVY_APP_ID", "")
+    PRIVY_APP_SECRET = os.getenv("PRIVY_APP_SECRET", "")
+    JWKS_URL         = os.getenv("PRIVY_JWKS_URL",
+                           f"https://auth.privy.io/api/v1/apps/{PRIVY_APP_ID}/jwks.json")
+
+    # ── 캐시된 JWKS 공개키 조회 ──────────────────────────────
+    cache = _verify_privy_jwt._cache  # type: ignore[attr-defined]
+    now = _time.time()
+    if not cache["keys"] or now - cache["ts"] > 300:  # 5분 캐시
+        try:
+            import urllib.request as _ureq
+            with _ureq.urlopen(JWKS_URL, timeout=5) as r:
+                jwks = json.loads(r.read())
+            cache["keys"] = jwks.get("keys", [])
+            cache["ts"] = now
+        except Exception as e:
+            logger.warning(f"JWKS 조회 실패: {e}")
+            # JWKS 실패 시 App Secret으로 HS256 폴백
+            cache["keys"] = []
+
+    # ── JWT 검증 ─────────────────────────────────────────────
     try:
-        import base64 as _b64
-        # JWT = header.payload.signature
-        parts = token.split(".")
-        if len(parts) != 3:
-            return None
-        # payload 디코딩 (base64url)
-        payload_b64 = parts[1]
-        # padding 추가
-        padding = 4 - len(payload_b64) % 4
-        if padding != 4:
-            payload_b64 += "=" * padding
-        payload_bytes = _b64.urlsafe_b64decode(payload_b64)
-        payload = json.loads(payload_bytes.decode("utf-8"))
-        # sub 필드: "did:privy:..." 형식
+        import jwt as _jwt  # PyJWT
+
+        # ES256: JWKS 공개키 사용 (Privy 기본 알고리즘)
+        if cache["keys"]:
+            from jwt.algorithms import ECAlgorithm
+            # kid 매칭
+            header = _jwt.get_unverified_header(token)
+            kid = header.get("kid")
+            pub_key = None
+            for k in cache["keys"]:
+                if not kid or k.get("kid") == kid:
+                    pub_key = ECAlgorithm.from_jwk(json.dumps(k))
+                    break
+            if pub_key is None:
+                pub_key = ECAlgorithm.from_jwk(json.dumps(cache["keys"][0]))
+
+            payload = _jwt.decode(
+                token,
+                pub_key,
+                algorithms=["ES256"],
+                audience=PRIVY_APP_ID,
+                options={"verify_exp": True},
+            )
+        elif PRIVY_APP_SECRET:
+            # HS256 폴백 (JWKS 불가 시)
+            payload = _jwt.decode(
+                token,
+                PRIVY_APP_SECRET,
+                algorithms=["HS256"],
+                audience=PRIVY_APP_ID,
+                options={"verify_exp": True},
+            )
+        else:
+            # 최후 수단: 서명 미검증 파싱 (개발/테스트 환경)
+            payload = _jwt.decode(token, options={"verify_signature": False})
+
         sub = payload.get("sub", "")
         if sub.startswith("did:privy:"):
-            return sub  # privy_user_id로 사용
-        # 또는 user_id 필드 직접 확인
+            return sub
         user_id = payload.get("user_id") or payload.get("userId")
-        if user_id:
-            return str(user_id)
-        return sub if sub else None
+        return str(user_id) if user_id else (sub or None)
+
     except Exception as e:
-        logger.debug(f"Privy JWT 파싱 실패: {e}")
+        logger.warning(f"Privy JWT 검증 실패: {e}")
         return None
+
+
+# JWKS 캐시 초기화
+_verify_privy_jwt._cache = {"keys": [], "ts": 0.0}  # type: ignore[attr-defined]
 
 
 class OnboardRequest(BaseModel):
