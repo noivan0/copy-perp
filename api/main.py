@@ -603,6 +603,52 @@ def get_events(limit: int = 50, level: Optional[str] = None):
     }
 
 
+@app.get("/stream")
+async def sse_stream():
+    """
+    SSE(Server-Sent Events) 실시간 스트림
+    - BTC 가격 + 통계를 5초마다 프론트로 푸시
+    - 프론트: const es = new EventSource('/api/stream'); es.onmessage = ...
+    """
+    from fastapi.responses import StreamingResponse
+    import json as _json
+
+    async def event_generator():
+        while True:
+            try:
+                btc = _get_pc().get("BTC", {})
+                db = await get_db()
+                async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as cur:
+                    t_count = (await cur.fetchone())[0]
+                async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as cur:
+                    f_count = (await cur.fetchone())[0]
+                async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as cur:
+                    trade_count = (await cur.fetchone())[0]
+
+                data = _json.dumps({
+                    "btc_mark":         btc.get("mark", "0"),
+                    "btc_funding":      btc.get("funding", "0"),
+                    "active_traders":   t_count,
+                    "active_followers": f_count,
+                    "trades_filled":    trade_count,
+                    "monitors":         len(_monitors),
+                    "ts":               int(_time_module.time()),
+                })
+                yield f"data: {data}\n\n"
+            except Exception:
+                yield "data: {}\n\n"
+            await asyncio.sleep(5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 # ── 레퍼럴 ────────────────────────────────────────────
 @app.get("/fuul/leaderboard")
 def referral_leaderboard(limit: int = 10):
