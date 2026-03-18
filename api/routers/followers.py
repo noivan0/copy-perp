@@ -238,7 +238,7 @@ async def onboard_follower(
 
     result = {
         "follower": follower,
-        "builder_code_approved": False,
+        "builder_code_approved": True,   # noivan Builder Code 플랫폼 레벨 승인 완료 (2026-03-18)
         "followers_registered": [],
         "monitors_started": [],
         "errors": [],
@@ -299,12 +299,11 @@ async def onboard_follower(
                     copy_ratio=body.copy_ratio,
                     max_position_usdc=body.max_position_usdc
                 )
-                # builder_code 승인 여부 기록
-                if result["builder_code_approved"]:
-                    await _db.execute(
-                        "UPDATE followers SET builder_code_approved=1 WHERE address=?",
-                        (follower,)
-                    )
+                # builder_code 승인 — noivan 플랫폼 레벨 승인 완료이므로 항상 1
+                await _db.execute(
+                    "UPDATE followers SET builder_code_approved=1, builder_approved=1 WHERE address=?",
+                    (follower,)
+                )
                 # privy_user_id 저장 (있을 경우)
                 if privy_user_id:
                     try:
