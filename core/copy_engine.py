@@ -211,6 +211,9 @@ class CopyEngine:
                 if lot > 0:
                     decimals = max(0, -int(math.floor(math.log10(lot))))
                     clamped_amount = round(math.floor(clamped_amount / lot) * lot, decimals)
+                    # lot_size >= 1 이면 정수로 (float 정밀도 오류 방지)
+                    if lot >= 1.0:
+                        clamped_amount = int(clamped_amount)
                     if clamped_amount <= 0:
                         logger.info(f"[{follower_addr[:8]}] lot_size 반올림 후 0 → 스킵")
                         return
