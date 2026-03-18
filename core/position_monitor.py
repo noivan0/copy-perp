@@ -104,7 +104,7 @@ class PositionMonitor:
                 if self._running:
                     logger.warning(f"WS 오류 ({e}), {self._reconnect_delay}초 후 재연결 → REST 폴링 전환")
                     await self._rest_poll_burst(duration=self._reconnect_delay)
-                    self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
+                    self._reconnect_delay = min(self._reconnect_delay * 2.0, 60.0)  # exponential backoff
 
     async def stop(self):
         self._running = False
@@ -245,19 +245,19 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    ACCOUNT = os.getenv("ACCOUNT_ADDRESS", "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ")
+    ACCOUNT = os.getenv("ACCOUNT_ADDRESS", "")
 
     async def on_fill(event):
-        print(f"[FILL] {json.dumps(event)}")
+        logger.info(f"[FILL] {json.dumps(event)}")
 
     async def main():
         monitor = PositionMonitor(ACCOUNT, on_fill)
-        print(f"모니터링: {ACCOUNT[:16]}... (10초)")
+        logger.info(f"모니터링: {ACCOUNT[:16]}... (10초)")
         try:
             await asyncio.wait_for(monitor.start(), timeout=10)
         except asyncio.TimeoutError:
             await monitor.stop()
-            print("✅ 10초 완료 — 포지션 변화 없음 (잔고 0 상태 정상)")
+            logger.info("✅ 10초 완료 — 포지션 변화 없음 (잔고 0 상태 정상)")
 
     asyncio.run(main())
 

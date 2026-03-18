@@ -1,6 +1,6 @@
 """
 Pacifica REST 클라이언트 — SDK 서명 방식 (urllib 기반, 방화벽 우회)
-계정: env ACCOUNT_ADDRESS (기본: 3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ)
+계정: env ACCOUNT_ADDRESS
 Agent: env AGENT_PRIVATE_KEY
 
 서명 방식 (SDK utils.py 기반):
@@ -9,6 +9,8 @@ Agent: env AGENT_PRIVATE_KEY
 """
 
 import os
+import warnings; warnings.filterwarnings("ignore", category=UserWarning, module="scrapling")
+import logging as _logging; _logging.getLogger("scrapling").setLevel(_logging.ERROR)
 import json
 import time
 import uuid
@@ -22,9 +24,11 @@ import gzip
 import urllib.parse as _urlparse
 import base58
 from solders.keypair import Keypair
-from scrapling import Fetcher as _Fetcher
-
-_fetcher = _Fetcher()
+import warnings as _warnings
+with _warnings.catch_warnings():
+    _warnings.simplefilter("ignore")
+    from scrapling import Fetcher as _Fetcher
+    _fetcher = _Fetcher()
 
 NETWORK = os.getenv("NETWORK", "testnet")
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://do5jt23sqak4.cloudfront.net/api/v1")

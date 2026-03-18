@@ -196,8 +196,8 @@ async def get_platform_stats(db) -> dict:
 if __name__ == "__main__":
     import sys
     addr = sys.argv[1] if len(sys.argv) > 1 else "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu"
-    print(f"=== {addr[:16]}... 통계 ===")
+    logger.info(f"=== {addr[:16]}... 통계 ===")
     s = get_trader_stats(addr)
     for k, v in s.items():
         if k != "address":
-            print(f"  {k:25}: {v}")
+            logger.info(f"  {k:25}: {v}")

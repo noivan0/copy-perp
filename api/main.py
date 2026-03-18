@@ -1,5 +1,5 @@
 """
-Copy Perp FastAPI 백엔드 v1.0
+Copy Perp FastAPI 백엔드 v1.1 (Production)
 엔드포인트:
   GET  /                          상태
   GET  /health                    헬스체크 (WS 연결 + BTC 가격)
@@ -22,6 +22,7 @@ import logging
 import os
 import sys
 import time as _time_module
+import uuid
 import warnings
 
 
@@ -29,11 +30,15 @@ import warnings
 class _JSONFormatter(logging.Formatter):
     """구조화된 JSON 로그 포매터 (프로덕션 환경용)"""
     def format(self, record: logging.LogRecord) -> str:
+        msg = record.getMessage()
+        # 민감 정보 마스킹: private_key 패턴 제거
+        import re
+        msg = re.sub(r'(private_key["\s:=]+)[^\s,"\'}{]+', r'\1[REDACTED]', msg, flags=re.IGNORECASE)
         return json.dumps({
             "ts":    _time_module.strftime("%Y-%m-%dT%H:%M:%SZ", _time_module.gmtime()),
             "level": record.levelname,
             "name":  record.name,
-            "msg":   record.getMessage(),
+            "msg":   msg,
         }, ensure_ascii=False)
 
 
@@ -44,10 +49,6 @@ def _setup_logging() -> None:
         level=log_level,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
-    # 써드파티 로거 노이즈 억제
-    logging.getLogger("scrapling").setLevel(logging.ERROR)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
     if not os.getenv("DEBUG", "false").lower() in ("1", "true"):
         fmt = _JSONFormatter()
         for handler in logging.root.handlers:
@@ -67,10 +68,11 @@ from dotenv import load_dotenv
 _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(_env_path, override=True)
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from db.database import init_db, add_trader, add_follower, get_followers, get_leaderboard
@@ -118,20 +120,29 @@ async def lifespan(app_):
 
     # ── Shutdown ─────────────────────────────────
     logger.info("🛑 Graceful shutdown 시작...")
-    # 모든 모니터 중지
     for addr, monitor in list(_monitors.items()):
         try:
             monitor._running = False
             logger.info(f"  모니터 중지: {addr[:16]}...")
         except Exception:
             pass
-    # DB 연결 닫기
     if _db:
         await _db.close()
         logger.info("  DB 연결 닫힘")
     logger.info("✅ Graceful shutdown 완료")
 
-app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs", lifespan=lifespan)
+app = FastAPI(title="Copy Perp API", version="1.1.0", docs_url="/docs", lifespan=lifespan)
+
+# ── Request ID 미들웨어 ─────────────────────────────
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    request.state.request_id = request_id
+    # 요청 로그
+    logger.info(f"[{request_id}] {request.method} {request.url.path}")
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # CORS — 프로덕션: 실제 도메인만 허용
 _DEFAULT_ORIGINS = [
@@ -140,7 +151,7 @@ _DEFAULT_ORIGINS = [
     "https://copy-perp.vercel.app",
 ]
 _env_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-_ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))  # 중복 제거 유지 순서
+_ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
@@ -149,21 +160,55 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-# 전역 에러 핸들러 — 스택트레이스 노출 방지
-from fastapi.responses import JSONResponse
-from fastapi.requests import Request
-
+# ── 전역 에러 핸들러 ────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled error [{request.method} {request.url.path}]: {exc}", exc_info=True)
+    req_id = getattr(request.state, "request_id", "??")
+    logger.error(f"[{req_id}] Unhandled error [{request.method} {request.url.path}]: {exc}", exc_info=True)
+    is_debug = os.getenv("DEBUG", "false").lower() in ("1", "true")
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc) if os.getenv("DEBUG") else "서버 오류가 발생했습니다"},
+        content={
+            "error": "서버 오류가 발생했습니다",
+            "code": "INTERNAL_SERVER_ERROR",
+            "request_id": req_id,
+            **({"detail": str(exc)} if is_debug else {}),
+        },
     )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    req_id = getattr(request.state, "request_id", "??")
+    # 이미 dict 형식이면 그대로, 아니면 표준 형식으로 변환
+    if isinstance(exc.detail, dict):
+        content = {**exc.detail, "request_id": req_id}
+    else:
+        content = {
+            "error": str(exc.detail),
+            "code": _status_to_code(exc.status_code),
+            "request_id": req_id,
+        }
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: Exception):
-    return JSONResponse(status_code=404, content={"error": "Not found", "path": str(request.url.path)})
+    req_id = getattr(request.state, "request_id", "??")
+    return JSONResponse(
+        status_code=404,
+        content={"error": "요청한 리소스를 찾을 수 없습니다", "code": "NOT_FOUND", "path": str(request.url.path), "request_id": req_id},
+    )
+
+def _status_to_code(status: int) -> str:
+    return {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        422: "VALIDATION_ERROR",
+        429: "RATE_LIMIT_EXCEEDED",
+        500: "INTERNAL_SERVER_ERROR",
+        503: "SERVICE_UNAVAILABLE",
+    }.get(status, f"HTTP_{status}")
 
 # 라우터 등록
 app.include_router(ranked_router)   # /traders/ranked — traders보다 먼저 (경로 충돌 방지)
@@ -182,12 +227,19 @@ def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bo
     """True = 허용, False = 차단"""
     now = _time_m.time()
     calls = _rate_limit_store[key]
-    # 윈도우 밖 제거
     _rate_limit_store[key] = [t for t in calls if now - t < window_sec]
     if len(_rate_limit_store[key]) >= max_calls:
         return False
     _rate_limit_store[key].append(now)
     return True
+
+def _require_rate_limit(key: str, max_calls: int, window_sec: int = 60, request: Request = None) -> None:
+    """Rate limit 초과 시 HTTPException(429) 발생"""
+    if not _check_rate_limit(key, max_calls, window_sec):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
+        )
 
 
 # ── Solana 주소 검증 유틸 ────────────────────────────
@@ -200,13 +252,25 @@ def _is_valid_solana_address(addr: str) -> bool:
     except Exception:
         return False
 
+def _require_valid_solana_address(addr: str, field: str = "address") -> None:
+    """주소 검증 실패 시 HTTPException(400) 발생"""
+    if not addr or not isinstance(addr, str):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"{field}가 필요합니다", "code": "INVALID_ADDRESS"}
+        )
+    if not _is_valid_solana_address(addr):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"유효하지 않은 Solana 주소: {field}", "code": "INVALID_ADDRESS"}
+        )
+
 
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None
 _engine = None
 _monitors: dict[str, PositionMonitor] = {}
-_start_time: float = _time_module.time()  # 서버 기동 시각
-# _price_cache는 core.data_collector에서 관리
+_start_time: float = _time_module.time()
 from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_connected, start_polling as _dc_start
 _fuul = FuulReferral()
 
@@ -218,14 +282,10 @@ async def get_db():
     return _db
 
 
-# ── 가격 데이터 수집 — DataCollector REST 폴링 (WS 완전 대체) ──────────────
-# WS는 HMG 웹필터에서 차단됨 (CloudFront WS도 502)
-# core/data_collector.py — CF SNI GET 방식 30초 주기 폴링으로 완전 교체
-
-
+# ── 가격 데이터 수집 — DataCollector REST 폴링 ──────────────
 async def _sync_leaderboard_loop():
     """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)"""
-    await asyncio.sleep(10)  # 서버 완전 기동 후 시작
+    await asyncio.sleep(10)
     from pacifica.client import PacificaClient
     client = PacificaClient()
     while True:
@@ -242,9 +302,7 @@ async def _sync_leaderboard_loop():
                 pnl_7d  = float(t.get("pnl_7d", 0) or 0)
                 pnl_1d  = float(t.get("pnl_1d", 0) or 0)
                 equity  = float(t.get("equity_current", 0) or 0)
-                # 복합 점수: roi_30d*0.6 + roi_7d*0.3 + 1d 보너스
                 score = (pnl_30d/equity*0.6 + pnl_7d/equity*0.3 + (0.1 if pnl_1d > 0 else 0)) if equity > 0 else 0
-                # INSERT OR IGNORE: 신규만 삽입, 기존 win_rate/win_count 보존
                 await _db.execute(
                     """INSERT OR IGNORE INTO traders
                        (address, alias, total_pnl, followers,
@@ -261,7 +319,6 @@ async def _sync_leaderboard_loop():
                         float(t.get("oi_current", 0) or 0),
                     )
                 )
-                # CRS 계산 → tier 결정
                 try:
                     from core.reliability import compute_crs
                     _crs_row = {
@@ -272,13 +329,12 @@ async def _sync_leaderboard_loop():
                         "roi_30d": pnl_30d / equity if equity > 0 else 0,
                     }
                     _crs_result = compute_crs(_crs_row)
-                    _tier = _crs_result.grade  # "S","A","B","C","D"
-                    _sharpe = _crs_result.crs / 10  # 대략적 sharpe
+                    _tier = _crs_result.grade
+                    _sharpe = _crs_result.crs / 10
                 except Exception:
                     _tier = "C"
                     _sharpe = 0.0
 
-                # 기존 행은 PnL/equity 수치 + tier 업데이트 (win_rate/win_count 보존)
                 await _db.execute(
                     """UPDATE traders SET
                        alias=COALESCE(?,alias), total_pnl=?, pnl_1d=?, pnl_7d=?,
@@ -298,15 +354,15 @@ async def _sync_leaderboard_loop():
                     )
                 )
             await _db.commit()
-        except Exception:
-            pass
-        await asyncio.sleep(60)  # 1분마다 갱신
+        except Exception as e:
+            logger.warning(f"[Leaderboard] 동기화 오류: {e}")
+        await asyncio.sleep(60)
 
 
 async def _winrate_refresh_loop():
     """win_rate 자동 갱신 — 6시간마다 Tier1 트레이더 trades/history 재수집"""
     import ssl as _ssl
-    await asyncio.sleep(60)  # 기동 후 1분 대기
+    await asyncio.sleep(60)
     while True:
         try:
             db = await get_db()
@@ -331,7 +387,7 @@ async def _winrate_refresh_loop():
                             c = ss.recv(16384)
                             if not c: break
                             data += c
-                    except Exception as _e: logger.debug(f"ignored: {_e}")
+                    except Exception: pass
                     ss.close()
                     body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
                     result = _j.loads(body.decode('utf-8', 'ignore'))
@@ -345,30 +401,28 @@ async def _winrate_refresh_loop():
                         "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
                         (wr, wins, losses, addr)
                     )
-                    await asyncio.sleep(0.3)  # rate limit
+                    await asyncio.sleep(0.3)
                 except Exception as e:
-                    logger.debug(f"win_rate 갱신 실패 {addr[:12]}: {e}")
+                    logger.debug(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
 
             await db.commit()
             logger.info(f"[WinRate] {len(top_traders)}명 갱신 완료")
         except Exception as e:
             logger.warning(f"[WinRate] 갱신 루프 오류: {e}")
 
-        await asyncio.sleep(6 * 3600)  # 6시간마다
+        await asyncio.sleep(6 * 3600)
 
 
-# startup 이벤트는 lifespan으로 대체됨 (위 lifespan 함수 참조)
-# 하위 호환을 위해 deprecated 이벤트 유지 (lifespan과 중복 실행 방지)
 @app.on_event("startup")
 async def _startup_compat():
-    """lifespan 미지원 환경 대비 deprecated fallback — 이미 lifespan에서 처리됨"""
+    """lifespan 미지원 환경 대비 deprecated fallback"""
     pass
 
 
 async def _restore_monitors_from_db():
     """서버 재기동 후 DB의 active=1 팔로워가 팔로우하는 트레이더 monitor 자동 복원"""
     global _monitors, _engine
-    await asyncio.sleep(2)  # 엔진 초기화 대기
+    await asyncio.sleep(2)
     try:
         async with _db.execute(
             "SELECT DISTINCT trader_address FROM followers WHERE active=1 AND trader_address IS NOT NULL"
@@ -393,23 +447,21 @@ async def _restore_monitors_from_db():
         logger.warning(f"[Restore] monitor 자동 복원 오류: {e}")
 
 
-# QA팀 추천 TOP5 트레이더 (복합 스코어 + 백테스트 ROI 기준)
-# QA 추천 + 리서치팀 Tier A 통합 모니터링 목록 (중복 제거)
 TOP_TRADERS = list({
-    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # [Tier A w0.30] ROI82.5%
-    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # [Tier A w0.20] ROI58.4% Win100%
-    "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",   # [Tier A w0.20] ROI57.7%
-    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",   # [Tier A w0.15] ROI51.6%
-    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",   # [Tier A w0.15] ROI47.5%
-    "5C9GKLrKFUvLWZEbMZQC5mtkTdKxuUhCzVCXZQH4FmCw",  # [QA] ROI+24% MaxDD0.1%
-    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",  # [QA] ROI+10% PF1000
-    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # [QA] Win92% PnL$166k
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",
+    "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",
+    "5C9GKLrKFUvLWZEbMZQC5mtkTdKxuUhCzVCXZQH4FmCw",
+    "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",
 })
 
 async def _auto_monitor_top_traders():
-    """QA 추천 TOP5 트레이더 자동 포지션 모니터링"""
+    """QA 추천 TOP 트레이더 자동 포지션 모니터링"""
     global _monitors, _engine
-    await asyncio.sleep(3)  # 엔진 초기화 대기
+    await asyncio.sleep(3)
     for addr in TOP_TRADERS:
         if addr not in _monitors:
             try:
@@ -419,7 +471,27 @@ async def _auto_monitor_top_traders():
                 logger.info(f"[Auto] 모니터링 시작: {addr[:16]}...")
             except Exception as e:
                 logger.warning(f"[Auto] 모니터 시작 실패 {addr[:12]}: {e}")
-    logger.info(f"[Auto] TOP5 트레이더 모니터링 완료: {len(_monitors)}개")
+    logger.info(f"[Auto] TOP 트레이더 모니터링 완료: {len(_monitors)}개")
+
+
+# ── 입력값 검증 유틸 ─────────────────────────────────
+def _validate_copy_ratio(v: float) -> float:
+    """copy_ratio: 0.01 ~ 1.0 범위 강제"""
+    if v < 0.01 or v > 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "copy_ratio는 0.01 ~ 1.0 범위여야 합니다", "code": "INVALID_COPY_RATIO"}
+        )
+    return v
+
+def _validate_max_position(v: float) -> float:
+    """max_position_usdc: 1 ~ 10000 범위 강제"""
+    if v < 1 or v > 10000:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "max_position_usdc는 1 ~ 10000 범위여야 합니다", "code": "INVALID_MAX_POSITION"}
+        )
+    return v
 
 
 # ── 요청 모델 ─────────────────────────────────────────
@@ -432,6 +504,20 @@ class FollowRequest(BaseModel):
     max_position_usdc: float = 50.0
     referrer_address: Optional[str] = None
 
+    @field_validator("copy_ratio")
+    @classmethod
+    def validate_copy_ratio(cls, v):
+        if v < 0.01 or v > 1.0:
+            raise ValueError("copy_ratio는 0.01 ~ 1.0 범위여야 합니다")
+        return v
+
+    @field_validator("max_position_usdc")
+    @classmethod
+    def validate_max_position_usdc(cls, v):
+        if v < 1 or v > 10000:
+            raise ValueError("max_position_usdc는 1 ~ 10000 범위여야 합니다")
+        return v
+
 class UnfollowRequest(BaseModel):
     follower_address: str
 
@@ -443,7 +529,7 @@ class ReferralTrackRequest(BaseModel):
 # ── 기본 엔드포인트 ───────────────────────────────────
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "Copy Perp", "version": "1.0.0", "docs": "/docs"}
+    return {"status": "ok", "service": "Copy Perp", "version": "1.1.0", "docs": "/docs"}
 
 
 @app.get("/leaderboard")
@@ -456,24 +542,28 @@ async def leaderboard_alias(limit: int = 20):
         real_lb = await asyncio.get_event_loop().run_in_executor(None, lambda: _pac.get_leaderboard(limit=limit))
         if isinstance(real_lb, list) and real_lb:
             return {"data": real_lb, "count": len(real_lb)}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[Leaderboard] Pacifica API 조회 실패: {e}")
     if _db:
-        leaders = await _get_lb(_db, limit)
-        return {"data": [dict(r) for r in leaders], "count": len(leaders)}
+        try:
+            leaders = await _get_lb(_db, limit)
+            return {"data": [dict(r) for r in leaders], "count": len(leaders)}
+        except Exception as e:
+            logger.error(f"[Leaderboard] DB 조회 실패: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "리더보드를 불러올 수 없습니다", "code": "SERVICE_UNAVAILABLE"}
+            )
     return {"data": [], "count": 0}
 
 
-@app.get("/healthz")  # Kubernetes/LB 표준 헬스체크
+@app.get("/healthz")
 def healthz():
     return {"status": "ok"}
 
 @app.get("/health")
 def health():
-    import os as _os
     btc = _get_pc().get("BTC", {})
-
-    # monitors_detail: 각 monitor의 trader 주소 + 마지막 폴링 시각
     monitors_detail = []
     for addr, mon in _monitors.items():
         last_poll = getattr(mon, "_last_poll_time", None)
@@ -483,14 +573,12 @@ def health():
             "fail_count": getattr(mon, "_fail_count", 0),
         })
 
-    # DB 파일 크기
     db_path = os.getenv("DB_PATH", "copy_perp.db")
     try:
-        db_size_bytes = _os.path.getsize(db_path)
+        db_size_bytes = os.path.getsize(db_path)
     except Exception:
         db_size_bytes = -1
 
-    # mainnet/testnet 트레이더 수 집계 (sync sqlite3)
     network_env = os.getenv("NETWORK", "testnet")
     mainnet_traders_count: Optional[int] = None
     testnet_traders_count: Optional[int] = None
@@ -509,23 +597,23 @@ def health():
 
     return {
         "status": "ok",
-        "network":        network_env,               # mainnet / testnet
-        "data_connected": _dc_connected(),           # REST 폴링 연결 상태
-        "ws_connected":   _dc_connected(),           # 하위 호환 (WS → REST 전환)
-        "data_source":    "rest_poll",               # 데이터 소스 명시
+        "network":        network_env,
+        "data_connected": _dc_connected(),
+        "ws_connected":   _dc_connected(),
+        "data_source":    "rest_poll",
         "btc_mark":    btc.get("mark"),
         "btc_funding": btc.get("funding"),
         "btc_oi":      btc.get("open_interest"),
         "active_monitors": len(_monitors),
         "symbols_cached":  len(_get_pc()),
-        "monitors_detail": monitors_detail,          # 각 monitor 상세
-        "uptime_seconds":  round(_time_module.time() - _start_time, 1),  # 서버 기동 후 경과 시간
-        "db_size_bytes":   db_size_bytes,            # DB 파일 크기
-        "mainnet_traders": mainnet_traders_count,    # mainnet 활성 트레이더 수
-        "testnet_traders": testnet_traders_count,    # testnet 활성 트레이더 수
+        "monitors_detail": monitors_detail,
+        "uptime_seconds":  round(_time_module.time() - _start_time, 1),
+        "db_size_bytes":   db_size_bytes,
+        "mainnet_traders": mainnet_traders_count,
+        "testnet_traders": testnet_traders_count,
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
         "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
-        "version": "1.0.0",
+        "version": "1.1.0",
     }
 
 
@@ -534,14 +622,15 @@ def get_markets(symbol: Optional[str] = None):
     if symbol:
         data = _get_pc().get(symbol.upper())
         if not data:
-            raise HTTPException(404, f"{symbol} not found in cache")
+            raise HTTPException(
+                status_code=404,
+                detail={"error": f"심볼 {symbol}을 찾을 수 없습니다", "code": "NOT_FOUND"}
+            )
         return {"data": data}
-    # 펀딩비 기준 정렬 (절댓값 높은 것 = 아비트라지 기회)
     items = sorted(_get_pc().values(), key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
     return {"data": items, "count": len(items)}
 
 
-# ── 시그널 ────────────────────────────────────────────
 @app.get("/signals")
 def get_signals(top_n: int = 5):
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
@@ -562,34 +651,60 @@ def get_signals(top_n: int = 5):
 # ── 팔로우 ────────────────────────────────────────────
 @app.post("/follow")
 async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, request: Request):
+    req_id = getattr(request.state, "request_id", "??")
+
+    # Rate limit: IP당 분당 10회
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"follow:{client_ip}", max_calls=10, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
+        )
+
     # Solana 주소 검증
     if not _is_valid_solana_address(body.follower_address):
-        raise HTTPException(422, "유효하지 않은 Solana 주소 (follower_address)")
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "유효하지 않은 follower_address (Solana 주소 형식 오류)", "code": "INVALID_ADDRESS"}
+        )
     if not _is_valid_solana_address(body.trader_address):
-        raise HTTPException(422, "유효하지 않은 Solana 주소 (trader_address)")
-    # Rate limit: IP당 분당 10회
-    client_ip = request.client.host
-    if not _check_rate_limit(f"follow:{client_ip}", max_calls=10, window_sec=60):
-        raise HTTPException(429, "Too many requests")
-    db = await get_db()
-    await add_trader(db, body.trader_address)
-    await add_follower(
-        db,
-        address=body.follower_address,
-        trader_address=body.trader_address,
-        copy_ratio=body.copy_ratio,
-        max_position_usdc=body.max_position_usdc,
-    )
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "유효하지 않은 trader_address (Solana 주소 형식 오류)", "code": "INVALID_ADDRESS"}
+        )
+
+    try:
+        db = await get_db()
+        await add_trader(db, body.trader_address)
+        await add_follower(
+            db,
+            address=body.follower_address,
+            trader_address=body.trader_address,
+            copy_ratio=body.copy_ratio,
+            max_position_usdc=body.max_position_usdc,
+        )
+    except Exception as e:
+        logger.error(f"[{req_id}] follow DB 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "서버 오류가 발생했습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
 
     # 레퍼럴 추적
     if body.referrer_address:
-        await _fuul.track_referral(body.referrer_address, body.follower_address)
+        try:
+            await _fuul.track_referral(body.referrer_address, body.follower_address)
+        except Exception as e:
+            logger.warning(f"[{req_id}] 레퍼럴 추적 실패: {e}")
 
     # 모니터 시작
     if body.trader_address not in _monitors:
-        monitor = RestPositionMonitor(body.trader_address, _engine.on_fill)  # WS 차단 환경 → REST 폴링
-        _monitors[body.trader_address] = monitor
-        background_tasks.add_task(monitor.start)
+        try:
+            monitor = RestPositionMonitor(body.trader_address, _engine.on_fill)
+            _monitors[body.trader_address] = monitor
+            background_tasks.add_task(monitor.start)
+        except Exception as e:
+            logger.warning(f"[{req_id}] 모니터 시작 실패: {e}")
 
     return {
         "status": "ok",
@@ -604,18 +719,45 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
 
 
 @app.delete("/follow/{trader_address}")
-async def unfollow_trader(trader_address: str, body: UnfollowRequest):
-    db = await get_db()
-    await db.execute(
-        "UPDATE followers SET active=0 WHERE address=? AND trader_address=?",
-        (body.follower_address, trader_address)
-    )
-    await db.commit()
+async def unfollow_trader(trader_address: str, body: UnfollowRequest, request: Request):
+    req_id = getattr(request.state, "request_id", "??")
 
-    followers = await get_followers(db, trader_address)
-    if not followers and trader_address in _monitors:
-        await _monitors[trader_address].stop()
-        del _monitors[trader_address]
+    # Rate limit: IP당 분당 10회
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"unfollow:{client_ip}", max_calls=10, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.", "code": "RATE_LIMIT_EXCEEDED"}
+        )
+
+    # 주소 검증
+    if not _is_valid_solana_address(trader_address):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "유효하지 않은 trader_address", "code": "INVALID_ADDRESS"}
+        )
+
+    try:
+        db = await get_db()
+        await db.execute(
+            "UPDATE followers SET active=0 WHERE address=? AND trader_address=?",
+            (body.follower_address, trader_address)
+        )
+        await db.commit()
+    except Exception as e:
+        logger.error(f"[{req_id}] unfollow DB 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "서버 오류가 발생했습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
+
+    try:
+        followers = await get_followers(db, trader_address)
+        if not followers and trader_address in _monitors:
+            await _monitors[trader_address].stop()
+            del _monitors[trader_address]
+    except Exception as e:
+        logger.warning(f"[{req_id}] 모니터 중지 실패 (무시): {e}")
 
     return {"status": "ok", "unfollowed": trader_address}
 
@@ -623,30 +765,61 @@ async def unfollow_trader(trader_address: str, body: UnfollowRequest):
 # ── 거래 내역 ─────────────────────────────────────────
 @app.get("/trades")
 async def list_trades(
+    request: Request,
     limit: int = 50,
     follower: Optional[str] = None,
     trader:   Optional[str] = None,
-    status:   Optional[str] = None,   # filled | pending | failed
+    status:   Optional[str] = None,
 ):
     """Copy Trade 내역 조회 (필터: follower, trader, status)"""
-    db = await get_db()
-    conditions, params = [], []
-    if follower:
-        conditions.append("follower_address=?"); params.append(follower)
-    if trader:
-        conditions.append("trader_address=?");   params.append(trader)
-    if status:
-        conditions.append("status=?");           params.append(status)
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    params.append(limit)
-    async with db.execute(
-        f"SELECT * FROM copy_trades {where} ORDER BY created_at DESC LIMIT ?", params
-    ) as cur:
-        rows = await cur.fetchall()
+    req_id = getattr(request.state, "request_id", "??")
+
+    # Rate limit: IP당 분당 60회
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"trades:{client_ip}", max_calls=60, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
+        )
+
+    # 입력 검증
+    if limit < 1 or limit > 500:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "limit은 1~500 범위여야 합니다", "code": "INVALID_LIMIT"}
+        )
+    if status and status not in ("filled", "pending", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "status는 filled | pending | failed 중 하나여야 합니다", "code": "INVALID_STATUS"}
+        )
+
+    try:
+        db = await get_db()
+        conditions, params = [], []
+        if follower:
+            conditions.append("follower_address=?"); params.append(follower)
+        if trader:
+            conditions.append("trader_address=?");   params.append(trader)
+        if status:
+            conditions.append("status=?");           params.append(status)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+        async with db.execute(
+            f"SELECT * FROM copy_trades {where} ORDER BY created_at DESC LIMIT ?", params
+        ) as cur:
+            rows = await cur.fetchall()
+    except Exception as e:
+        logger.error(f"[{req_id}] trades DB 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "거래 내역을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
+
     data = [dict(r) for r in rows]
     filled  = [r for r in data if r.get("status") == "filled"]
-    total_vol = sum(float(r.get("amount",0) or 0) * float(r.get("price",0) or 0) for r in filled)
-    total_pnl = sum(float(r.get("pnl",0) or 0) for r in filled)
+    total_vol = sum(float(r.get("amount", 0) or 0) * float(r.get("price", 0) or 0) for r in filled)
+    total_pnl = sum(float(r.get("pnl", 0) or 0) for r in filled)
     return {
         "data": data,
         "count": len(data),
@@ -661,29 +834,47 @@ async def list_trades(
 # ── 통계 ──────────────────────────────────────────────
 @app.get("/stats/overview")
 @app.get("/stats")
-async def get_stats():
-    db = await get_db()
+async def get_stats(request: Request):
+    req_id = getattr(request.state, "request_id", "??")
+
+    # Rate limit: IP당 분당 60회
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"stats:{client_ip}", max_calls=60, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
+        )
+
     try:
+        db = await get_db()
         stats = await get_platform_stats(db)
-    except Exception:
-        import sqlite3 as _sq3, aiosqlite as _aio
+    except Exception as e:
+        logger.warning(f"[{req_id}] stats 조회 오류: {e}")
         # fallback: 직접 DB 조회
-        async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as cur:
-            t_count = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as cur:
-            f_count = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as cur:
-            trade_count = (await cur.fetchone())[0]
-        stats = {
-            "active_traders": t_count,
-            "active_followers": f_count,
-            "total_trades_filled": trade_count,
-            "total_pnl_usdc": 0.0,
-            "total_volume_usdc": 0.0,
-        }
+        try:
+            db = await get_db()
+            async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as cur:
+                t_count = (await cur.fetchone())[0]
+            async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as cur:
+                f_count = (await cur.fetchone())[0]
+            async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as cur:
+                trade_count = (await cur.fetchone())[0]
+            stats = {
+                "active_traders": t_count,
+                "active_followers": f_count,
+                "total_trades_filled": trade_count,
+                "total_pnl_usdc": 0.0,
+                "total_volume_usdc": 0.0,
+            }
+        except Exception as e2:
+            logger.error(f"[{req_id}] stats fallback 오류: {e2}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "통계를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            )
+
     stats["ws_symbols"] = len(_get_pc())
     stats["active_monitors"] = len(_monitors)
-    # Builder Fee 수취 합계
     try:
         db2 = await get_db()
         async with db2.execute("SELECT COALESCE(SUM(fee_usdc),0), COUNT(*) FROM fee_records") as cur:
@@ -701,8 +892,11 @@ async def get_stats():
 async def get_metrics():
     """Prometheus 텍스트 형식 메트릭"""
     from fastapi.responses import PlainTextResponse
-    db = await get_db()
-    s = await get_platform_stats(db)
+    try:
+        db = await get_db()
+        s = await get_platform_stats(db)
+    except Exception:
+        s = {}
     btc = _get_pc().get("BTC", {})
     lines = [
         f"copy_perp_active_traders {s.get('active_traders', 0)}",
@@ -714,7 +908,6 @@ async def get_metrics():
         f"copy_perp_symbols_cached {len(_get_pc())}",
         f'copy_perp_network{{network="{os.getenv("NETWORK","testnet")}"}} 1',
     ]
-    # 알림 에러 카운트
     am = get_alert_manager()
     summary = am.get_error_summary()
     for k, v in summary.get("total_error_counts", {}).items():
@@ -724,7 +917,7 @@ async def get_metrics():
 
 @app.get("/events")
 def get_events(limit: int = 50, level: Optional[str] = None):
-    """최근 시스템 이벤트 로그 (주문 실패, 연결 끊김 등)"""
+    """최근 시스템 이벤트 로그"""
     am = get_alert_manager()
     return {
         "data": am.get_recent_events(limit=limit, level=level),
@@ -734,11 +927,7 @@ def get_events(limit: int = 50, level: Optional[str] = None):
 
 @app.get("/stream")
 async def sse_stream():
-    """
-    SSE(Server-Sent Events) 실시간 스트림
-    - BTC 가격 + 통계를 5초마다 프론트로 푸시
-    - 프론트: const es = new EventSource('/api/stream'); es.onmessage = ...
-    """
+    """SSE(Server-Sent Events) 실시간 스트림"""
     from fastapi.responses import StreamingResponse
     import json as _json
 
@@ -764,7 +953,8 @@ async def sse_stream():
                     "ts":               int(_time_module.time()),
                 })
                 yield f"data: {data}\n\n"
-            except Exception:
+            except Exception as e:
+                logger.debug(f"SSE stream 오류: {e}")
                 yield "data: {}\n\n"
             await asyncio.sleep(5)
 
@@ -781,33 +971,44 @@ async def sse_stream():
 # ── 레퍼럴 ────────────────────────────────────────────
 @app.get("/fuul/leaderboard")
 def referral_leaderboard(limit: int = 10):
-    """레퍼럴 포인트 리더보드"""
     return {"data": _fuul.get_leaderboard(limit)}
 
 
 @app.post("/fuul/track")
 async def track_referral(body: ReferralTrackRequest):
-    """레퍼럴 추적"""
-    result = await _fuul.track_referral(body.referrer, body.referee)
-    return result
+    try:
+        result = await _fuul.track_referral(body.referrer, body.referee)
+        return result
+    except Exception as e:
+        logger.error(f"레퍼럴 추적 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "레퍼럴 추적에 실패했습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
 
 
 @app.get("/referral/{address}")
 def get_referral(address: str):
-    """개별 레퍼럴 링크 + 포인트"""
-    link = _fuul.generate_referral_link(address)
-    points = _fuul.get_points(address)
-    return {"address": address, "referral_link": link, "points": points}
+    try:
+        link = _fuul.generate_referral_link(address)
+        points = _fuul.get_points(address)
+        return {"address": address, "referral_link": link, "points": points}
+    except Exception as e:
+        logger.error(f"레퍼럴 조회 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "레퍼럴 정보를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+        )
+
 
 @app.get("/health/detailed")
 async def health_detailed():
-    """상세 헬스 체크 — 모니터 상태, DB, 환경"""
-    import os, time
+    """상세 헬스 체크"""
     import core.data_collector as _dc_mod
     from core.data_collector import get_price_cache
-    
-    db = await get_db()
+
     try:
+        db = await get_db()
         async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as c:
             trader_count = (await c.fetchone())[0]
         async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as c:
@@ -818,12 +1019,12 @@ async def health_detailed():
             total_pnl = (await c.fetchone())[0]
         db_ok = True
     except Exception as e:
+        logger.error(f"health/detailed DB 오류: {e}")
         db_ok = False
         trader_count = follower_count = filled_count = 0
         total_pnl = 0
 
-    # 모니터 상태 상세
-    now = time.time()
+    now = _time_module.time()
     monitors_detail = []
     for addr, mon in _monitors.items():
         lpt = getattr(mon, "_last_poll_time", None)
@@ -836,17 +1037,13 @@ async def health_detailed():
             "fail_count": fc,
         })
 
-    # uptime
     uptime_sec = round(now - _start_time, 1)
-
-    # DB 파일 크기
     db_path = os.getenv("DB_PATH", "copy_perp.db")
     try:
         db_size = os.path.getsize(db_path)
     except Exception:
         db_size = None
 
-    # 데이터 수신 상태 (모듈 변수 직접 참조로 최신값 보장)
     last_poll = _dc_mod._last_poll_ts
 
     return {
@@ -879,32 +1076,14 @@ async def health_detailed():
     }
 
 
-
-
-
-
-# ── Builder Code 승인 (프론트에서 서명) ──────────────────
-# Builder Code 엔드포인트는 api/routers/builder.py (builder_router)에서 관리
-# /builder/approve, /builder/check, /builder/stats, /builder/trades, /builder/prepare-approval
-# 여기에 중복 정의하지 않음
-
-# 팔로워 온보딩 엔드포인트는 api/routers/followers.py (followers_router)에서 관리
-# POST /followers/onboard — 완전 구현 (Solana 주소 검증 + Builder Code + Privy JWT)
-# GET  /followers/list    — 팔로워 목록
-# DELETE /followers/{addr} — 팔로워 해지
-
-
 # ── 클라이언트 설정 제공 ──────────────────────────────
 @app.get("/config")
 def get_config():
-    """프론트엔드가 서버에서 설정을 동적으로 받아가는 엔드포인트"""
-    privy_app_id = os.getenv("PRIVY_APP_ID", "")
     return {
-        "privy_app_id":      privy_app_id,
-        "privy_configured":  bool(privy_app_id),
-        "builder_code":      BUILDER_CODE,
-        "builder_fee_rate":  os.getenv("BUILDER_FEE_RATE", "0.001"),
-        "network":           os.getenv("NETWORK", "testnet"),
+        "privy_app_id":    os.getenv("PRIVY_APP_ID", ""),
+        "builder_code":    BUILDER_CODE,
+        "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
+        "network":         os.getenv("NETWORK", "testnet"),
     }
 
 

@@ -78,6 +78,8 @@ class CopyEngine:
         # 팔로워 포지션 추적: {follower: {symbol: {entry_price, size, side}}}
         self._positions: dict[str, dict[str, dict]] = {}
         self._client_cache: dict[str, PacificaClient] = {}
+        # 팔로워별 동시 주문 중복 방지 Lock
+        self._follower_locks: dict[str, asyncio.Lock] = {}
 
     def _get_client(self, account: str) -> PacificaClient:
         if account not in self._client_cache:
@@ -143,6 +145,14 @@ class CopyEngine:
         follower_addr = follower["address"]
         copy_ratio = float(follower["copy_ratio"])
         max_pos = float(follower["max_position_usdc"])
+
+        # ── 동시 주문 중복 방지 ──────────────────────────
+        if follower_addr not in self._follower_locks:
+            self._follower_locks[follower_addr] = asyncio.Lock()
+        lock = self._follower_locks[follower_addr]
+        if lock.locked():
+            logger.warning(f"[{follower_addr[:8]}] 이전 주문 처리 중 — 중복 주문 스킵")
+            return
 
         # ── 리서치팀 가중치 적용 ──────────────────────────
         # Tier A 트레이더는 사전 정의된 가중치로 copy_ratio 보정
@@ -378,7 +388,7 @@ if __name__ == "__main__":
 
     async def main():
         db = await init_db(":memory:")
-        trader_addr = "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ"
+        trader_addr = os.getenv("ACCOUNT_ADDRESS", "")
         follower_addr = "J5b6Wf5jqh3ck4NyoS6msf37R7KR2owMPLxywrA5YiiT"
 
         await add_trader(db, trader_addr, "CEO")
@@ -398,9 +408,9 @@ if __name__ == "__main__":
             "created_at": int(time.time() * 1000),
         }
 
-        print("복사 이벤트 처리 중...")
+        logger.info("복사 이벤트 처리 중...")
         await engine.on_fill(test_event)
-        print("✅ CopyEngine 테스트 완료")
+        logger.info("✅ CopyEngine 테스트 완료")
         await db.close()
 
     asyncio.run(main())

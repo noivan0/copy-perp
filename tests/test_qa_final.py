@@ -422,7 +422,8 @@ class TestTask3E2EFlow:
             pytest.skip("트레이더 없음")
         trader_addr = traders[0]["address"]
 
-        follower_addr = "T3FOLLOW_" + uuid.uuid4().hex[:22].upper()
+        # 유효한 Solana 주소 형식으로 테스트 (base58 32바이트)
+        follower_addr = "3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ"
         code2, resp2 = backend_post("/follow", {
             "trader_address": trader_addr,
             "follower_address": follower_addr,
