@@ -41,18 +41,18 @@
 | 테스트넷 REST 연결 | ✅ 완료 | 마켓 68개, 체결 이력 확인 |
 | Pacifica 클라이언트 코드 | ✅ 완료 | `pacifica/client.py` |
 | Agent Wallet 생성 | ✅ 완료 | `.env`에 저장 |
-| Agent 바인딩 (앱에서) | ⏳ 대기 | @nothink_ivan 직접 처리 필요 |
+| Agent 바인딩 (앱에서) | ✅ 완료 | 3/18 확인 완료 |
 | 해커톤 공식 등록 | ✅ 완료 | 구글폼 2026-03-12 제출 완료 |
 | Faucet 수령 | ✅ 완료 | 2026-03-12 신청 완료 |
-| Builder Code 신청 | ⏳ 대기 | ops@pacifica.fi 또는 Discord |
+| Builder Code 신청 | ✅ 완료 | 승인 완료 (레퍼럴 수수료 분배) |
 
 ---
 
 ## W1 (3/16~22) 개발 태스크
 
-- [ ] Agent 바인딩 확인
+- [x] Agent 바인딩 확인 (3/18 완료)
 - [x] Faucet에서 테스트 토큰 수령 (2026-03-12 완료)
 - [ ] WebSocket account 이벤트 구독 방식 확인
-- [ ] FastAPI 라우터 구현 (traders, followers, stats)
-- [ ] Copy Engine E2E 테스트 (테스트넷)
-- [ ] Builder Code 연동
+- [x] FastAPI 라우터 구현 (traders, followers, stats)
+- [x] Copy Engine E2E 테스트 (테스트넷)
+- [x] Builder Code 연동 (승인 완료)
