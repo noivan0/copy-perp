@@ -340,17 +340,46 @@ def get_builder_trades(builder_code: str = BUILDER_CODE, limit: int = 100) -> li
 def get_builder_revenue(builder_code: str = BUILDER_CODE) -> dict:
     """
     빌더 코드 누적 수익 요약
-    - builder/trades를 가져와 fee 집계
+    - DB fee_records 직접 집계 (Pacifica 외부 API 의존 제거 → HMG 차단 우회)
+    - 외부 API 조회는 폴백으로만 사용
     """
-    trades = get_builder_trades(builder_code)
-    total_fee_collected = sum(
-        float(t.get("builder_fee", t.get("fee", 0)) or 0) for t in trades
-    )
+    import sqlite3 as _sqlite3, os as _os
+
+    db_path = _os.getenv("DB_PATH", "copy_perp.db")
+    try:
+        with _sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(fee_usdc), 0) FROM fee_records WHERE builder_code=?",
+                (builder_code,)
+            ).fetchone()
+            total_trades = row[0] if row else 0
+            total_fee = float(row[1]) if row else 0.0
+
+            # 최근 5건 샘플
+            recent = conn.execute(
+                "SELECT trade_id, fee_usdc, created_at FROM fee_records WHERE builder_code=? ORDER BY created_at DESC LIMIT 5",
+                (builder_code,)
+            ).fetchall()
+            recent_list = [{"trade_id": r[0], "fee_usdc": r[1], "ts": r[2]} for r in recent]
+    except Exception as e:
+        logger.warning(f"DB fee_records 조회 실패: {e} — 외부 API 폴백")
+        trades = get_builder_trades(builder_code)
+        total_fee = sum(float(t.get("builder_fee", t.get("fee", 0)) or 0) for t in trades)
+        return {
+            "builder_code":        builder_code,
+            "total_trades":        len(trades),
+            "total_fee_collected": round(total_fee, 6),
+            "fee_rate":            BUILDER_FEE_RATE,
+            "source":              "api_fallback",
+        }
+
     return {
-        "builder_code":       builder_code,
-        "total_trades":       len(trades),
-        "total_fee_collected": round(total_fee_collected, 6),
-        "fee_rate":           BUILDER_FEE_RATE,
+        "builder_code":        builder_code,
+        "total_trades":        total_trades,
+        "total_fee_collected": round(total_fee, 6),
+        "fee_rate":            BUILDER_FEE_RATE,
+        "recent_fees":         recent_list,
+        "source":              "db",
     }
 
 

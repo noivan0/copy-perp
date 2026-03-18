@@ -147,8 +147,9 @@ async def add_follower(
     import time
     await conn.execute(
         """INSERT OR REPLACE INTO followers
-           (address, trader_address, copy_ratio, max_position_usdc, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
+           (address, trader_address, copy_ratio, max_position_usdc,
+            builder_approved, builder_code_approved, active, created_at)
+           VALUES (?, ?, ?, ?, 1, 1, 1, ?)""",
         (address, trader_address, copy_ratio, max_position_usdc, int(time.time() * 1000))
     )
     await conn.commit()

@@ -228,15 +228,22 @@ class CopyEngine:
                 mkt = get_price_cache().get(symbol.upper(), {})
                 lot = float(mkt.get("lot_size", 0) or 0)
                 if lot <= 0:
-                    # price_cache miss → Pacifica 마켓 API 직접 조회
-                    from pacifica.client import PacificaClient
-                    _mc = PacificaClient()
-                    markets = _mc.get_markets()
-                    m = next((m for m in markets if m.get("symbol") == symbol.upper()), {})
-                    lot = float(m.get("lot_size", 0) or 0)
-                    # 캐시에 저장
-                    if lot > 0 and symbol.upper() in get_price_cache():
-                        get_price_cache()[symbol.upper()]["lot_size"] = str(lot)
+                    # price_cache miss → /info API 직접 조회 (PacificaClient 불필요)
+                    import requests as _rq, urllib3 as _ul3
+                    _ul3.disable_warnings()
+                    _iurl = "https://do5jt23sqak4.cloudfront.net/api/v1/info"
+                    _ihdr = {"Host": "api.pacifica.fi"}
+                    _ir = _rq.get(_iurl, headers=_ihdr, verify=False, timeout=5)
+                    if _ir.ok:
+                        _info = _ir.json().get("data", [])
+                        for _m in _info:
+                            _sym = _m.get("symbol","")
+                            _ls = float(_m.get("lot_size", 0) or 0)
+                            if _sym not in get_price_cache():
+                                get_price_cache()[_sym] = {}
+                            get_price_cache()[_sym]["lot_size"] = str(_ls)
+                        mkt = get_price_cache().get(symbol.upper(), {})
+                        lot = float(mkt.get("lot_size", 0) or 0)
                 if lot > 0:
                     decimals = max(0, -int(math.floor(math.log10(lot))))
                     clamped_amount = round(math.floor(clamped_amount / lot) * lot, decimals)
@@ -307,7 +314,12 @@ class CopyEngine:
                         )
                     else:
                         raise
-                status = "filled" if result.get("data") else "failed"
+                if result.get("data"):
+                    status = "filled"
+                else:
+                    status = "failed"
+                    _error_msg = f"주문 응답 data 없음: {str(result)[:120]}"
+                    logger.warning(f"[{follower_addr[:8]}] {symbol} 주문 응답 data 없음: {result}")
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
                 if status == "filled":
                     get_alert_manager().order_success(follower_addr, symbol, side, copy_amount)
