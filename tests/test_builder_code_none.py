@@ -71,7 +71,7 @@ class TestBuilderCodeNone:
         async def run():
             conn = await init_db(":memory:")
             await add_trader(conn, TRADER, "BNTest")
-            await add_follower(conn, FOLLOWER, TRADER, copy_ratio=0.001, max_position_usdc=10)
+            await add_follower(conn, FOLLOWER, TRADER, copy_ratio=0.5, max_position_usdc=100)
 
             # builder_code=None으로 실제 주문 시도 (실패해도 DB에 기록돼야 함)
             engine = CopyEngine(conn, mock_mode=False)
