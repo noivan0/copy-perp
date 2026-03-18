@@ -99,13 +99,31 @@ async def lifespan(app_):
 
 app = FastAPI(title="Copy Perp API", version="1.0.0", docs_url="/docs", lifespan=lifespan)
 
-# CORS (프론트엔드 연동)
+# CORS — 프로덕션: 실제 도메인만 허용
+_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Privy-Token"],
+    allow_credentials=True,
 )
+
+# 전역 에러 핸들러 — 스택트레이스 노출 방지
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error [{request.method} {request.url.path}]: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc) if os.getenv("DEBUG") else "서버 오류가 발생했습니다"},
+    )
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=404, content={"error": "Not found", "path": str(request.url.path)})
 
 # 라우터 등록
 app.include_router(ranked_router)   # /traders/ranked — traders보다 먼저 (경로 충돌 방지)
@@ -376,6 +394,10 @@ async def leaderboard_alias(limit: int = 20):
         return {"data": [dict(r) for r in leaders], "count": len(leaders)}
     return {"data": [], "count": 0}
 
+
+@app.get("/healthz")  # Kubernetes/LB 표준 헬스체크
+async def healthz():
+    return {"status": "ok"}
 
 @app.get("/health")
 def health():
