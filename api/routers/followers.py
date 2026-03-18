@@ -238,7 +238,7 @@ def _approve_builder_code_api(account: str, signature: str, timestamp: int,
 
 @router.post("/onboard")
 async def onboard_follower(
-    request: "Request",
+    request: Request,
     body: OnboardRequest,
     background_tasks: BackgroundTasks,
     x_privy_token: Optional[str] = Header(None, alias="X-Privy-Token"),
@@ -253,7 +253,6 @@ async def onboard_follower(
     6. DB 팔로워 등록 (privy_user_id 포함)
     7. Tier1 트레이더 자동 팔로우 + 모니터링 시작
     """
-    from fastapi import Request as _Request
     from api.main import _db, _engine, _monitors, _check_rate_limit
     from core.position_monitor import RestPositionMonitor
     from db.database import add_follower
@@ -420,6 +419,20 @@ async def onboard_follower(
     )
     if privy_user_id:
         result["privy_user_id"] = privy_user_id
+
+    # ── Step 7: Agent 바인딩 안내 ────────────────────────
+    # 팔로워가 Pacifica 앱에서 Agent를 바인딩해야 복사 거래가 실행됩니다.
+    _network = os.getenv("NETWORK", "testnet")
+    _agent_wallet = os.getenv("AGENT_WALLET", "9mxJJAQwKLmM3hUdFebFXgkD8TPnDEJCZWhWN2uLZHWi")
+    _binding_url = (
+        "https://app.pacifica.fi/settings/agents"
+        if _network == "mainnet"
+        else "https://testnet.app.pacifica.fi/settings/agents"
+    )
+    result["agent_binding_required"] = True   # 팔로워가 Pacifica 앱에서 Agent 등록 필요
+    result["agent_wallet"] = _agent_wallet
+    result["agent_binding_url"] = _binding_url
+
     return result
 
 
