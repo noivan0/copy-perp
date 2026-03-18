@@ -297,12 +297,18 @@ def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bo
     if len(_rate_limit_store[key]) >= max_calls:
         return False
     _rate_limit_store[key].append(now)
-    # 메모리 누수 방지: 1000개 키 초과 시 만료 항목 정리
+    # 메모리 누수 방지: 키 수 1000 초과 시 정리
+    # 1) 빈 항목 + 오래된 항목 제거 → 부족하면 LRU 방식 오래된 키 강제 제거
     if len(_rate_limit_store) > 1000:
         expired = [k for k, v in list(_rate_limit_store.items())
-                   if not v or now - v[-1] > max(window_sec * 2, 300)]
+                   if not v or now - v[-1] > window_sec]
         for k in expired:
             del _rate_limit_store[k]
+        # 여전히 1000 초과면 가장 오래된 키 강제 제거
+        if len(_rate_limit_store) > 1000:
+            oldest = sorted(_rate_limit_store.items(), key=lambda x: x[1][-1] if x[1] else 0)
+            for k, _ in oldest[:len(_rate_limit_store) - 1000]:
+                del _rate_limit_store[k]
     return True
 
 def _require_rate_limit(key: str, max_calls: int = None, window_sec: int = 60, request: Request = None) -> None:
