@@ -71,12 +71,17 @@ def print_portfolio_summary(ps, capital):
   │  수익 내역                               │
   │                                         │""")
 
-    print(f"  │  총 복사 수익     {c(pnl_color, c('bold', f'{sign}${ps[\"gross_pnl_usdc\"]:>10,.2f}')):<30}│")
-    print(f"  │  수수료 차감       {c('red',  f'-${ps[\"total_fee_usdc\"]:>10,.2f}'):<30}│")
+    gross_str  = c(pnl_color, c("bold", f"{sign}${ps['gross_pnl_usdc']:>10,.2f}"))
+    fee_str    = c("red", f"-${ps['total_fee_usdc']:>10,.2f}")
+    net_str    = c(pnl_color, c("bold", f"{sign}${net_pnl:>10,.2f}"))
+    roi_str2   = c(pnl_color, c("bold", f"{sign}{net_roi:>9.2f}%"))
+    eq_str     = c("cyan", f"${ps['final_equity_usdc']:>10,.2f} USDC")
+    print(f"  │  총 복사 수익     {gross_str:<30}│")
+    print(f"  │  수수료 차감       {fee_str:<30}│")
     print(f"  │  ─────────────────────────────────── │")
-    print(f"  │  순 수익 (Net PnL) {c(pnl_color, c('bold', f'{sign}${net_pnl:>10,.2f}')):<30}│")
-    print(f"  │  순 ROI            {c(pnl_color, c('bold', f'{sign}{net_roi:>9.2f}%')):<30}│")
-    print(f"  │  최종 자산         {c('cyan', f'${ps[\"final_equity_usdc\"]:>10,.2f} USDC'):<30}│")
+    print(f"  │  순 수익 (Net PnL) {net_str:<30}│")
+    print(f"  │  순 ROI            {roi_str2:<30}│")
+    print(f"  │  최종 자산         {eq_str:<30}│")
     print(f"  └─────────────────────────────────────────┘")
 
     print(f"""
@@ -112,19 +117,27 @@ def print_per_trader(traders, capital, copy_ratio):
         crs_bar = bar(t["crs"], 100, 8)
         crs_colored = c("green" if t["crs"] >= 80 else "yellow" if t["crs"] >= 65 else "red", crs_bar)
 
+        trader_pnl_str = c("dim", f"${t['trader_pnl_30d_usdc']:>+,.0f}")
+        follower_str   = c(pnl_color, f"{sign}${net_pnl:>7,.2f}")
         print(
             f"  {c('cyan', t['alias']):<12} "
             f"{c(grade_color, t['grade_label']):<18} "
             f"{t['crs']:>5.1f} "
             f"{roi_str:>18} "
-            f"{c('dim', f'${t[\"trader_pnl_30d_usdc\"]:>+,.0f}'):>22} "
-            f"{c(pnl_color, f'{sign}${net_pnl:>7,.2f}'):>20}"
+            f"{trader_pnl_str:>22} "
+            f"{follower_str:>20}"
             f"{warn_icon}"
         )
 
         # 세부 점수 바 (접힘)
         if t["grade"] in ("S", "A"):
-            print(f"    {c('dim', f'모멘텀 [{bar(t[\"momentum_score\"],100,8)}] {t[\"momentum_score\"]:.0f}  수익성 [{bar(t[\"profitability_score\"],100,8)}] {t[\"profitability_score\"]:.0f}  리스크 [{bar(t[\"risk_score\"],100,8)}] {t[\"risk_score\"]:.0f}')}")
+            mom_bar = bar(t["momentum_score"], 100, 8)
+            prof_bar = bar(t["profitability_score"], 100, 8)
+            risk_bar = bar(t["risk_score"], 100, 8)
+            detail = (f"모멘텀 [{mom_bar}] {t['momentum_score']:.0f}  "
+                      f"수익성 [{prof_bar}] {t['profitability_score']:.0f}  "
+                      f"리스크 [{risk_bar}] {t['risk_score']:.0f}")
+            print(f"    {c('dim', detail)}")
 
         if t["warnings"]:
             for w in t["warnings"]:
