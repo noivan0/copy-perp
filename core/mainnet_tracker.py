@@ -1,452 +1,267 @@
 """
 core/mainnet_tracker.py — 메인넷 장기 PnL 추적기
-
-매 실행 시:
-1. Pacifica 메인넷 리더보드에서 CRS 상위 트레이더 실적 수집
-2. mainnet_tracker.db에 시계열로 저장 (실행할수록 데이터 쌓임)
-3. 팔로워 시뮬 PnL 자동 계산 (4개 시나리오)
-4. 신뢰도 기준 달성 여부 자동 체크
-
-API 접근: CloudFront SNI (HMG 방화벽 우회)
-  CF_URL = https://do5jt23sqak4.cloudfront.net
-  Host: api.pacifica.fi
+- 3시간마다 실행 → 데이터 누적 → 팔로워 PnL 자동 계산
+- 트레이더 목록은 실행 시 실시간 리더보드에서 자동 선별
 """
-
-import os
-import json
-import math
-import sqlite3
-import time
-import logging
+import os, sqlite3, time, logging, json
 from datetime import datetime, timezone
-
-import requests
-import urllib3
+import requests, urllib3
 
 urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
-# ── 접속 설정 ──────────────────────────────────────────────────────
-CF_URL   = "https://do5jt23sqak4.cloudfront.net"
-HEADERS  = {"Host": "api.pacifica.fi"}
+CF_URL  = "https://do5jt23sqak4.cloudfront.net"
+HEADERS = {"Host": "api.pacifica.fi"}
 
-_ROOT       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DB_PATH = os.path.join(_ROOT, "mainnet_tracker.db")
 
-# ── 추적 대상 트레이더 (CRS 기준 선별) ────────────────────────────
-TARGET_TRADERS = [
-    {"address": "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y", "alias": "7gV81bz9", "crs": 86.1, "grade": "S", "copy_ratio": 0.15},
-    {"address": "E1vabqxiuUfB29BAwLppTLLNMAq6HJqp7gSz1NiYwWz7", "alias": "E1vabqxi", "crs": 85.6, "grade": "S", "copy_ratio": 0.15},
-    {"address": "5BPd5WYVvDE2kHMjzGmLHMaAorSm8bEfERcsycg5GCAD", "alias": "5BPd5WYV", "crs": 80.9, "grade": "S", "copy_ratio": 0.15},
-    {"address": "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1", "alias": "EYhhf8u9", "crs": 78.3, "grade": "A", "copy_ratio": 0.10},
-    {"address": "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",  "alias": "4UBH19qU", "crs": 75.2, "grade": "A", "copy_ratio": 0.10},
-    {"address": "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",  "alias": "A6VY4ZBU", "crs": 72.3, "grade": "A", "copy_ratio": 0.10},
-]
+# 선발 기준
+MIN_EQUITY   = 50_000   # 최소 자본 $50k
+MIN_ROI_30D  = 10.0     # 최소 30일 ROI 10%
+MIN_PNL_ALL  = 0.0      # 전체 수익 양수
+N_TRADERS    = 6        # 선발 인원
 
-# ── 팔로워 시나리오 정의 ──────────────────────────────────────────
 SCENARIOS = [
-    {"key": "conservative_1k",  "label": "안정형",  "capital": 1_000,  "traders": ["7gV81bz9", "E1vabqxi", "5BPd5WYV"]},
-    {"key": "balanced_5k",      "label": "균형형",  "capital": 5_000,  "traders": ["7gV81bz9", "EYhhf8u9", "4UBH19qU"]},
-    {"key": "aggressive_10k",   "label": "공격형",  "capital": 10_000, "traders": ["4UBH19qU", "A6VY4ZBU", "EYhhf8u9"]},
-    {"key": "full_10k",         "label": "풀포트",  "capital": 10_000, "traders": ["7gV81bz9", "E1vabqxi", "5BPd5WYV", "4UBH19qU", "A6VY4ZBU"]},
+    {"key": "conservative_1k",  "label": "안정형", "capital": 1_000,  "n": 3, "grade_filter": ["S"]},
+    {"key": "balanced_5k",      "label": "균형형", "capital": 5_000,  "n": 3, "grade_filter": ["S","A"]},
+    {"key": "aggressive_10k",   "label": "공격형", "capital": 10_000, "n": 3, "grade_filter": ["A"]},
+    {"key": "full_10k",         "label": "풀포트", "capital": 10_000, "n": 6, "grade_filter": ["S","A","B"]},
 ]
 
-# ── 현실화 계수 ───────────────────────────────────────────────────
-COPY_REALISM   = 0.82    # 슬리피지 + 지연 + 부분체결 손실 반영
-TOTAL_FEE_PCT  = 0.0015  # taker(0.05%) + builder(0.10%) = 0.15% per trade
+COPY_REALISM  = 0.82
+TOTAL_FEE_PCT = 0.0015
 
-
-# ── DB 초기화 ─────────────────────────────────────────────────────
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS trader_snapshots (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    collected_at    INTEGER NOT NULL,
-    collected_date  TEXT NOT NULL,
-    collected_hour  INTEGER NOT NULL,
-    address         TEXT NOT NULL,
-    alias           TEXT,
-    grade           TEXT,
-    crs             REAL,
-    pnl_1d          REAL DEFAULT 0,
-    pnl_7d          REAL DEFAULT 0,
-    pnl_30d         REAL DEFAULT 0,
-    pnl_all_time    REAL DEFAULT 0,
-    equity          REAL DEFAULT 0,
-    oi              REAL DEFAULT 0,
-    roi_30d         REAL DEFAULT 0,
-    roi_7d          REAL DEFAULT 0,
-    roi_1d          REAL DEFAULT 0
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collected_at INTEGER NOT NULL, collected_date TEXT NOT NULL, collected_hour INTEGER NOT NULL,
+    address TEXT NOT NULL, alias TEXT, grade TEXT, crs REAL, copy_ratio REAL DEFAULT 0.10,
+    pnl_1d REAL DEFAULT 0, pnl_7d REAL DEFAULT 0, pnl_30d REAL DEFAULT 0,
+    pnl_all_time REAL DEFAULT 0, equity REAL DEFAULT 0, oi REAL DEFAULT 0,
+    roi_30d REAL DEFAULT 0, roi_7d REAL DEFAULT 0, roi_1d REAL DEFAULT 0,
+    momentum INTEGER DEFAULT 0, live_score REAL DEFAULT 0
 );
-
 CREATE TABLE IF NOT EXISTS follower_sim_pnl (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    collected_at    INTEGER NOT NULL,
-    scenario        TEXT NOT NULL,
-    label           TEXT,
-    capital         REAL NOT NULL,
-    n_traders       INTEGER NOT NULL,
-    pnl_1d          REAL DEFAULT 0,
-    pnl_7d          REAL DEFAULT 0,
-    pnl_30d         REAL DEFAULT 0,
-    roi_1d_pct      REAL DEFAULT 0,
-    roi_7d_pct      REAL DEFAULT 0,
-    roi_30d_pct     REAL DEFAULT 0,
-    win_traders     INTEGER DEFAULT 0,
-    total_traders   INTEGER NOT NULL
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collected_at INTEGER NOT NULL, scenario TEXT NOT NULL, label TEXT,
+    capital REAL NOT NULL, n_traders INTEGER NOT NULL,
+    pnl_1d REAL DEFAULT 0, pnl_7d REAL DEFAULT 0, pnl_30d REAL DEFAULT 0,
+    roi_1d_pct REAL DEFAULT 0, roi_7d_pct REAL DEFAULT 0, roi_30d_pct REAL DEFAULT 0,
+    win_traders INTEGER DEFAULT 0, total_traders INTEGER NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS trust_metrics (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    collected_at    INTEGER NOT NULL,
-    traders_roi30_ge10   INTEGER DEFAULT 0,
-    traders_roi30_ge30   INTEGER DEFAULT 0,
-    avg_crs              REAL DEFAULT 0,
-    avg_roi_30d          REAL DEFAULT 0,
-    sim_1d_roi_1k        REAL DEFAULT 0,
-    sim_7d_roi_1k        REAL DEFAULT 0,
-    sim_30d_roi_1k       REAL DEFAULT 0,
-    sim_30d_roi_10k_full REAL DEFAULT 0,
-    l2_met               INTEGER DEFAULT 0,
-    l3_target_met        INTEGER DEFAULT 0
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collected_at INTEGER NOT NULL,
+    traders_roi30_ge10 INTEGER DEFAULT 0, traders_roi30_ge30 INTEGER DEFAULT 0,
+    avg_crs REAL DEFAULT 0, avg_roi_30d REAL DEFAULT 0,
+    sim_1d_roi_1k REAL DEFAULT 0, sim_7d_roi_1k REAL DEFAULT 0,
+    sim_30d_roi_1k REAL DEFAULT 0, sim_30d_roi_10k_full REAL DEFAULT 0,
+    l2_met INTEGER DEFAULT 0, l3_target_met INTEGER DEFAULT 0,
+    n_selected INTEGER DEFAULT 0
 );
 """
 
-
-def _init_db(db_path: str) -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(db_path), exist_ok=True) if os.path.dirname(db_path) else None
+def _init_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     conn.commit()
     return conn
 
-
-# ── API 조회 ──────────────────────────────────────────────────────
-def mainnet_get(path: str, params: dict = None) -> dict:
-    url = f"{CF_URL}/api/v1/{path}"
+def mainnet_get(path, params=None):
     try:
-        r = requests.get(url, headers=HEADERS, params=params, verify=False, timeout=15)
+        r = requests.get(f"{CF_URL}/api/v1/{path}", headers=HEADERS, params=params, verify=False, timeout=20)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        logger.warning(f"mainnet_get({path}) 오류: {e}")
+        logger.warning(f"mainnet_get({path}): {e}")
         return {}
 
-
-def fetch_trader(address: str) -> dict:
-    """트레이더 1명의 최신 실적 조회"""
-    d = mainnet_get("leaderboard", {"account": address})
+def select_traders(n=N_TRADERS):
+    """실시간 리더보드에서 조건 충족 상위 N명 자동 선별"""
+    d = mainnet_get("leaderboard")
     data = d.get("data", [])
-    if isinstance(data, list) and data:
-        return data[0]
-    # 리더보드 전체에서 검색
-    full = mainnet_get("leaderboard", {"limit": 500})
-    for t in full.get("data", []):
-        if t.get("address") == address:
-            return t
-    return {}
-
-
-# ── 팔로워 시뮬 PnL 계산 ─────────────────────────────────────────
-def calc_follower_sim_pnl(snapshots: list) -> list:
-    """
-    트레이더 스냅샷 리스트 → 4개 시나리오 팔로워 PnL 계산
-    수익 현실화 계수(0.82) + 수수료(0.15%) 적용
-    """
-    snap_by_alias = {s["alias"]: s for s in snapshots}
-    results = []
-
-    for sc in SCENARIOS:
-        capital  = sc["capital"]
-        aliases  = sc["traders"]
-        n        = len(aliases)
-        alloc    = capital / n   # 트레이더당 균등 배분
-
-        pnl_1d = pnl_7d = pnl_30d = 0.0
-        win_cnt = 0
-
-        for alias in aliases:
-            snap = snap_by_alias.get(alias)
-            if not snap:
-                continue
-            t = next((x for x in TARGET_TRADERS if x["alias"] == alias), None)
-            if not t:
-                continue
-
-            cr = t["copy_ratio"]
-            invested = alloc * cr  # 실제 투자 금액
-
-            # 트레이더 ROI → 팔로워 PnL (현실화 + 수수료)
-            r1d  = snap.get("roi_1d",  0) / 100
-            r7d  = snap.get("roi_7d",  0) / 100
-            r30d = snap.get("roi_30d", 0) / 100
-
-            fee_factor = (1 - TOTAL_FEE_PCT)
-            p1d  = invested * r1d  * COPY_REALISM * fee_factor
-            p7d  = invested * r7d  * COPY_REALISM * fee_factor
-            p30d = invested * r30d * COPY_REALISM * fee_factor
-
-            pnl_1d  += p1d
-            pnl_7d  += p7d
-            pnl_30d += p30d
-
-            if snap.get("roi_30d", 0) > 0:
-                win_cnt += 1
-
-        results.append({
-            "scenario":     sc["key"],
-            "label":        sc["label"],
-            "capital":      capital,
-            "n_traders":    n,
-            "pnl_1d":       round(pnl_1d,  4),
-            "pnl_7d":       round(pnl_7d,  4),
-            "pnl_30d":      round(pnl_30d, 4),
-            "roi_1d_pct":   round(pnl_1d  / capital * 100, 4),
-            "roi_7d_pct":   round(pnl_7d  / capital * 100, 4),
-            "roi_30d_pct":  round(pnl_30d / capital * 100, 4),
-            "win_traders":  win_cnt,
-            "total_traders": n,
+    candidates = []
+    for t in data:
+        eq  = float(t.get("equity_current") or 0)
+        p30 = float(t.get("pnl_30d")        or 0)
+        p7  = float(t.get("pnl_7d")         or 0)
+        p1  = float(t.get("pnl_1d")         or 0)
+        pat = float(t.get("pnl_all_time")   or 0)
+        if eq < MIN_EQUITY or p30 <= 0 or pat <= MIN_PNL_ALL:
+            continue
+        roi30 = p30 / eq * 100
+        roi7  = p7  / eq * 100
+        roi1  = p1  / eq * 100
+        if roi30 < MIN_ROI_30D:
+            continue
+        momentum = sum([1 if p1>0 else 0, 1 if p7>0 else 0, 1 if p30>0 else 0])
+        score    = roi30 * momentum + roi7 * 0.5
+        # 등급 부여
+        if roi30 >= 40 and momentum >= 2: grade, crs, cr = "S", 82.0, 0.15
+        elif roi30 >= 20 and momentum >= 2: grade, crs, cr = "A", 73.0, 0.10
+        else: grade, crs, cr = "B", 60.0, 0.07
+        candidates.append({
+            "address": t["address"],
+            "alias":   t["address"][:8],
+            "grade": grade, "crs": crs, "copy_ratio": cr,
+            "roi30": roi30, "roi7": roi7, "roi1": roi1,
+            "pnl_30d": p30, "pnl_7d": p7, "pnl_1d": p1,
+            "pnl_all_time": pat, "equity": eq,
+            "oi": float(t.get("oi_current") or 0),
+            "momentum": momentum, "score": score,
         })
+    candidates.sort(key=lambda x: -x["score"])
+    return candidates[:n]
 
+def calc_sim_pnl(traders):
+    """선발된 트레이더 → 4개 시나리오 팔로워 PnL"""
+    results = []
+    for sc in SCENARIOS:
+        capital = sc["capital"]
+        pool    = [t for t in traders if t["grade"] in sc["grade_filter"]]
+        if not pool: pool = traders   # fallback
+        selected = pool[:sc["n"]]
+        n = len(selected)
+        if n == 0:
+            continue
+        alloc = capital / n
+        p1d = p7d = p30d = 0.0
+        win = 0
+        for t in selected:
+            invested = alloc * t["copy_ratio"]
+            ff = 1 - TOTAL_FEE_PCT
+            p1d  += invested * (t["roi1"]  / 100) * COPY_REALISM * ff
+            p7d  += invested * (t["roi7"]  / 100) * COPY_REALISM * ff
+            p30d += invested * (t["roi30"] / 100) * COPY_REALISM * ff
+            if t["roi30"] > 0: win += 1
+        results.append({
+            "scenario": sc["key"], "label": sc["label"],
+            "capital": capital, "n_traders": n,
+            "pnl_1d":  round(p1d,  4),
+            "pnl_7d":  round(p7d,  4),
+            "pnl_30d": round(p30d, 4),
+            "roi_1d_pct":  round(p1d  / capital * 100, 4),
+            "roi_7d_pct":  round(p7d  / capital * 100, 4),
+            "roi_30d_pct": round(p30d / capital * 100, 4),
+            "win_traders": win, "total_traders": n,
+        })
     return results
 
-
-# ── 신뢰도 체크 ───────────────────────────────────────────────────
-def check_trust_metrics(snapshots: list, sim_results: list) -> dict:
-    rois = [s.get("roi_30d", 0) for s in snapshots]
-    crss = [s.get("crs", 0) for s in snapshots]
-
-    traders_ge10 = sum(1 for r in rois if r >= 10)
-    traders_ge30 = sum(1 for r in rois if r >= 30)
-    avg_crs      = sum(crss) / len(crss) if crss else 0
-    avg_roi_30d  = sum(rois) / len(rois) if rois else 0
-
-    sim_map = {s["scenario"]: s for s in sim_results}
-    sim_1k   = sim_map.get("conservative_1k", {})
-    sim_full = sim_map.get("full_10k", {})
-
-    l2_met = 1 if (traders_ge10 >= 3 and avg_crs >= 70) else 0
-    l3_met = 1 if sim_1k.get("roi_30d_pct", 0) >= 5.0 else 0
-
+def check_trust(traders, sim_results):
+    rois = [t["roi30"] for t in traders]
+    crss = [t["crs"]   for t in traders]
+    sm   = {s["scenario"]: s for s in sim_results}
+    s1k  = sm.get("conservative_1k", {})
+    sfl  = sm.get("full_10k", {})
+    avg_crs = sum(crss)/len(crss) if crss else 0
     return {
-        "traders_roi30_ge10":   traders_ge10,
-        "traders_roi30_ge30":   traders_ge30,
+        "traders_roi30_ge10":   sum(1 for r in rois if r >= 10),
+        "traders_roi30_ge30":   sum(1 for r in rois if r >= 30),
         "avg_crs":              round(avg_crs, 2),
-        "avg_roi_30d":          round(avg_roi_30d, 2),
-        "sim_1d_roi_1k":        sim_1k.get("roi_1d_pct", 0),
-        "sim_7d_roi_1k":        sim_1k.get("roi_7d_pct", 0),
-        "sim_30d_roi_1k":       sim_1k.get("roi_30d_pct", 0),
-        "sim_30d_roi_10k_full": sim_full.get("roi_30d_pct", 0),
-        "l2_met":               l2_met,
-        "l3_target_met":        l3_met,
+        "avg_roi_30d":          round(sum(rois)/len(rois) if rois else 0, 2),
+        "sim_1d_roi_1k":        s1k.get("roi_1d_pct",  0),
+        "sim_7d_roi_1k":        s1k.get("roi_7d_pct",  0),
+        "sim_30d_roi_1k":       s1k.get("roi_30d_pct", 0),
+        "sim_30d_roi_10k_full": sfl.get("roi_30d_pct", 0),
+        "l2_met":               1 if (sum(1 for r in rois if r >= 10) >= 3 and avg_crs >= 60) else 0,
+        "l3_target_met":        1 if s1k.get("roi_30d_pct", 0) >= 3.0 else 0,
+        "n_selected":           len(traders),
     }
 
-
-# ── 1회 수집 ─────────────────────────────────────────────────────
-def collect_once(db_path: str = DEFAULT_DB_PATH) -> dict:
-    """
-    메인넷에서 트레이더 실적 수집 → DB 저장 → 시뮬 계산 → 신뢰도 체크
-    반환: {"collected": n, "snapshots": [...], "sim_pnl": [...], "trust": {...}}
-    """
+def collect_once(db_path=DEFAULT_DB_PATH):
     conn = _init_db(db_path)
     now  = int(time.time())
     dt   = datetime.now(timezone.utc)
-    date_str = dt.strftime("%Y-%m-%d")
-    hour     = dt.hour
+    date_str, hour = dt.strftime("%Y-%m-%d"), dt.hour
 
-    snapshots = []
+    logger.info("메인넷 실시간 트레이더 선별 중...")
+    traders = select_traders()
+    logger.info(f"선별 완료: {len(traders)}명")
 
-    # 리더보드 전체 1회 조회 (API 절약)
-    logger.info("메인넷 리더보드 조회 중...")
-    full_lb = mainnet_get("leaderboard", {"limit": 1000})
-    lb_map  = {t["address"]: t for t in full_lb.get("data", [])}
-
-    for target in TARGET_TRADERS:
-        addr  = target["address"]
-        alias = target["alias"]
-
-        raw = lb_map.get(addr) or fetch_trader(addr)
-        if not raw:
-            logger.warning(f"  {alias}: 데이터 없음 — 스킵")
-            continue
-
-        def _f(key): return float(raw.get(key) or 0)
-
-        equity  = _f("equity_current")
-        pnl_30d = _f("pnl_30d")
-        pnl_7d  = _f("pnl_7d")
-        pnl_1d  = _f("pnl_1d")
-
-        roi_30d = round(pnl_30d / equity * 100, 4) if equity > 0 else 0
-        roi_7d  = round(pnl_7d  / equity * 100, 4) if equity > 0 else 0
-        roi_1d  = round(pnl_1d  / equity * 100, 4) if equity > 0 else 0
-
-        snap = {
-            "collected_at":   now,
-            "collected_date": date_str,
-            "collected_hour": hour,
-            "address":  addr,
-            "alias":    alias,
-            "grade":    target["grade"],
-            "crs":      target["crs"],
-            "pnl_1d":   pnl_1d,
-            "pnl_7d":   pnl_7d,
-            "pnl_30d":  pnl_30d,
-            "pnl_all_time": _f("pnl_all_time"),
-            "equity":   equity,
-            "oi":       _f("oi_current"),
-            "roi_30d":  roi_30d,
-            "roi_7d":   roi_7d,
-            "roi_1d":   roi_1d,
-        }
-        snapshots.append(snap)
-
+    for t in traders:
         conn.execute("""
             INSERT INTO trader_snapshots
-            (collected_at, collected_date, collected_hour,
-             address, alias, grade, crs,
-             pnl_1d, pnl_7d, pnl_30d, pnl_all_time,
-             equity, oi, roi_30d, roi_7d, roi_1d)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            snap["collected_at"], snap["collected_date"], snap["collected_hour"],
-            snap["address"], snap["alias"], snap["grade"], snap["crs"],
-            snap["pnl_1d"], snap["pnl_7d"], snap["pnl_30d"], snap["pnl_all_time"],
-            snap["equity"], snap["oi"], snap["roi_30d"], snap["roi_7d"], snap["roi_1d"],
-        ))
-        logger.info(f"  {alias} ({target['grade']}): ROI_30d={roi_30d:+.2f}% PnL_30d=${pnl_30d:,.0f}")
+            (collected_at,collected_date,collected_hour,address,alias,grade,crs,copy_ratio,
+             pnl_1d,pnl_7d,pnl_30d,pnl_all_time,equity,oi,roi_30d,roi_7d,roi_1d,momentum,live_score)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (now,date_str,hour, t["address"],t["alias"],t["grade"],t["crs"],t["copy_ratio"],
+              t["pnl_1d"],t["pnl_7d"],t["pnl_30d"],t["pnl_all_time"],t["equity"],t["oi"],
+              t["roi30"],t["roi7"],t["roi1"],t["momentum"],t["score"]))
+        logger.info(f"  {t['alias']} ({t['grade']}): ROI_30d={t['roi30']:+.2f}%  ROI_7d={t['roi7']:+.2f}%  equity=${t['equity']:,.0f}")
 
-    # 팔로워 시뮬 PnL
-    sim_results = calc_follower_sim_pnl(snapshots)
-    for sim in sim_results:
+    sim = calc_sim_pnl(traders)
+    for s in sim:
         conn.execute("""
             INSERT INTO follower_sim_pnl
-            (collected_at, scenario, label, capital, n_traders,
-             pnl_1d, pnl_7d, pnl_30d, roi_1d_pct, roi_7d_pct, roi_30d_pct,
-             win_traders, total_traders)
+            (collected_at,scenario,label,capital,n_traders,
+             pnl_1d,pnl_7d,pnl_30d,roi_1d_pct,roi_7d_pct,roi_30d_pct,win_traders,total_traders)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            now, sim["scenario"], sim["label"], sim["capital"], sim["n_traders"],
-            sim["pnl_1d"], sim["pnl_7d"], sim["pnl_30d"],
-            sim["roi_1d_pct"], sim["roi_7d_pct"], sim["roi_30d_pct"],
-            sim["win_traders"], sim["total_traders"],
-        ))
+        """, (now,s["scenario"],s["label"],s["capital"],s["n_traders"],
+              s["pnl_1d"],s["pnl_7d"],s["pnl_30d"],
+              s["roi_1d_pct"],s["roi_7d_pct"],s["roi_30d_pct"],
+              s["win_traders"],s["total_traders"]))
 
-    # 신뢰도 체크
-    trust = check_trust_metrics(snapshots, sim_results)
+    trust = check_trust(traders, sim)
     conn.execute("""
         INSERT INTO trust_metrics
-        (collected_at, traders_roi30_ge10, traders_roi30_ge30, avg_crs, avg_roi_30d,
-         sim_1d_roi_1k, sim_7d_roi_1k, sim_30d_roi_1k, sim_30d_roi_10k_full,
-         l2_met, l3_target_met)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        now,
-        trust["traders_roi30_ge10"], trust["traders_roi30_ge30"],
-        trust["avg_crs"], trust["avg_roi_30d"],
-        trust["sim_1d_roi_1k"], trust["sim_7d_roi_1k"],
-        trust["sim_30d_roi_1k"], trust["sim_30d_roi_10k_full"],
-        trust["l2_met"], trust["l3_target_met"],
-    ))
+        (collected_at,traders_roi30_ge10,traders_roi30_ge30,avg_crs,avg_roi_30d,
+         sim_1d_roi_1k,sim_7d_roi_1k,sim_30d_roi_1k,sim_30d_roi_10k_full,
+         l2_met,l3_target_met,n_selected)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (now, trust["traders_roi30_ge10"],trust["traders_roi30_ge30"],
+          trust["avg_crs"],trust["avg_roi_30d"],
+          trust["sim_1d_roi_1k"],trust["sim_7d_roi_1k"],
+          trust["sim_30d_roi_1k"],trust["sim_30d_roi_10k_full"],
+          trust["l2_met"],trust["l3_target_met"],trust["n_selected"]))
 
     conn.commit()
     conn.close()
+    return {"collected_at":now,"collected_date":date_str,"collected":len(traders),
+            "snapshots":traders,"sim_pnl":sim,"trust":trust}
 
-    return {
-        "collected_at": now,
-        "collected_date": date_str,
-        "collected": len(snapshots),
-        "snapshots": snapshots,
-        "sim_pnl":   sim_results,
-        "trust":     trust,
-    }
-
-
-# ── 누적 보고서 ───────────────────────────────────────────────────
-def get_accumulated_report(db_path: str = DEFAULT_DB_PATH, days: int = 30) -> dict:
-    """
-    누적 데이터 기반 장기 보고서
-    - 트레이더별 ROI 추이 (첫 수집 vs 최신)
-    - 팔로워 시나리오별 최신 PnL
-    - 신뢰도 기준 달성 이력
-    """
+def get_accumulated_report(db_path=DEFAULT_DB_PATH, days=30):
     if not os.path.exists(db_path):
-        return {"error": "아직 수집된 데이터가 없습니다. collect_once() 먼저 실행하세요."}
-
+        return {"error": "데이터 없음. collect_once() 먼저 실행하세요."}
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-
-    # 수집 횟수 + 기간
-    cur = conn.execute("SELECT MIN(collected_at), MAX(collected_at), COUNT(DISTINCT collected_at) FROM trader_snapshots")
-    r = cur.fetchone()
+    r = conn.execute("SELECT MIN(collected_at),MAX(collected_at),COUNT(DISTINCT collected_at) FROM trader_snapshots").fetchone()
     if not r or not r[0]:
         conn.close()
         return {"error": "데이터 없음"}
-
-    first_ts, last_ts, n_collections = r[0], r[1], r[2]
+    first_ts, last_ts, n_col = r[0], r[1], r[2]
     duration_days = (last_ts - first_ts) / 86400 if last_ts > first_ts else 0
 
-    # 트레이더별 첫 수집 vs 최신
-    trader_trend = []
-    for t in TARGET_TRADERS:
-        addr = t["address"]
-        cur = conn.execute(
-            "SELECT roi_30d, pnl_30d, equity, collected_date FROM trader_snapshots WHERE address=? ORDER BY collected_at ASC LIMIT 1",
-            (addr,)
-        )
-        first = cur.fetchone()
-        cur = conn.execute(
-            "SELECT roi_30d, pnl_30d, equity, collected_date FROM trader_snapshots WHERE address=? ORDER BY collected_at DESC LIMIT 1",
-            (addr,)
-        )
-        latest = cur.fetchone()
+    # 최신 수집의 트레이더별 추이
+    latest_ts = conn.execute("SELECT MAX(collected_at) FROM trader_snapshots").fetchone()[0]
+    traders_latest = [dict(r) for r in conn.execute(
+        "SELECT * FROM trader_snapshots WHERE collected_at=? ORDER BY live_score DESC", (latest_ts,)
+    ).fetchall()]
 
-        if first and latest:
-            trader_trend.append({
-                "alias":      t["alias"],
-                "grade":      t["grade"],
-                "crs":        t["crs"],
-                "roi_30d_first":  float(first["roi_30d"]),
-                "roi_30d_latest": float(latest["roi_30d"]),
-                "roi_30d_delta":  round(float(latest["roi_30d"]) - float(first["roi_30d"]), 2),
-                "pnl_30d_latest": float(latest["pnl_30d"]),
-                "equity_latest":  float(latest["equity"]),
-                "first_date":     first["collected_date"],
-                "latest_date":    latest["collected_date"],
-            })
-
-    # 최신 시뮬 PnL
-    cur = conn.execute(
+    sim_latest = [dict(r) for r in conn.execute(
         "SELECT * FROM follower_sim_pnl WHERE collected_at=(SELECT MAX(collected_at) FROM follower_sim_pnl)"
-    )
-    sim_latest = [dict(r) for r in cur.fetchall()]
+    ).fetchall()]
 
-    # 신뢰도 기준 달성 이력 (최근 10회)
-    cur = conn.execute(
+    trust_history = [dict(r) for r in conn.execute(
         "SELECT * FROM trust_metrics ORDER BY collected_at DESC LIMIT 10"
-    )
-    trust_history = [dict(r) for r in cur.fetchall()]
-    trust_latest  = trust_history[0] if trust_history else {}
+    ).fetchall()]
 
-    # 데이터 포인트별 누적 추이 (시나리오: conservative_1k)
-    cur = conn.execute(
-        "SELECT collected_at, collected_date, roi_30d_pct FROM follower_sim_pnl WHERE scenario='conservative_1k' ORDER BY collected_at ASC"
-    )
-    pnl_trend = [{"ts": r[0], "date": r[1], "roi_30d_pct": r[2]} for r in cur.fetchall()]
+    pnl_trend = [{"ts":r[0],"roi_30d_pct":r[1]} for r in conn.execute(
+        "SELECT collected_at, roi_30d_pct FROM follower_sim_pnl WHERE scenario='conservative_1k' ORDER BY collected_at"
+    ).fetchall()]
 
     conn.close()
-
     return {
         "meta": {
             "first_date":    datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d %H:%M"),
             "latest_date":   datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d %H:%M"),
             "duration_days": round(duration_days, 1),
-            "n_collections": n_collections,
-            "n_traders":     len(trader_trend),
+            "n_collections": n_col,
         },
-        "trader_trend":    trader_trend,
+        "traders_latest":  traders_latest,
         "sim_pnl_latest":  sim_latest,
-        "trust_latest":    trust_latest,
+        "trust_latest":    trust_history[0] if trust_history else {},
         "trust_history":   trust_history,
         "pnl_trend":       pnl_trend,
     }
