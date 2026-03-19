@@ -1,24 +1,23 @@
 """
-Copy Perp — 4전략 통합 페이퍼트레이딩 엔진 v3
+Copy Perp — 4전략 통합 페이퍼트레이딩 엔진 v4
 ═══════════════════════════════════════════════════════════════════════
-핵심 수정 (v3):
-  - 포지션 키: alias_sym_direction (롱/숏 독립 추적)
-  - 트레이더가 same-symbol 롱+숏 동시 보유 → 개별 처리
-  - DB 분리: pt_paper.db (쓰기) / copy_perp.db (읽기 전용)
-  - last_ts: 최초 실행 시 mainnet_trades 최대값으로 초기화 (이중처리 방지)
-  - 로그 중복 제거
+설계 원칙 (대장 지시 반영):
+  - trades history replay 폐기 → /positions API 폴링으로 교체
+  - 동일 심볼 롱+숏 동시 보유 = 정상 전략 (마켓메이킹 + 스노우볼)
+  - 포지션 변화 감지:
+      * 새 포지션 → OPEN 이벤트
+      * 포지션 소멸 → CLOSE 이벤트 (entry_price 기반 PnL 계산)
+      * amount 증가 → SCALE_IN (추가 진입)
+      * amount 감소 → PARTIAL_CLOSE (부분 청산)
+  - 4전략 독립 적용 (copy_ratio / SL / TP / trailing)
+  - 30초 폴링 → 실시간에 가까운 포지션 추적
 
-플로우:
-  ① 30초마다 mainnet /trades/history 신규 거래 수집
-  ② 수집 즉시 open/close 이벤트 파싱 → direction별 독립 포지션 delta
-  ③ 4전략 동시 반영 (copy_ratio / SL / TP / trailing 독립 적용)
-  ④ 청산 발생 시 즉시 PnL 기록 → DB 누적
-  ⑤ 5분마다 스냅샷 저장
+포지션 키: (alias, symbol, side)  — bid/ask 독립
+PnL 계산: close price (현재가) vs entry_price
 """
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import sys
@@ -41,12 +40,14 @@ from core.strategy_presets import PRESETS, get_preset
 PROXY          = "https://api.codetabs.com/v1/proxy/?quest="
 BASE           = "https://api.pacifica.fi/api/v1"
 _ROOT          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH        = os.path.join(_ROOT, "copy_perp.db")
-PT_DB_PATH     = os.path.join(_ROOT, "pt_paper.db")
-POLL_SEC       = 30
-SNAP_SEC       = 300
+DB_PATH        = os.path.join(_ROOT, "copy_perp.db")        # mainnet_trades 읽기용 (현재가)
+PT_DB_PATH     = os.path.join(_ROOT, "pt_paper.db")         # 페이퍼트레이딩 전용
+
+POLL_SEC       = 30       # 포지션 폴링 주기
+SNAP_SEC       = 300      # 스냅샷 주기 (5분)
 INITIAL_CAP    = 10_000.0
 STRATEGIES     = ["default", "conservative", "balanced", "aggressive"]
+FEE_RATE       = 0.0015   # 진입+청산 총 수수료 (0.15%)
 
 TRADERS = [
     ("YjCD9Gek", "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E"),
@@ -57,7 +58,7 @@ TRADERS = [
     ("HtC4WT6J",  "HtC4WT6JhKz8eojNbkpAv16j5mB6JBj3y8EVbuVzHkCZ"),
 ]
 
-# 로그 설정 (중복 방지)
+# 로그
 _fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 _fh  = logging.FileHandler("/tmp/pt_engine.log")
 _fh.setFormatter(_fmt)
@@ -65,8 +66,10 @@ _sh  = logging.StreamHandler(sys.stdout)
 _sh.setFormatter(_fmt)
 logging.root.setLevel(logging.INFO)
 logging.root.handlers = [_fh, _sh]
-# propagation 차단 (중복 방지)
-logging.root.propagate = False
+# 루트 핸들러만 사용 (propagation 차단)
+for name in list(logging.Logger.manager.loggerDict):
+    logging.getLogger(name).handlers = []
+    logging.getLogger(name).propagate = True
 log = logging.getLogger("pt")
 
 # ── DB 스키마 ─────────────────────────────────────────────
@@ -86,24 +89,24 @@ CREATE TABLE IF NOT EXISTS pt_sessions (
     peak_equity     REAL    DEFAULT 10000
 );
 CREATE TABLE IF NOT EXISTS pt_trades (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    strategy        TEXT    NOT NULL,
-    trader_alias    TEXT    NOT NULL,
-    symbol          TEXT    NOT NULL,
-    direction       TEXT    NOT NULL,
-    size            REAL    NOT NULL,
-    entry_price     REAL    NOT NULL,
-    exit_price      REAL    DEFAULT 0,
-    gross_pnl       REAL    DEFAULT 0,
-    net_pnl         REAL    DEFAULT 0,
-    fee             REAL    DEFAULT 0,
-    roi_pct         REAL    DEFAULT 0,
-    hold_min        REAL    DEFAULT 0,
-    opened_at       INTEGER NOT NULL,
-    closed_at       INTEGER DEFAULT 0,
-    close_reason    TEXT    DEFAULT '',
-    stop_loss_price REAL    DEFAULT 0,
-    take_profit_price REAL  DEFAULT 0
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy          TEXT    NOT NULL,
+    trader_alias      TEXT    NOT NULL,
+    symbol            TEXT    NOT NULL,
+    direction         TEXT    NOT NULL,   -- 'long' / 'short'
+    size              REAL    NOT NULL,
+    entry_price       REAL    NOT NULL,
+    exit_price        REAL    DEFAULT 0,
+    gross_pnl         REAL    DEFAULT 0,
+    net_pnl           REAL    DEFAULT 0,
+    fee               REAL    DEFAULT 0,
+    roi_pct           REAL    DEFAULT 0,
+    hold_min          REAL    DEFAULT 0,
+    opened_at         INTEGER NOT NULL,
+    closed_at         INTEGER DEFAULT 0,
+    close_reason      TEXT    DEFAULT '',
+    stop_loss_price   REAL    DEFAULT 0,
+    take_profit_price REAL    DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS pt_snapshots (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,20 +122,14 @@ CREATE TABLE IF NOT EXISTS pt_snapshots (
     roi_pct         REAL    DEFAULT 0,
     UNIQUE(strategy, snap_at)
 );
-CREATE TABLE IF NOT EXISTS pt_last_ts (
-    trader_alias    TEXT    PRIMARY KEY,
-    last_ts         INTEGER DEFAULT 0
-);
 CREATE INDEX IF NOT EXISTS idx_pt_trades_strategy ON pt_trades(strategy, closed_at DESC);
 """
-
-FEE_RATE = 0.0015  # taker + builder fee
 
 
 # ══════════════════════════════════════════════════════════
 # API
 # ══════════════════════════════════════════════════════════
-def api_get(path: str, params: dict = None) -> Optional[dict | list]:
+def pm_get(path: str, params: dict = None) -> Optional[dict | list]:
     url = BASE + path
     if params:
         url += "?" + urllib.parse.urlencode(params)
@@ -144,104 +141,135 @@ def api_get(path: str, params: dict = None) -> Optional[dict | list]:
         return None
 
 
-def fetch_new_trades(alias: str, address: str, last_ts: int) -> list[dict]:
-    d = api_get("/trades/history", {"address": address, "limit": 500})
-    if not d:
-        return []
-    trades = (d.get("data") or []) if isinstance(d, dict) else (d or [])
-    new_trades = [
-        t for t in trades
-        if t.get("created_at", 0) > last_ts
-        and t.get("event_type") in ("fulfill_taker", "fulfill_maker")
-    ]
-    for t in new_trades:
-        t["_alias"] = alias
-    return sorted(new_trades, key=lambda x: x.get("created_at", 0))
-
-
-# ══════════════════════════════════════════════════════════
-# 포지션 추적기 — direction별 독립 관리
-# ══════════════════════════════════════════════════════════
-class TraderPositionTracker:
+def fetch_positions(address: str) -> list[dict]:
     """
-    트레이더 포지션 상태 추적
-    key: (symbol, direction) — 롱/숏 완전 독립
+    /positions?account=<addr> → 현재 열린 포지션 리스트
+    응답: [{symbol, side(bid/ask), amount, entry_price, updated_at, ...}]
+    """
+    r = pm_get("/positions", {"account": address})
+    if not r:
+        return []
+    data = (r.get("data") or []) if isinstance(r, dict) else (r or [])
+    result = []
+    for pos in data:
+        amt = float(pos.get("amount", 0) or 0)
+        ep  = float(pos.get("entry_price", 0) or 0)
+        if amt > 0 and ep > 0:
+            result.append({
+                "symbol":      pos.get("symbol", ""),
+                "side":        pos.get("side", ""),     # "bid"=long, "ask"=short
+                "amount":      amt,
+                "entry_price": ep,
+                "updated_at":  pos.get("updated_at", 0),
+            })
+    return result
+
+
+def fetch_mark_prices() -> dict[str, float]:
+    """mainnet_trades DB에서 최신 현재가 조회 (빠름)"""
+    try:
+        src = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=10)
+        cur = src.cursor()
+        cur.execute("""
+            SELECT symbol, entry_price FROM mainnet_trades
+            WHERE created_at=(
+                SELECT MAX(created_at) FROM mainnet_trades m2
+                WHERE m2.symbol=mainnet_trades.symbol
+            ) AND entry_price > 0
+        """)
+        prices = {r[0]: float(r[1]) for r in cur.fetchall()}
+        src.close()
+        return prices
+    except Exception:
+        return {}
+
+
+# ══════════════════════════════════════════════════════════
+# 포지션 변화 감지기
+# ══════════════════════════════════════════════════════════
+class PositionDiffTracker:
+    """
+    이전 폴링 결과 vs 현재 폴링 결과를 비교해 이벤트 생성
+    포지션 키: (symbol, side)  — bid/ask 독립
     """
 
     def __init__(self, alias: str):
         self.alias = alias
-        # (sym, direction) → {"size": float, "entry_price": float}
-        self.positions: dict[tuple, dict] = {}
+        # (sym, side) → {"amount": float, "entry_price": float}
+        self.prev: dict[tuple, dict] = {}
 
-    def _wavg(self, old_ep: float, old_sz: float, new_ep: float, new_sz: float) -> float:
-        total = old_sz + new_sz
-        if total <= 0:
-            return new_ep
-        return (old_ep * old_sz + new_ep * new_sz) / total
-
-    def process_trade(self, trade: dict) -> Optional[dict]:
+    def diff(self, current_positions: list[dict]) -> list[dict]:
         """
-        1건 처리 → 이벤트 반환 or None
-        이벤트: {"type": "open"|"close", "alias", "symbol", "direction",
-                 "size", "price", "entry_price"(close만)}
+        현재 포지션과 이전 포지션을 비교 → 이벤트 리스트 반환
+        이벤트 타입:
+          - OPEN: 새 포지션 등장
+          - CLOSE: 포지션 소멸
+          - SCALE_IN: amount 증가 (추가 진입)
+          - PARTIAL_CLOSE: amount 감소 (부분 청산)
         """
-        sym   = trade.get("symbol", "")
-        side  = trade.get("side", "")
-        amt   = float(trade.get("amount", 0) or 0)
-        price = float(trade.get("entry_price", trade.get("price", 0)) or 0)
+        curr: dict[tuple, dict] = {}
+        for pos in current_positions:
+            k = (pos["symbol"], pos["side"])
+            curr[k] = pos
 
-        if amt <= 0 or price <= 0 or not sym:
-            return None
-
-        if side == "open_long":
-            k = (sym, "long")
-            if k in self.positions:
-                pos = self.positions[k]
-                pos["entry_price"] = self._wavg(pos["entry_price"], pos["size"], price, amt)
-                pos["size"] += amt
+        events = []
+        # 새 포지션 or 변화
+        for k, pos in curr.items():
+            sym, side = k
+            direction = "long" if side == "bid" else "short"
+            if k not in self.prev:
+                events.append({
+                    "type":        "OPEN",
+                    "alias":       self.alias,
+                    "symbol":      sym,
+                    "direction":   direction,
+                    "side":        side,
+                    "amount":      pos["amount"],
+                    "entry_price": pos["entry_price"],
+                })
             else:
-                self.positions[k] = {"size": amt, "entry_price": price}
-            return {"type": "open", "alias": self.alias, "symbol": sym,
-                    "direction": "long", "size": amt, "price": price}
+                prev_pos = self.prev[k]
+                delta = pos["amount"] - prev_pos["amount"]
+                if delta > prev_pos["amount"] * 0.01:   # 1% 이상 증가
+                    events.append({
+                        "type":        "SCALE_IN",
+                        "alias":       self.alias,
+                        "symbol":      sym,
+                        "direction":   direction,
+                        "side":        side,
+                        "amount":      pos["amount"],
+                        "delta":       delta,
+                        "entry_price": pos["entry_price"],
+                    })
+                elif delta < -prev_pos["amount"] * 0.01:  # 1% 이상 감소
+                    events.append({
+                        "type":        "PARTIAL_CLOSE",
+                        "alias":       self.alias,
+                        "symbol":      sym,
+                        "direction":   direction,
+                        "side":        side,
+                        "amount":      pos["amount"],
+                        "delta":       abs(delta),
+                        "entry_price": prev_pos["entry_price"],
+                    })
 
-        elif side == "open_short":
-            k = (sym, "short")
-            if k in self.positions:
-                pos = self.positions[k]
-                pos["entry_price"] = self._wavg(pos["entry_price"], pos["size"], price, amt)
-                pos["size"] += amt
-            else:
-                self.positions[k] = {"size": amt, "entry_price": price}
-            return {"type": "open", "alias": self.alias, "symbol": sym,
-                    "direction": "short", "size": amt, "price": price}
+        # 소멸한 포지션
+        for k, prev_pos in self.prev.items():
+            if k not in curr:
+                sym, side = k
+                direction = "long" if side == "bid" else "short"
+                events.append({
+                    "type":        "CLOSE",
+                    "alias":       self.alias,
+                    "symbol":      sym,
+                    "direction":   direction,
+                    "side":        side,
+                    "amount":      prev_pos["amount"],
+                    "entry_price": prev_pos["entry_price"],
+                })
 
-        elif side == "close_long":
-            k = (sym, "long")
-            if k in self.positions:
-                pos = self.positions[k]
-                entry = pos["entry_price"]
-                close_sz = min(pos["size"], amt)
-                pos["size"] -= close_sz
-                if pos["size"] < 1e-8:
-                    del self.positions[k]
-                return {"type": "close", "alias": self.alias, "symbol": sym,
-                        "direction": "long", "size": close_sz,
-                        "price": price, "entry_price": entry}
-
-        elif side == "close_short":
-            k = (sym, "short")
-            if k in self.positions:
-                pos = self.positions[k]
-                entry = pos["entry_price"]
-                close_sz = min(pos["size"], amt)
-                pos["size"] -= close_sz
-                if pos["size"] < 1e-8:
-                    del self.positions[k]
-                return {"type": "close", "alias": self.alias, "symbol": sym,
-                        "direction": "short", "size": close_sz,
-                        "price": price, "entry_price": entry}
-
-        return None
+        self.prev = curr
+        return events
 
 
 # ══════════════════════════════════════════════════════════
@@ -254,7 +282,6 @@ class StrategyEngine:
         self.db     = db
         now_ms      = int(time.time() * 1000)
 
-        # 세션 초기화 또는 복원
         cur = db.cursor()
         cur.execute(
             "SELECT equity, realized_pnl, gross_profit, gross_loss, "
@@ -265,7 +292,8 @@ class StrategyEngine:
         if row:
             (self.equity, self.realized_pnl, self.gross_profit, self.gross_loss,
              self.total, self.wins, self.max_dd, self.peak) = [float(x) for x in row]
-            self.total = int(self.total); self.wins = int(self.wins)
+            self.total = int(self.total)
+            self.wins  = int(self.wins)
         else:
             self.equity = self.peak = INITIAL_CAP
             self.realized_pnl = self.gross_profit = self.gross_loss = self.max_dd = 0.0
@@ -276,7 +304,7 @@ class StrategyEngine:
                 (strategy_id, now_ms, now_ms, INITIAL_CAP, INITIAL_CAP, INITIAL_CAP)
             )
 
-        # 열린 포지션 복원 — key: f"{alias}_{sym}_{direction}"
+        # 열린 포지션 복원: key = f"{alias}_{sym}_{direction}"
         self.positions: dict[str, dict] = {}
         cur.execute(
             "SELECT trader_alias, symbol, direction, size, entry_price, "
@@ -287,21 +315,22 @@ class StrategyEngine:
         for r in cur.fetchall():
             key = f"{r[0]}_{r[1]}_{r[2]}"
             self.positions[key] = {
-                "alias": r[0], "symbol": r[1], "direction": r[2],
-                "size": float(r[3]), "entry": float(r[4]),
-                "sl": float(r[5]), "tp": float(r[6]),
-                "high": float(r[4]),
-                "opened_at": int(r[7]), "trade_id": int(r[8]),
+                "alias":     r[0], "symbol": r[1], "direction": r[2],
+                "size":      float(r[3]), "entry": float(r[4]),
+                "sl":        float(r[5]), "tp": float(r[6]),
+                "high":      float(r[4]),
+                "opened_at": int(r[7]),  "trade_id": int(r[8]),
             }
         log.info(f"[{self.sid}] 복원: equity=${self.equity:,.2f} "
-                 f"pnl=${self.realized_pnl:+.4f} positions={len(self.positions)} trades={self.total}")
+                 f"pnl=${self.realized_pnl:+.4f} pos={len(self.positions)} trades={self.total}")
 
+    # ── 이벤트 처리 ──────────────────────────────────────
     def on_open(self, event: dict):
         alias  = event["alias"]
         sym    = event["symbol"]
         direc  = event["direction"]
-        price  = event["price"]
-        size   = event["size"]
+        price  = event["entry_price"]
+        size   = event["amount"]
         key    = f"{alias}_{sym}_{direc}"
 
         cr      = self.preset.get("copy_ratio", 0.10)
@@ -310,11 +339,10 @@ class StrategyEngine:
         tp_pct  = self.preset.get("take_profit_pct", 0.0)
 
         copy_size = size * cr
-        notional  = copy_size * price
-        if notional > max_pos:
+        if copy_size * price > max_pos:
             copy_size = max_pos / price
-        if copy_size * price < 5.0:  # 최소 $5
-            return
+        if copy_size * price < 5.0:
+            return  # 최소 $5
 
         sl_price = tp_price = 0.0
         if direc == "long":
@@ -327,13 +355,7 @@ class StrategyEngine:
         now_ms = int(time.time() * 1000)
 
         if key in self.positions:
-            # 추가 진입 — 가중평균
-            pos = self.positions[key]
-            ns  = pos["size"] + copy_size
-            ne  = (pos["entry"] * pos["size"] + price * copy_size) / ns
-            self.positions[key]["size"]  = ns
-            self.positions[key]["entry"] = ne
-            return  # 추가 진입은 별도 trade 레코드 미생성
+            return  # 이미 추적 중 (SCALE_IN은 별도 처리)
 
         cur = self.db.cursor()
         cur.execute(
@@ -350,14 +372,34 @@ class StrategyEngine:
             "sl": sl_price, "tp": tp_price,
             "high": price, "opened_at": now_ms, "trade_id": trade_id,
         }
-        log.debug(f"[{self.sid}] OPEN {alias} {sym} {direc} "
-                  f"${copy_size*price:.2f} @{price:.4f} SL={sl_price:.4f}")
+        notional = copy_size * price
+        log.info(f"[{self.sid}] OPEN {alias} {sym} {direc} "
+                 f"${notional:.1f} @{price:.4f}"
+                 + (f" SL={sl_price:.4f}" if sl_price else ""))
 
-    def on_close(self, event: dict, reason: str = "TRADER_CLOSE"):
+    def on_scale_in(self, event: dict):
+        """추가 진입 — 가중평균 진입가 갱신"""
         alias = event["alias"]
         sym   = event["symbol"]
         direc = event["direction"]
-        price = event["price"]
+        key   = f"{alias}_{sym}_{direc}"
+        if key not in self.positions:
+            self.on_open(event)  # 포지션 없으면 신규 오픈
+            return
+        pos   = self.positions[key]
+        cr    = self.preset.get("copy_ratio", 0.10)
+        delta = event.get("delta", 0) * cr
+        price = event["entry_price"]
+        ns    = pos["size"] + delta
+        ne    = (pos["entry"] * pos["size"] + price * delta) / ns
+        self.positions[key]["size"]  = ns
+        self.positions[key]["entry"] = ne
+        log.debug(f"[{self.sid}] SCALE_IN {alias} {sym} {direc} +{delta:.4f} avgEP={ne:.4f}")
+
+    def on_close(self, event: dict, close_price: float, reason: str = "TRADER_CLOSE"):
+        alias = event["alias"]
+        sym   = event["symbol"]
+        direc = event["direction"]
         key   = f"{alias}_{sym}_{direc}"
 
         if key not in self.positions:
@@ -370,11 +412,11 @@ class StrategyEngine:
         hold   = (now_ms - pos["opened_at"]) / 60000
 
         if direc == "long":
-            gross = (price - entry) * size
+            gross = (close_price - entry) * size
         else:
-            gross = (entry - price) * size
+            gross = (entry - close_price) * size
 
-        fee = (entry * size + price * size) * FEE_RATE / 2
+        fee = (entry * size + close_price * size) * FEE_RATE / 2
         net = gross - fee
         roi = net / (entry * size) * 100 if entry * size > 0 else 0
 
@@ -397,7 +439,7 @@ class StrategyEngine:
             self.db.execute(
                 "UPDATE pt_trades SET exit_price=?, gross_pnl=?, net_pnl=?, fee=?, "
                 "roi_pct=?, hold_min=?, closed_at=?, close_reason=? WHERE id=?",
-                (price, gross, net, fee, roi, hold, now_ms, reason, pos["trade_id"])
+                (close_price, gross, net, fee, roi, hold, now_ms, reason, pos["trade_id"])
             )
         self.db.execute(
             "UPDATE pt_sessions SET equity=?, realized_pnl=?, gross_profit=?, "
@@ -406,10 +448,10 @@ class StrategyEngine:
             (self.equity, self.realized_pnl, self.gross_profit, self.gross_loss,
              self.total, self.wins, self.max_dd, self.peak, now_ms, self.sid)
         )
-
         emoji = "✅" if net > 0 else "🔴"
-        log.info(f"[{self.sid}] {emoji} {alias} {sym} {direc} "
-                 f"{entry:.4f}→{price:.4f} ${net:+.4f} ({roi:+.2f}%) [{reason}]")
+        log.info(f"[{self.sid}] {emoji} CLOSE {alias} {sym} {direc} "
+                 f"{entry:.4f}→{close_price:.4f} ${net:+.4f} ({roi:+.2f}%) "
+                 f"hold={hold:.1f}m [{reason}]")
 
     def check_stops(self, prices: dict[str, float]):
         sl_pct = self.preset.get("stop_loss_pct", 0.0)
@@ -429,8 +471,7 @@ class StrategyEngine:
 
             if direc == "long":
                 roi = (price - entry) / entry
-                if price > pos["high"]:
-                    self.positions[key]["high"] = price
+                if price > pos["high"]: self.positions[key]["high"] = price
                 trail_dd = (price - pos["high"]) / pos["high"] if pos["high"] > 0 else 0
             else:
                 roi = (entry - price) / entry
@@ -440,20 +481,20 @@ class StrategyEngine:
 
             reason = ""
             if sl_pct > 0 and roi <= -sl_pct:
-                reason = f"STOP_LOSS({roi*100:.1f}%)"
+                reason = f"SL({roi*100:.1f}%)"
             elif tp_pct > 0 and roi >= tp_pct:
-                reason = f"TAKE_PROFIT({roi*100:.1f}%)"
+                reason = f"TP({roi*100:.1f}%)"
             elif tr_pct > 0 and trail_dd <= -tr_pct:
-                reason = f"TRAILING({trail_dd*100:.1f}%)"
+                reason = f"TRAIL({trail_dd*100:.1f}%)"
 
             if reason:
-                to_close.append((key, pos, price, reason))
+                to_close.append((pos, price, reason))
 
-        for key, pos, price, reason in to_close:
+        for pos, price, reason in to_close:
             self.on_close({
                 "alias": pos["alias"], "symbol": pos["symbol"],
-                "direction": pos["direction"], "price": price,
-            }, reason)
+                "direction": pos["direction"],
+            }, price, reason)
 
     def save_snapshot(self):
         snap_at = (int(time.time()) // SNAP_SEC) * SNAP_SEC * 1000
@@ -495,45 +536,42 @@ class StrategyEngine:
 # ══════════════════════════════════════════════════════════
 # 대시보드
 # ══════════════════════════════════════════════════════════
-SEP = "═" * 76
+SEP = "═" * 78
 def dashboard(engines: list[StrategyEngine], cycle: int, elapsed_min: float):
     now = datetime.now().strftime("%Y-%m-%d %H:%M KST")
     print(f"\n{SEP}")
-    print(f"  🔄 Copy Perp 4전략 페이퍼트레이딩  |  {now}  |  #{cycle}  |  {elapsed_min:.0f}분")
+    print(f"  🔄 Copy Perp 4전략 페이퍼트레이딩 v4  |  {now}  |  #{cycle}  |  {elapsed_min:.0f}분")
     print(SEP)
     print(f"  {'전략':<14} {'자본':>10} {'실현PnL':>11} {'ROI':>8} {'포지션':>6} "
-          f"{'거래':>6} {'WR':>6} {'PF':>6} {'MDD':>6}")
-    print(f"  {'─'*74}")
-
-    best_roi = max(e.stats()["roi_pct"] for e in engines)
+          f"{'거래':>5} {'WR':>6} {'PF':>6} {'MDD':>6}")
+    print(f"  {'─'*76}")
     for e in engines:
-        s = e.stats()
-        mark = "★" if s["roi_pct"] == best_roi and best_roi > 0 else " "
+        s    = e.stats()
+        best = max(engines, key=lambda x: x.realized_pnl)
+        mark = "★" if e is best and s["pnl"] > 0 else " "
         sign = "✅" if s["pnl"] > 0 else ("🔴" if s["pnl"] < 0 else "⏳")
-        pf_s = f"{s['pf']:.2f}" if s["pf"] > 0 else "-"
-        dd_s = f"{s['max_dd']:.1f}%" if s["max_dd"] > 0 else "-"
+        pf_s = f"{s['pf']:.2f}" if s["pf"] > 0 else " -  "
+        dd_s = f"{s['max_dd']:.1f}%" if s["max_dd"] > 0 else "  -  "
         print(f"  {sign}{mark} {s['emoji']} {s['label']:<10} ${s['equity']:>9,.2f} "
               f"${s['pnl']:>+9.4f} {s['roi_pct']:>+7.3f}% {s['positions']:>6} "
-              f"{s['trades']:>6} {s['win_rate']:>5.1f}% {pf_s:>6} {dd_s:>6}")
-
+              f"{s['trades']:>5} {s['win_rate']:>5.1f}% {pf_s:>6} {dd_s:>6}")
     print(SEP)
 
-    # 비교 인사이트
     with_trades = [e for e in engines if e.total > 0]
     if len(with_trades) >= 2:
-        best  = max(with_trades, key=lambda e: e.realized_pnl)
-        worst = min(with_trades, key=lambda e: e.realized_pnl)
-        if best.realized_pnl != worst.realized_pnl:
-            diff = best.realized_pnl - worst.realized_pnl
-            print(f"  💡 {best.sid}({best.realized_pnl:+.4f}) vs {worst.sid}({worst.realized_pnl:+.4f}) | 차이 ${diff:.4f}")
+        best_e  = max(with_trades, key=lambda e: e.realized_pnl)
+        worst_e = min(with_trades, key=lambda e: e.realized_pnl)
+        if best_e is not worst_e:
+            diff = best_e.realized_pnl - worst_e.realized_pnl
+            print(f"  💡 {best_e.sid}({best_e.realized_pnl:+.4f}) vs "
+                  f"{worst_e.sid}({worst_e.realized_pnl:+.4f}) | 차이 ${diff:.4f}")
 
-    # 오픈 포지션 샘플
+    # 기본형 포지션 샘플
     sample = []
-    for key in list(engines[0].positions.keys())[:4]:
-        pos = engines[0].positions[key]
-        sample.append(f"{pos['alias'][:8]}_{pos['symbol']} {pos['direction']}")
+    for key, pos in list(engines[0].positions.items())[:5]:
+        sample.append(f"{pos['alias'][:8]}·{pos['symbol']}·{pos['direction'][:1].upper()}")
     if sample:
-        print(f"  📊 포지션(기본형): {', '.join(sample)}")
+        print(f"  📊 기본형 포지션: {', '.join(sample)}")
     print()
 
 
@@ -541,7 +579,7 @@ def dashboard(engines: list[StrategyEngine], cycle: int, elapsed_min: float):
 # 메인 루프
 # ══════════════════════════════════════════════════════════
 def run():
-    # 페이퍼트레이딩 전용 DB
+    # 페이퍼트레이딩 전용 DB (autocommit)
     db = sqlite3.connect(PT_DB_PATH, timeout=60, check_same_thread=False,
                          isolation_level=None)
     db.execute("PRAGMA journal_mode=WAL")
@@ -549,82 +587,41 @@ def run():
     db.execute("PRAGMA synchronous=NORMAL")
     db.executescript(SCHEMA)
 
-    # mainnet_trades 읽기 전용 DB
-    src_db = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
-
-    # 엔진 초기화
+    # 전략 엔진 초기화
     engines = [StrategyEngine(sid, db) for sid in STRATEGIES]
 
     # 트레이더별 포지션 추적기
-    trackers = {alias: TraderPositionTracker(alias) for alias, _ in TRADERS}
+    trackers = {alias: PositionDiffTracker(alias) for alias, _ in TRADERS}
 
-    # last_ts 복원
-    cur = db.cursor()
-    last_ts_map: dict[str, int] = {}
-    for alias, _ in TRADERS:
-        cur.execute("SELECT last_ts FROM pt_last_ts WHERE trader_alias=?", (alias,))
-        row = cur.fetchone()
-        last_ts_map[alias] = int(row[0]) if row else 0
+    # 초기 포지션 로딩 (이전 상태와의 diff 없이 OPEN 이벤트 발생)
+    log.info(f"초기 포지션 로딩 | 트레이더 {len(TRADERS)}명...")
+    for alias, addr in TRADERS:
+        try:
+            positions = fetch_positions(addr)
+            # 첫 폴링 결과를 prev에 저장 (다음 폴링에서 diff 계산)
+            for pos in positions:
+                k = (pos["symbol"], pos["side"])
+                trackers[alias].prev[k] = pos
+            log.info(f"  {alias}: {len(positions)}개 포지션")
+            time.sleep(0.5)
+        except Exception as ex:
+            log.warning(f"  {alias} 초기 로딩 오류: {ex}")
 
-    # mainnet_trades 최신 ts
-    src_cur = src_db.cursor()
-    src_cur.execute("SELECT trader_alias, MAX(created_at) FROM mainnet_trades GROUP BY trader_alias")
-    src_max_ts = {r[0]: int(r[1]) for r in src_cur.fetchall()}
+    # 현재 오픈 포지션을 엔진에 등록 (기존 열린 것)
+    for alias, addr in TRADERS:
+        for (sym, side), pos in trackers[alias].prev.items():
+            direc = "long" if side == "bid" else "short"
+            event = {
+                "alias": alias, "symbol": sym, "direction": direc,
+                "amount": pos["amount"], "entry_price": pos["entry_price"],
+            }
+            for e in engines:
+                key = f"{alias}_{sym}_{direc}"
+                if key not in e.positions:
+                    e.on_open(event)
 
-    is_fresh = all(v == 0 for v in last_ts_map.values())
-    log.info(f"시작 (fresh={is_fresh}) | 전략 {len(engines)}개 | 트레이더 {len(TRADERS)}명 | 폴링 {POLL_SEC}s")
-
-    if is_fresh:
-        # 최초: mainnet_trades로 현재 포지션 상태 파악 → 엔진 동기화
-        log.info("기존 mainnet_trades 기반 포지션 초기화...")
-        for alias, _ in TRADERS:
-            src_cur.execute("""
-                SELECT symbol, side, amount, entry_price FROM mainnet_trades
-                WHERE trader_alias=? AND event_type='fulfill_taker'
-                ORDER BY created_at ASC
-            """, (alias,))
-            for sym, side, amt, price in src_cur.fetchall():
-                trackers[alias].process_trade({
-                    "symbol": sym, "side": side,
-                    "amount": amt, "entry_price": price,
-                    "event_type": "fulfill_taker",
-                })
-
-        # 트레이커 현재 포지션 → 엔진에 등록
-        for alias, _ in TRADERS:
-            for (sym, direc), pos in trackers[alias].positions.items():
-                event = {
-                    "alias": alias, "symbol": sym, "direction": direc,
-                    "size": pos["size"], "price": pos["entry_price"],
-                }
-                for e in engines:
-                    key = f"{alias}_{sym}_{direc}"
-                    if key not in e.positions:
-                        e.on_open(event)
-            time.sleep(0.02)
-
-        # last_ts = mainnet_trades 최대값 (이중처리 방지)
-        for alias, _ in TRADERS:
-            last_ts_map[alias] = src_max_ts.get(alias, 0)
-            db.execute(
-                "INSERT OR REPLACE INTO pt_last_ts (trader_alias, last_ts) VALUES (?,?)",
-                (alias, last_ts_map[alias])
-            )
-        log.info(f"초기화 완료 | 전략당 포지션: {len(engines[0].positions)}개")
-    else:
-        # 재시작: last_ts 이후 신규 거래만 처리
-        # 기존 열린 포지션 복원 (DB에서 읽음)
-        log.info(f"재시작 복원 | 전략당 포지션: {len(engines[0].positions)}개")
-
-    # 현재가 초기화
-    src_cur.execute("""
-        SELECT symbol, entry_price FROM mainnet_trades
-        WHERE created_at=(
-            SELECT MAX(created_at) FROM mainnet_trades m2
-            WHERE m2.symbol=mainnet_trades.symbol
-        ) AND entry_price > 0
-    """)
-    prices: dict[str, float] = {r[0]: float(r[1]) for r in src_cur.fetchall()}
+    log.info(f"시작 완료 | 전략 {len(engines)}개 | 폴링 {POLL_SEC}s | "
+             f"기본형 초기 포지션: {len(engines[0].positions)}개")
 
     cycle = 0
     start_time = time.time()
@@ -633,7 +630,7 @@ def run():
 
     def _stop(sig, frame):
         nonlocal running
-        log.info("종료 신호 수신")
+        log.info("종료 신호")
         running = False
 
     signal.signal(signal.SIGTERM, _stop)
@@ -641,53 +638,40 @@ def run():
 
     while running:
         cycle += 1
-        now_ms = int(time.time() * 1000)
 
-        # ── 신규 거래 수집 ───────────────────────────────
-        new_events: list[dict] = []
+        # ── 포지션 폴링 + 이벤트 감지 ────────────────────
+        all_events: list[dict] = []
         for alias, addr in TRADERS:
             try:
-                trades = fetch_new_trades(alias, addr, last_ts_map[alias])
-                if trades:
-                    for t in trades:
-                        ev = trackers[alias].process_trade(t)
-                        if ev:
-                            new_events.append(ev)
-                    last_ts_map[alias] = max(t.get("created_at", 0) for t in trades)
-                    db.execute(
-                        "INSERT OR REPLACE INTO pt_last_ts (trader_alias, last_ts) VALUES (?,?)",
-                        (alias, last_ts_map[alias])
-                    )
-                time.sleep(0.3)
+                positions = fetch_positions(addr)
+                events    = trackers[alias].diff(positions)
+                if events:
+                    log.debug(f"  {alias}: {len(events)}개 이벤트")
+                all_events.extend(events)
+                time.sleep(0.4)
             except Exception as ex:
-                log.warning(f"수집 오류 {alias}: {ex}")
+                log.warning(f"폴링 오류 {alias}: {ex}")
+
+        # ── 현재가 조회 ────────────────────────────────────
+        prices = fetch_mark_prices()
 
         # ── 이벤트 → 4전략 동시 반영 ─────────────────────
-        for ev in new_events:
+        for ev in all_events:
+            ev_type = ev["type"]
             for engine in engines:
                 try:
-                    if ev["type"] == "open":
+                    if ev_type == "OPEN":
                         engine.on_open(ev)
-                    else:
-                        engine.on_close(ev, "TRADER_CLOSE")
+                    elif ev_type == "SCALE_IN":
+                        engine.on_scale_in(ev)
+                    elif ev_type in ("CLOSE", "PARTIAL_CLOSE"):
+                        # 청산 가격 = 현재 마크 가격 (API에서 직접 제공하지 않음)
+                        close_px = prices.get(ev["symbol"], ev.get("entry_price", 0))
+                        engine.on_close(ev, close_px, ev_type)
                 except Exception as ex:
-                    log.error(f"[{engine.sid}] 처리 오류: {ex}")
+                    log.error(f"[{engine.sid}] 이벤트 처리 오류: {ex}")
 
-        # ── 현재가 갱신 (mainnet_trades 최신) ────────────
-        try:
-            src_cur2 = src_db.cursor()
-            src_cur2.execute("""
-                SELECT symbol, entry_price FROM mainnet_trades
-                WHERE created_at=(
-                    SELECT MAX(created_at) FROM mainnet_trades m2
-                    WHERE m2.symbol=mainnet_trades.symbol
-                ) AND entry_price > 0
-            """)
-            prices = {r[0]: float(r[1]) for r in src_cur2.fetchall()}
-        except Exception:
-            pass
-
-        # ── 손절/익절/트레일링 체크 ──────────────────────
+        # ── 손절/익절 체크 ────────────────────────────────
         for engine in engines:
             try:
                 engine.check_stops(prices)
@@ -703,8 +687,10 @@ def run():
         # ── 대시보드 ──────────────────────────────────────
         elapsed = (time.time() - start_time) / 60
         dashboard(engines, cycle, elapsed)
-        if new_events:
-            log.info(f"cycle#{cycle}: {len(new_events)}건 이벤트 처리")
+        if all_events:
+            log.info(f"cycle#{cycle}: {len(all_events)}개 이벤트 "
+                     f"({sum(1 for e in all_events if e['type']=='OPEN')} OPEN "
+                     f"/ {sum(1 for e in all_events if 'CLOSE' in e['type'])} CLOSE)")
 
         time.sleep(POLL_SEC)
 

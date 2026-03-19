@@ -1,0 +1,57 @@
+{
+  "strategy": "aggressive",
+  "label": "\ud83d\ude80\uacf5\uaca9\ud615",
+  "elapsed_min": 5.0,
+  "initial": 10000.0,
+  "capital": 10000.0,
+  "equity": 10000.0,
+  "total_pnl": 0.0,
+  "roi_pct": 0.0,
+  "wins": 2,
+  "losses": 0,
+  "total_trades": 2,
+  "win_rate": 1.0,
+  "profit_factor": 0.0,
+  "gross_profit": 0.0,
+  "gross_loss": 0.0,
+  "max_dd_pct": 0.0,
+  "open_positions": 15,
+  "total_volume": 13672.77,
+  "equity_series": [
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0,
+    10000.0
+  ],
+  "closed_trades": [
+    {
+      "symbol": "UNK@96.4000",
+      "side": "short",
+      "entry": 96.4,
+      "exit": 96.4,
+      "size": 0.042,
+      "pnl": 0.0,
+      "pct": 0.0,
+      "held_min": 0.0,
+      "trader": "8AsJfKor"
+    },
+    {
+      "symbol": "UNK@96.4000",
+      "side": "short",
+      "entry": 96.4,
+      "exit": 96.4,
+      "size": 0.042,
+      "pnl": 0.0,
+      "pct": 0.0,
+      "held_min": 0.0,
+      "trader": "4TYEjn9P"
+    }
+  ],
+  "copy_ratio": 0.2,
+  "max_pos_usdc": 1500.0
+}
