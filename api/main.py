@@ -91,6 +91,7 @@ from api.routers.builder import router as builder_router
 from api.routers.followers import router as followers_router
 from api.routers.ranked import router as ranked_router
 from api.routers.portfolio import router as portfolio_router
+from api.routers.performance import router as performance_router
 from core.alerting import get_alert_manager
 
 from contextlib import asynccontextmanager
@@ -242,8 +243,9 @@ def _status_to_code(status: int) -> str:
     }.get(status, f"HTTP_{status}")
 
 # 라우터 등록
-app.include_router(ranked_router)   # /traders/ranked — traders보다 먼저 (경로 충돌 방지)
+app.include_router(ranked_router)    # /traders/ranked — traders보다 먼저 (경로 충돌 방지)
 app.include_router(portfolio_router)
+app.include_router(performance_router)  # /performance — 팔로워 실적 기록
 app.include_router(traders_router)
 app.include_router(builder_router)
 app.include_router(followers_router)

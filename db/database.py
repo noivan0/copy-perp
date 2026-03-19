@@ -75,6 +75,64 @@ CREATE TABLE IF NOT EXISTS fee_records (
     fee_usdc        REAL,
     created_at      INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS performance_snapshots (
+    id              TEXT PRIMARY KEY,
+    address         TEXT NOT NULL,
+    role            TEXT NOT NULL,
+    snapshot_date   TEXT NOT NULL,
+    equity          REAL DEFAULT 0,
+    daily_pnl       REAL DEFAULT 0,
+    daily_roi_pct   REAL DEFAULT 0,
+    cum_pnl         REAL DEFAULT 0,
+    cum_roi_pct     REAL DEFAULT 0,
+    trade_count     INTEGER DEFAULT 0,
+    win_count       INTEGER DEFAULT 0,
+    loss_count      INTEGER DEFAULT 0,
+    created_at      INTEGER,
+    UNIQUE(address, snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_perf_snap_address ON performance_snapshots(address, snapshot_date DESC);
+
+CREATE TABLE IF NOT EXISTS follower_positions (
+    follower_address TEXT NOT NULL,
+    symbol           TEXT NOT NULL,
+    side             TEXT NOT NULL,
+    entry_price      REAL NOT NULL,
+    size             REAL NOT NULL,
+    opened_at        INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL,
+    PRIMARY KEY (follower_address, symbol)
+);
+
+CREATE TABLE IF NOT EXISTS follower_pnl_daily (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_address TEXT NOT NULL,
+    date            TEXT NOT NULL,
+    realized_pnl    REAL DEFAULT 0,
+    unrealized_pnl  REAL DEFAULT 0,
+    cumulative_pnl  REAL DEFAULT 0,
+    trade_count     INTEGER DEFAULT 0,
+    win_count       INTEGER DEFAULT 0,
+    loss_count      INTEGER DEFAULT 0,
+    volume_usdc     REAL DEFAULT 0,
+    synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(follower_address, date)
+);
+
+CREATE TABLE IF NOT EXISTS follower_trader_stats (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_address TEXT NOT NULL,
+    trader_address  TEXT NOT NULL,
+    total_pnl       REAL DEFAULT 0,
+    win_count       INTEGER DEFAULT 0,
+    loss_count      INTEGER DEFAULT 0,
+    total_trades    INTEGER DEFAULT 0,
+    total_volume    REAL DEFAULT 0,
+    last_trade_at   DATETIME,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(follower_address, trader_address)
+);
 """
 
 
@@ -100,6 +158,9 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
         "ALTER TABLE copy_trades ADD COLUMN entry_price REAL",
         "ALTER TABLE copy_trades ADD COLUMN exec_price REAL",
+        "ALTER TABLE copy_trades ADD COLUMN closed_at INTEGER",
+        "ALTER TABLE copy_trades ADD COLUMN hold_duration_sec INTEGER",
+        "ALTER TABLE copy_trades ADD COLUMN trader_alias TEXT",
         # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
         # fee_records는 CREATE_SQL에 이미 포함되어 있음
     ]
@@ -125,6 +186,15 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
             pass
 
     await conn.commit()
+
+    # PnL Tracker 마이그레이션 (positions, pnl_records, equity_snapshots, daily_stats)
+    try:
+        from db.pnl_tracker import apply_migrations
+        await apply_migrations(conn)
+    except Exception as _e:
+        import logging as _log
+        _log.getLogger(__name__).warning(f"PnL Tracker 마이그레이션 경고: {_e}")
+
     return conn
 
 
@@ -177,9 +247,52 @@ async def record_copy_trade(conn, trade: dict) -> None:
             "entry_price": trade.get("entry_price"),
             "exec_price": trade.get("exec_price"),
             "error_msg": trade.get("error_msg"),
+            "follower_address": trade.get("follower_address"),
+            "trader_address": trade.get("trader_address"),
+            "price": trade.get("price"),
+            "amount": trade.get("amount"),
         }
     )
     await conn.commit()
+
+    # pnl이 있는 경우 follower_trader_stats 자동 업서트
+    pnl = trade.get("pnl")
+    if pnl is not None:
+        follower_address = trade.get("follower_address")
+        trader_address = trade.get("trader_address")
+        if follower_address and trader_address:
+            try:
+                pnl_val = float(pnl)
+                is_win = pnl_val > 0
+                amount_str = trade.get("amount") or "0"
+                price_str = trade.get("price") or "0"
+                try:
+                    volume = float(amount_str) * float(price_str)
+                except (TypeError, ValueError):
+                    volume = 0.0
+                await conn.execute("""
+                    INSERT INTO follower_trader_stats
+                        (follower_address, trader_address, total_pnl,
+                         win_count, loss_count, total_trades, total_volume, last_trade_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(follower_address, trader_address) DO UPDATE SET
+                        total_pnl    = total_pnl + excluded.total_pnl,
+                        win_count    = win_count + excluded.win_count,
+                        loss_count   = loss_count + excluded.loss_count,
+                        total_trades = total_trades + 1,
+                        total_volume = total_volume + excluded.total_volume,
+                        last_trade_at = CURRENT_TIMESTAMP,
+                        updated_at   = CURRENT_TIMESTAMP
+                """, (
+                    follower_address, trader_address,
+                    pnl_val,
+                    1 if is_win else 0,
+                    0 if is_win else 1,
+                    volume,
+                ))
+                await conn.commit()
+            except Exception:
+                pass  # 통계 업데이트 실패는 조용히 무시
 
 
 async def get_leaderboard(conn, limit: int = 20) -> list:
@@ -260,3 +373,59 @@ async def get_copy_trades(conn, limit: int = 50, follower: str = None) -> list:
         "SELECT * FROM copy_trades ORDER BY created_at DESC LIMIT ?", (limit,)
     ) as cur:
         return [dict(r) for r in await cur.fetchall()]
+
+
+# ── follower_positions CRUD ───────────────────────────────────────────────────
+
+async def upsert_follower_position(
+    conn,
+    follower_address: str,
+    symbol: str,
+    side: str,
+    entry_price: float,
+    size: float,
+) -> None:
+    """팔로워 포지션 진입/업서트 (DB 영속화)"""
+    import time as _t
+    now = int(_t.time() * 1000)
+    await conn.execute(
+        """INSERT INTO follower_positions
+               (follower_address, symbol, side, entry_price, size, opened_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(follower_address, symbol) DO UPDATE SET
+               side=excluded.side,
+               entry_price=excluded.entry_price,
+               size=excluded.size,
+               updated_at=excluded.updated_at""",
+        (follower_address, symbol, side, entry_price, size, now, now),
+    )
+    await conn.commit()
+
+
+async def get_follower_position(conn, follower_address: str, symbol: str) -> "dict | None":
+    """팔로워의 특정 심볼 포지션 조회. 없으면 None."""
+    async with conn.execute(
+        "SELECT * FROM follower_positions WHERE follower_address=? AND symbol=?",
+        (follower_address, symbol),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def delete_follower_position(conn, follower_address: str, symbol: str) -> None:
+    """포지션 청산 시 DB에서 삭제"""
+    await conn.execute(
+        "DELETE FROM follower_positions WHERE follower_address=? AND symbol=?",
+        (follower_address, symbol),
+    )
+    await conn.commit()
+
+
+async def get_all_follower_positions(conn, follower_address: str) -> "list[dict]":
+    """팔로워의 모든 열린 포지션 목록"""
+    async with conn.execute(
+        "SELECT * FROM follower_positions WHERE follower_address=?",
+        (follower_address,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]

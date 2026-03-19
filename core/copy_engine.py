@@ -19,7 +19,11 @@ import aiosqlite
 
 from pacifica.client import PacificaClient, BUILDER_CODE, BUILDER_FEE_RATE
 from core.alerting import get_alert_manager
-from db.database import get_followers, record_copy_trade
+from db.database import (
+    get_followers, record_copy_trade,
+    upsert_follower_position, get_follower_position,
+    delete_follower_position, get_all_follower_positions,
+)
 from core.retry import retry_sync, classify_error
 
 logger = logging.getLogger(__name__)
@@ -80,6 +84,26 @@ class CopyEngine:
         self._client_cache: dict[str, PacificaClient] = {}
         # 팔로워별 동시 주문 중복 방지 Lock
         self._follower_locks: dict[str, asyncio.Lock] = {}
+
+    async def _load_positions_from_db(self) -> None:
+        """서버 재시작 시 DB의 follower_positions → self._positions 복원"""
+        try:
+            async with self.db.execute("SELECT * FROM follower_positions") as cur:
+                rows = await cur.fetchall()
+            for row in rows:
+                r = dict(row)
+                follower_addr = r["follower_address"]
+                symbol = r["symbol"]
+                if follower_addr not in self._positions:
+                    self._positions[follower_addr] = {}
+                self._positions[follower_addr][symbol] = {
+                    "entry_price": r["entry_price"],
+                    "size": r["size"],
+                    "side": r["side"],
+                }
+            logger.info(f"[PnL] DB에서 포지션 복원 완료: {len(rows)}건")
+        except Exception as e:
+            logger.warning(f"[PnL] 포지션 복원 오류 (무시): {e}")
 
     def _get_client(self, account: str) -> PacificaClient:  # type-checked
         if account not in self._client_cache:
@@ -361,39 +385,88 @@ class CopyEngine:
             except Exception as e:
                 logger.debug(f"무시된 예외: {e}")
 
-        # PnL 계산 (청산 이벤트 시)
-        realized_pnl = None
+        # ── PnL 계산 + follower_positions DB 영속화 ──────────────
         exec_price = price_f if price_f > 0 else 0.0
+        realized_pnl = None
+
         if status == "filled" and exec_price > 0:
             pos_key = symbol
             follower_positions = self._positions.setdefault(follower_addr, {})
-            
-            if side in ("bid",):  # 롱 진입 또는 숏 청산
+
+            # DB에서 포지션 fallback 조회 (메모리에 없을 때)
+            if pos_key not in follower_positions:
+                try:
+                    db_pos = await get_follower_position(self.db, follower_addr, pos_key)
+                    if db_pos:
+                        follower_positions[pos_key] = {
+                            "entry_price": db_pos["entry_price"],
+                            "size": db_pos["size"],
+                            "side": db_pos["side"],
+                        }
+                except Exception as _e:
+                    logger.debug(f"[PnL] DB 포지션 조회 오류 (무시): {_e}")
+
+            if side == "bid":  # 롱 진입 또는 숏 청산
                 if pos_key in follower_positions and follower_positions[pos_key].get("side") == "ask":
-                    # 숏 포지션 청산 → PnL = (진입가 - 청산가) * size
+                    # 숏 포지션 청산 → PnL = (진입가 - 청산가) × size
                     entry = follower_positions[pos_key]["entry_price"]
                     size = float(copy_amount)
-                    realized_pnl = (entry - exec_price) * size
+                    realized_pnl = round((entry - exec_price) * size, 6)
                     del follower_positions[pos_key]
+                    try:
+                        await delete_follower_position(self.db, follower_addr, pos_key)
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
+                    logger.info(f"[PnL] {follower_addr[:8]} {symbol} 숏청산 PnL={realized_pnl:+.4f}")
                 else:
                     # 롱 포지션 진입
-                    follower_positions[pos_key] = {"entry_price": exec_price, "size": float(copy_amount), "side": "bid"}
-            elif side in ("ask",):  # 숏 진입 또는 롱 청산
+                    follower_positions[pos_key] = {
+                        "entry_price": exec_price,
+                        "size": float(copy_amount),
+                        "side": "bid",
+                    }
+                    try:
+                        await upsert_follower_position(
+                            self.db, follower_addr, pos_key, "bid", exec_price, float(copy_amount)
+                        )
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 저장 오류 (무시): {_e}")
+
+            elif side == "ask":  # 숏 진입 또는 롱 청산
                 if pos_key in follower_positions and follower_positions[pos_key].get("side") == "bid":
-                    # 롱 포지션 청산 → PnL = (청산가 - 진입가) * size
+                    # 롱 포지션 청산 → PnL = (청산가 - 진입가) × size
                     entry = follower_positions[pos_key]["entry_price"]
                     size = float(copy_amount)
-                    realized_pnl = (exec_price - entry) * size
+                    realized_pnl = round((exec_price - entry) * size, 6)
                     del follower_positions[pos_key]
+                    try:
+                        await delete_follower_position(self.db, follower_addr, pos_key)
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
+                    logger.info(f"[PnL] {follower_addr[:8]} {symbol} 롱청산 PnL={realized_pnl:+.4f}")
                 else:
                     # 숏 포지션 진입
-                    follower_positions[pos_key] = {"entry_price": exec_price, "size": float(copy_amount), "side": "ask"}
+                    follower_positions[pos_key] = {
+                        "entry_price": exec_price,
+                        "size": float(copy_amount),
+                        "side": "ask",
+                    }
+                    try:
+                        await upsert_follower_position(
+                            self.db, follower_addr, pos_key, "ask", exec_price, float(copy_amount)
+                        )
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 저장 오류 (무시): {_e}")
 
-        # 기록 (entry_price, exec_price 포함)
-        pos_key = symbol
+        # ── copy_trades 기록 ──────────────────────────────────
+        _now_ms = int(time.time() * 1000)
+
+        # 현재 포지션 진입가 기록용
         _entry = None
-        if follower_addr in self._positions and pos_key in self._positions[follower_addr]:
-            _entry = self._positions[follower_addr][pos_key].get("entry_price")
+        _fp = self._positions.get(follower_addr, {})
+        if symbol in _fp:
+            _entry = _fp[symbol].get("entry_price")
+
         await record_copy_trade(self.db, {
             "id": trade_id,
             "follower_address": follower_addr,
@@ -407,7 +480,7 @@ class CopyEngine:
             "pnl": realized_pnl,
             "entry_price": _entry,
             "exec_price": exec_price if exec_price > 0 else None,
-            "created_at": int(time.time() * 1000),
+            "created_at": _now_ms,
             "error_msg": _error_msg if status == "failed" else None,
         })
 

@@ -2,15 +2,23 @@
 api/routers/portfolio.py
 포트폴리오 최적 배분 라우터
 
-GET /portfolio/optimal  - CRS 기반 최적 트레이더 포트폴리오
-GET /portfolio/backtest - 간단 백테스트
+GET /portfolio/optimal       - CRS 기반 최적 트레이더 포트폴리오
+GET /portfolio/backtest      - 간단 백테스트
+GET /portfolio/performance   - 팔로워 PnL 리포트
+GET /portfolio/equity-curve  - equity curve 조회
 """
 import logging
-from fastapi import APIRouter, Query
+import re
+from fastapi import APIRouter, Query, HTTPException
 from core.reliability import compute_crs
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
+
+_SOLANA_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
+def _is_valid_solana_address(address: str) -> bool:
+    return bool(_SOLANA_RE.match(address))
 
 async def _get_qualified_traders(min_crs: float = 50.0) -> list:
     """CRS B등급 이상 트레이더 조회"""
@@ -140,3 +148,77 @@ async def backtest_portfolio(
         "avg_equity": round(avg_equity, 2),
         "note": "단순 PnL 비례 추정 (슬리피지/수수료 미포함)",
     }
+
+
+@router.get("/performance")
+async def get_follower_performance(
+    address: str = Query(..., description="팔로워 주소"),
+    days: int = Query(30, ge=1, le=365),
+):
+    """팔로워 PnL 리포트 — Sharpe, MDD, by_trader/symbol, daily equity curve"""
+    if not _is_valid_solana_address(address):
+        raise HTTPException(status_code=400, detail="유효하지 않은 Solana 주소입니다")
+    try:
+        from api.main import get_db
+        from core.stats import compute_follower_pnl_report
+        db = await get_db()
+        return await compute_follower_pnl_report(db, address, days)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"performance 조회 실패 {address[:12]}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/equity-curve")
+async def get_equity_curve(
+    address: str = Query(..., description="팔로워 또는 트레이더 주소"),
+    days: int = Query(30, ge=1, le=365),
+):
+    """Equity Curve 조회 — snapshot 우선, 없으면 실시간 계산"""
+    if not _is_valid_solana_address(address):
+        raise HTTPException(status_code=400, detail="유효하지 않은 Solana 주소입니다")
+    try:
+        from api.main import get_db
+        from core.stats import compute_follower_pnl_report
+        import time as _time
+        db = await get_db()
+
+        # performance_snapshots 테이블에서 먼저 조회
+        cutoff_date = __import__("datetime").datetime.utcfromtimestamp(
+            _time.time() - days * 86400
+        ).strftime("%Y-%m-%d")
+        async with db.execute(
+            """SELECT snapshot_date, equity, daily_pnl, cum_roi_pct
+               FROM performance_snapshots
+               WHERE address = ? AND snapshot_date >= ?
+               ORDER BY snapshot_date ASC""",
+            (address, cutoff_date)
+        ) as cur:
+            rows = await cur.fetchall()
+
+        if rows:
+            data = [
+                {
+                    "date": r["snapshot_date"],
+                    "equity": r["equity"],
+                    "daily_pnl": r["daily_pnl"],
+                    "cum_roi_pct": r["cum_roi_pct"],
+                }
+                for r in rows
+            ]
+            return {"address": address, "days": days, "data": data, "source": "snapshot"}
+
+        # snapshot 없으면 실시간 계산
+        report = await compute_follower_pnl_report(db, address, days)
+        return {
+            "address": address,
+            "days": days,
+            "data": report.get("daily_equity", []),
+            "source": "realtime",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"equity-curve 조회 실패 {address[:12]}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

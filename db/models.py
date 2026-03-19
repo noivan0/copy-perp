@@ -7,6 +7,37 @@ import os
 DB_PATH = os.getenv("DB_PATH", "copy_perp.db")
 
 CREATE_TABLES = """
+-- 팔로워 일별 PnL 스냅샷
+CREATE TABLE IF NOT EXISTS follower_pnl_daily (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_address TEXT NOT NULL,
+    date            TEXT NOT NULL,
+    realized_pnl    REAL DEFAULT 0,
+    unrealized_pnl  REAL DEFAULT 0,
+    cumulative_pnl  REAL DEFAULT 0,
+    trade_count     INTEGER DEFAULT 0,
+    win_count       INTEGER DEFAULT 0,
+    loss_count      INTEGER DEFAULT 0,
+    volume_usdc     REAL DEFAULT 0,
+    synced_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(follower_address, date)
+);
+
+-- 트레이더별 복사 실적 집계
+CREATE TABLE IF NOT EXISTS follower_trader_stats (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_address TEXT NOT NULL,
+    trader_address  TEXT NOT NULL,
+    total_pnl       REAL DEFAULT 0,
+    win_count       INTEGER DEFAULT 0,
+    loss_count      INTEGER DEFAULT 0,
+    total_trades    INTEGER DEFAULT 0,
+    total_volume    REAL DEFAULT 0,
+    last_trade_at   DATETIME,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(follower_address, trader_address)
+);
+
 CREATE TABLE IF NOT EXISTS traders (
     id              TEXT PRIMARY KEY,
     alias           TEXT,
@@ -64,6 +95,23 @@ class DB:
     async def init(self):
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(CREATE_TABLES)
+            await db.commit()
+            # 마이그레이션: copy_trades 컬럼 추가 (이미 있으면 무시)
+            alter_stmts = [
+                "ALTER TABLE copy_trades ADD COLUMN pnl REAL",
+                "ALTER TABLE copy_trades ADD COLUMN entry_price REAL",
+                "ALTER TABLE copy_trades ADD COLUMN exec_price REAL",
+                "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
+                "ALTER TABLE copy_trades ADD COLUMN price TEXT",
+                "ALTER TABLE copy_trades ADD COLUMN amount TEXT",
+                "ALTER TABLE copy_trades ADD COLUMN trader_address TEXT",
+                "ALTER TABLE copy_trades ADD COLUMN follower_address TEXT",
+            ]
+            for stmt in alter_stmts:
+                try:
+                    await db.execute(stmt)
+                except Exception:
+                    pass
             await db.commit()
 
     async def add_trader(self, trader_id: str, alias: str = ""):
@@ -209,6 +257,215 @@ class DB:
         if std < 1e-10:
             return 0.0
         return float(np.mean(arr) / std * math.sqrt(252))
+
+    async def get_follower_pnl_summary(self, follower_address: str, days: int = 30) -> dict:
+        """팔로워의 최근 N일 실현 PnL 합계, 승률, 거래 수, 볼륨 반환"""
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as total_pnl,
+                    COUNT(*) as total_trades,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl > 0 THEN 1 ELSE 0 END) as win_count,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl <= 0 THEN 1 ELSE 0 END) as loss_count,
+                    COALESCE(SUM(
+                        CASE WHEN amount IS NOT NULL AND price IS NOT NULL
+                        THEN CAST(amount AS REAL) * CAST(price AS REAL)
+                        ELSE 0 END
+                    ), 0) as volume_usdc
+                FROM copy_trades
+                WHERE follower_address = ?
+                  AND status = 'filled'
+                  AND date(created_at / 1000, 'unixepoch') >= ?
+            """, (follower_address, cutoff))
+            row = await cur.fetchone()
+            if row is None:
+                return {"total_pnl": 0.0, "win_rate": 0.0, "total_trades": 0,
+                        "win_count": 0, "loss_count": 0, "volume_usdc": 0.0}
+            r = dict(row)
+            total = r["total_trades"] or 0
+            wins  = r["win_count"] or 0
+            win_rate = wins / total if total > 0 else 0.0
+            return {
+                "total_pnl":   float(r["total_pnl"] or 0),
+                "win_rate":    round(win_rate, 4),
+                "total_trades": int(total),
+                "win_count":   int(wins),
+                "loss_count":  int(r["loss_count"] or 0),
+                "volume_usdc": float(r["volume_usdc"] or 0),
+            }
+
+    async def get_follower_pnl_by_trader(self, follower_address: str) -> list:
+        """팔로워가 각 트레이더별로 얻은 PnL 집계 반환"""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT
+                    trader_address,
+                    COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as total_pnl,
+                    COUNT(*) as trades,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl > 0 THEN 1 ELSE 0 END) as win_count
+                FROM copy_trades
+                WHERE follower_address = ? AND status = 'filled'
+                GROUP BY trader_address
+            """, (follower_address,))
+            rows = await cur.fetchall()
+            result = []
+            for row in rows:
+                r = dict(row)
+                total = r["trades"] or 0
+                wins  = r["win_count"] or 0
+                win_rate = wins / total if total > 0 else 0.0
+                result.append({
+                    "trader_address": r["trader_address"],
+                    "total_pnl":     float(r["total_pnl"] or 0),
+                    "trades":        int(total),
+                    "win_rate":      round(win_rate, 4),
+                })
+            return result
+
+    async def get_follower_pnl_history(self, follower_address: str, days: int = 30) -> list:
+        """일별 PnL 이력 반환 (follower_pnl_daily 우선, 없으면 copy_trades 집계)"""
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            # 먼저 follower_pnl_daily 시도
+            cur = await db.execute("""
+                SELECT date, realized_pnl, cumulative_pnl, trade_count, win_count
+                FROM follower_pnl_daily
+                WHERE follower_address = ? AND date >= ?
+                ORDER BY date ASC
+            """, (follower_address, cutoff))
+            rows = await cur.fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+
+            # fallback: copy_trades 일별 집계
+            cur = await db.execute("""
+                SELECT
+                    date(created_at / 1000, 'unixepoch') as date,
+                    COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as realized_pnl,
+                    COUNT(*) as trade_count,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl > 0 THEN 1 ELSE 0 END) as win_count
+                FROM copy_trades
+                WHERE follower_address = ?
+                  AND status = 'filled'
+                  AND date(created_at / 1000, 'unixepoch') >= ?
+                GROUP BY date(created_at / 1000, 'unixepoch')
+                ORDER BY date ASC
+            """, (follower_address, cutoff))
+            rows = await cur.fetchall()
+            # cumulative_pnl 계산
+            result = []
+            cumulative = 0.0
+            for row in rows:
+                r = dict(row)
+                cumulative += float(r.get("realized_pnl") or 0)
+                result.append({
+                    "date":          r["date"],
+                    "realized_pnl":  float(r.get("realized_pnl") or 0),
+                    "cumulative_pnl": round(cumulative, 4),
+                    "trade_count":   int(r.get("trade_count") or 0),
+                    "win_count":     int(r.get("win_count") or 0),
+                })
+            return result
+
+    async def snapshot_follower_pnl(self, follower_address: str, date: str = None):
+        """오늘(UTC) copy_trades 집계 → follower_pnl_daily UPSERT"""
+        from datetime import datetime, timezone
+        if date is None:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as realized_pnl,
+                    COUNT(*) as trade_count,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl > 0 THEN 1 ELSE 0 END) as win_count,
+                    SUM(CASE WHEN pnl IS NOT NULL AND pnl <= 0 THEN 1 ELSE 0 END) as loss_count,
+                    COALESCE(SUM(
+                        CASE WHEN amount IS NOT NULL AND price IS NOT NULL
+                        THEN CAST(amount AS REAL) * CAST(price AS REAL)
+                        ELSE 0 END
+                    ), 0) as volume_usdc
+                FROM copy_trades
+                WHERE follower_address = ?
+                  AND status = 'filled'
+                  AND date(created_at / 1000, 'unixepoch') = ?
+            """, (follower_address, date))
+            row = await cur.fetchone()
+            if row is None:
+                return
+            r = dict(row)
+
+            # 누적 PnL 계산
+            cur2 = await db.execute("""
+                SELECT COALESCE(SUM(realized_pnl), 0) as cum
+                FROM follower_pnl_daily
+                WHERE follower_address = ? AND date < ?
+            """, (follower_address, date))
+            prev_row = await cur2.fetchone()
+            prev_cum = float(dict(prev_row)["cum"] or 0) if prev_row else 0.0
+            cumulative = prev_cum + float(r["realized_pnl"] or 0)
+
+            await db.execute("""
+                INSERT INTO follower_pnl_daily
+                    (follower_address, date, realized_pnl, cumulative_pnl,
+                     trade_count, win_count, loss_count, volume_usdc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(follower_address, date) DO UPDATE SET
+                    realized_pnl   = excluded.realized_pnl,
+                    cumulative_pnl = excluded.cumulative_pnl,
+                    trade_count    = excluded.trade_count,
+                    win_count      = excluded.win_count,
+                    loss_count     = excluded.loss_count,
+                    volume_usdc    = excluded.volume_usdc,
+                    synced_at      = CURRENT_TIMESTAMP
+            """, (
+                follower_address, date,
+                float(r["realized_pnl"] or 0),
+                round(cumulative, 4),
+                int(r["trade_count"] or 0),
+                int(r["win_count"] or 0),
+                int(r["loss_count"] or 0),
+                float(r["volume_usdc"] or 0),
+            ))
+            await db.commit()
+
+    async def upsert_follower_trader_stats(
+        self,
+        follower_address: str,
+        trader_address: str,
+        pnl_delta: float,
+        is_win: bool,
+        volume_usdc: float,
+    ):
+        """follower_trader_stats UPSERT (기존 레코드면 합산, 없으면 insert)"""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("""
+                INSERT INTO follower_trader_stats
+                    (follower_address, trader_address, total_pnl,
+                     win_count, loss_count, total_trades, total_volume, last_trade_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(follower_address, trader_address) DO UPDATE SET
+                    total_pnl    = total_pnl + excluded.total_pnl,
+                    win_count    = win_count + excluded.win_count,
+                    loss_count   = loss_count + excluded.loss_count,
+                    total_trades = total_trades + 1,
+                    total_volume = total_volume + excluded.total_volume,
+                    last_trade_at = CURRENT_TIMESTAMP,
+                    updated_at   = CURRENT_TIMESTAMP
+            """, (
+                follower_address, trader_address,
+                pnl_delta,
+                1 if is_win else 0,
+                0 if is_win else 1,
+                volume_usdc,
+            ))
+            await db.commit()
 
     async def get_trader_leaderboard(self, limit: int = 20) -> list:
         async with aiosqlite.connect(self.path) as db:
