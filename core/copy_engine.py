@@ -245,11 +245,14 @@ class CopyEngine:
         import math
 
         # ── 전략 프리셋 로드 ──────────────────────────────
-        strategy_id = follower.get("strategy") or "default"
+        try:
+            strategy_id = follower["strategy"] or "default"
+        except (KeyError, IndexError, TypeError):
+            strategy_id = "default"
         preset = get_strategy_preset(strategy_id)
 
-        # ── 심볼 필터: FX/미지원 종목 사전 차단 ──────────
-        if preset.get("symbol_filter", True):
+        # ── 심볼 필터: FX/미지원 종목 사전 차단 (mock_mode 제외) ──────────
+        if preset.get("symbol_filter", True) and not self.mock_mode:
             if symbol.upper() not in SUPPORTED_SYMBOLS:
                 logger.info(f"[{follower_addr[:8]}] {symbol} 미지원 심볼 차단 (strategy={strategy_id})")
                 return

@@ -26,82 +26,122 @@ logger = logging.getLogger(__name__)
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_DB = os.path.join(_ROOT, "mainnet_tracker.db")
 
-COPY_REALISM = 0.82
-TOTAL_FEE    = 0.0015
+COPY_REALISM = 0.998  # 슬리피지+builder fee 0.2% (메인넷 실측 기준)
+TOTAL_FEE    = 0.0010  # builder fee 0.1%
 
-# ── 프리셋 정의 ────────────────────────────────────────────────────
+# ── 메인넷 확정 폴백 트레이더 (2026-03-19 CRS 분석, 품질필터 43명 → 선별) ──
+MAINNET_FALLBACK = {
+    "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E":  {"alias":"YjCD9Gek","crs":82.5,"roi30":113.9,"cons":3,"lev":1.5,"grade":"A"},
+    "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv": {"alias":"6ZjWoJKe","crs":82.4,"roi30":157.5,"cons":3,"lev":2.7,"grade":"A"},
+    "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ":  {"alias":"4TYEjn9P","crs":81.1,"roi30":141.7,"cons":4,"lev":5.8,"grade":"A"},
+    "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v":  {"alias":"D5Lnbmz", "crs":75.1,"roi30": 30.7,"cons":3,"lev":0.0,"grade":"A"},
+    "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL":  {"alias":"CAHPdCrm","crs":72.1,"roi30": 27.9,"cons":3,"lev":1.3,"grade":"A"},
+    "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv":   {"alias":"Ph9yECGo","crs":69.5,"roi30":1017.3,"cons":3,"lev":2.2,"grade":"A"},
+    "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2":  {"alias":"FN4seJZ9","crs":66.8,"roi30": 416.2,"cons":4,"lev":0.7,"grade":"A"},
+    "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a":  {"alias":"GNzSLjvy","crs":56.7,"roi30":  54.1,"cons":4,"lev":0.0,"grade":"B"},
+    "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B":  {"alias":"BkUTkCt4","crs":44.5,"roi30":  31.3,"cons":4,"lev":3.0,"grade":"B"},
+}
+
+# ── 프리셋 정의 (메인넷 실측 최적화, 2026-03-19 확정) ──────────────────────
 PRESETS = {
     "default": {
         "key":         "default",
         "label":       "기본형",
-        "emoji":       "🔒",
-        "description": "안전한 시작. 자본의 10%만 운용. S등급 안정성 최상위 2명 자동 배정.",
-        "copy_ratio":        0.10,
+        "emoji":       "📋",
+        "description": "메인넷 CRS 상위 3명. 신규 사용자 권장 시작점. copy_ratio 10%.",
+        "copy_ratio":        0.10,   # 시뮬레이션 최적점: 10%
         "max_position_usdc": 100.0,
-        "n_traders":         2,
-        "grade_filter":      ["S"],
-        "sort_by":           "stability",   # 안정성 = roi30*(mom/3) + roi7_pos*0.3
-        "risk_level":        1,             # 1=최저위험 ~ 4=최고위험
-        "stop_loss_pct":     0.0,          # 손절 없음 (트레이더 따라감)
+        "n_traders":         3,
+        "grade_filter":      ["S", "A"],
+        "sort_by":           "crs",
+        "risk_level":        2,
+        "stop_loss_pct":     0.0,
         "take_profit_pct":   0.0,
         "trailing_stop_pct": 0.0,
-        "symbol_filter":     True,         # FX/미지원 심볼 자동 차단
-        "expected_roi_30d_pct": 5.2,
-        "expected_roi_7d_pct":  2.4,
+        "symbol_filter":     True,
+        "expected_roi_30d_pct": 13.7,  # Top3 평균 ROI 137.7% × 10%
+        "expected_roi_7d_pct":   3.2,
+        "is_default":        True,
+        "fallback_traders": [
+            "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+            "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
+            "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",
+        ],
     },
     "conservative": {
         "key":         "conservative",
         "label":       "안정형",
         "emoji":       "🛡️",
-        "description": "S등급 3명 분산. 손절 -10% 적용. 안정적 우상향.",
-        "copy_ratio":        0.12,
-        "max_position_usdc": 120.0,
-        "n_traders":         3,
-        "grade_filter":      ["S"],
-        "sort_by":           "roi_30d",
-        "risk_level":        2,
-        "stop_loss_pct":     0.10,         # -10% 손절
-        "take_profit_pct":   0.0,
-        "trailing_stop_pct": 0.0,
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 5.8,
-        "expected_roi_7d_pct":  2.6,
+        "description": "일관성 4/4 + 저레버리지 트레이더만. 손실 최소화 우선.",
+        "copy_ratio":        0.10,
+        "max_position_usdc":  50.0,   # 포지션 상한 축소
+        "n_traders":          2,
+        "grade_filter":       ["S", "A", "B"],
+        "sort_by":            "stability",
+        "risk_level":         1,
+        "stop_loss_pct":      0.0,
+        "take_profit_pct":    0.0,
+        "trailing_stop_pct":  0.0,
+        "symbol_filter":      True,
+        "expected_roi_30d_pct": 4.2,   # 안정형 중앙값 ROI 42% × 10%
+        "expected_roi_7d_pct":  1.0,
+        "is_default":         False,
+        "fallback_traders": [
+            "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a",
+            "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",
+        ],
     },
     "balanced": {
         "key":         "balanced",
         "label":       "균형형",
         "emoji":       "⚖️",
-        "description": "S+A등급 4명. 손절 -15% + 트레일링. 수익성↑ 리스크↑.",
-        "copy_ratio":        0.15,
-        "max_position_usdc": 200.0,
-        "n_traders":         4,
-        "grade_filter":      ["S", "A"],
-        "sort_by":           "score",       # roi30*momentum + roi7*0.5
-        "risk_level":        3,
-        "stop_loss_pct":     0.15,         # -15% 손절
-        "take_profit_pct":   0.0,
-        "trailing_stop_pct": 0.20,         # 고점 -20% 트레일링
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 6.4,
-        "expected_roi_7d_pct":  3.1,
+        "description": "CRS A등급 5명 분산. 수익성과 안정성의 균형점.",
+        "copy_ratio":        0.10,
+        "max_position_usdc": 100.0,
+        "n_traders":           5,
+        "grade_filter":       ["S", "A"],
+        "sort_by":            "crs",
+        "risk_level":          3,
+        "stop_loss_pct":       0.0,
+        "take_profit_pct":     0.0,
+        "trailing_stop_pct":   0.0,
+        "symbol_filter":       True,
+        "expected_roi_30d_pct": 11.4,  # 균형형 중앙값 ROI 113.9% × 10%
+        "expected_roi_7d_pct":   2.6,
+        "is_default":          False,
+        "fallback_traders": [
+            "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+            "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
+            "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",
+            "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v",
+            "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL",
+        ],
     },
     "aggressive": {
         "key":         "aggressive",
         "label":       "공격형",
-        "emoji":       "⚡",
-        "description": "7일 모멘텀 최강 3명. 손절 -5% + 익절 +30%. 단기 고수익. 고위험.",
-        "copy_ratio":        0.20,
-        "max_position_usdc": 300.0,
-        "n_traders":         3,
-        "grade_filter":      ["S", "A"],
-        "sort_by":           "roi_7d",      # 최근 7일 ROI 기준
-        "risk_level":        4,
-        "stop_loss_pct":     0.05,         # -5% 빠른 손절
-        "take_profit_pct":   0.30,         # +30% 익절
-        "trailing_stop_pct": 0.10,         # 고점 -10% 트레일링
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 7.2,
-        "expected_roi_7d_pct":  5.8,        # 7일이 핵심
+        "emoji":       "🚀",
+        "description": "메인넷 고ROI 검증 5명. 높은 수익, 높은 변동성. 경험자 권장.",
+        "copy_ratio":        0.15,   # 15% — 고수익 극대화
+        "max_position_usdc": 200.0,
+        "n_traders":           5,
+        "grade_filter":       ["S", "A"],
+        "sort_by":            "roi_30d",
+        "risk_level":          5,
+        "stop_loss_pct":       0.0,
+        "take_profit_pct":     0.0,
+        "trailing_stop_pct":   0.0,
+        "symbol_filter":       True,
+        "expected_roi_30d_pct": 23.6,  # 중앙값 ROI 157.5% × 15%
+        "expected_roi_7d_pct":   6.8,
+        "is_default":          False,
+        "fallback_traders": [
+            "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
+            "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
+            "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",
+            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",
+        ],
     },
 }
 

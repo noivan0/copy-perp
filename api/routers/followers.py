@@ -582,9 +582,9 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             raise
         except Exception as e:
             logger.debug(f"Privy 소유권 검증 DB 오류 (무시): {e}")
-    # preset의 traders 우선, 직접 지정된 traders, 기본 DEFAULT_TIER1 순
+    # risk_mode 트레이더 → preset 트레이더 → 직접 지정 → DEFAULT_TIER1 순
     _preset_traders = preset.get("traders") if preset else None
-    traders = body.traders or _preset_traders or DEFAULT_TIER1
+    traders = body.traders or _risk_traders or _preset_traders or DEFAULT_TIER1
 
     result = {
         "follower": follower,
@@ -934,3 +934,28 @@ async def remove_follower(follower_address: str) -> dict:
     )
     await _db.commit()
     return {"ok": True, "follower": follower_address, "status": "removed"}
+
+
+@router.get("/presets")
+async def get_risk_presets():
+    """사용 가능한 리스크 프리셋 목록 반환 — 프론트엔드 시나리오 선택 UI용"""
+    _labels = {
+        "default":      "기본",
+        "conservative": "보수적",
+        "balanced":     "균형",
+        "aggressive":   "적극적",
+    }
+    return {
+        "presets": [
+            {
+                "mode":                  k,
+                "label":                 _labels.get(k, k),
+                "trader_count":          len(v["traders"]),
+                "copy_ratio_pct":        v["copy_ratio"] * 100,
+                "max_position_usdc":     v["max_position_usdc"],
+                "description":           v["description"],
+                "expected_monthly_roi_pct": v["expected_monthly_roi_pct"],
+            }
+            for k, v in RISK_PRESETS.items()
+        ]
+    }
