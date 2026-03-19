@@ -23,15 +23,26 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.getenv("DB_PATH", "copy_perp.db")
 
-# ── 지원 심볼 (Pacifica mainnet 기준) ─────────────────────
-# /markets 에서 실측 확인된 crypto perp 전용
+# ── 지원 심볼 (Pacifica mainnet 실측 확인 — 2026-03-19) ─────────────
+# mainnet_trades + copy_trades 실데이터 기반 63개 실사용 종목
+# FX 중 USDJPY 제외 (422 에러 확인), EURUSD는 포함 (미검증)
 SUPPORTED_SYMBOLS: set[str] = {
+    # Crypto
     "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK",
-    "LTC", "UNI", "AAVE", "ARB", "OP", "MATIC", "NEAR", "APT", "SUI",
-    "INJ", "TIA", "ATOM", "HYPE", "PUMP", "PENGU", "PAXG", "TAO",
-    "XMR", "ZEC", "PEPE", "WIF", "BONK", "JTO", "PYTH", "JUP",
-    "W", "ZRO", "RENDER", "RAY", "DRIFT", "POPCAT", "TRUMP",
-    "VINE", "FARTCOIN", "ACT", "PNUT", "GOAT",
+    "LTC", "UNI", "AAVE", "ARB", "NEAR", "SUI", "HYPE", "PUMP",
+    "PENGU", "PAXG", "TAO", "XMR", "ZEC", "JUP", "ZRO", "TRUMP",
+    "FARTCOIN", "WIF", "WLD", "VIRTUAL", "ENA", "CRV", "LDO", "ICP",
+    "BCH", "TON", "ASTER", "MON", "PIPPIN", "URNM", "2Z", "XPL",
+    "ZK", "STRK", "LINEA", "ZORA", "LIT", "MEGA", "WLFI",
+    "kBONK", "kPEPE",
+    # Commodities (Pacifica perp)
+    "CL", "XAG", "XAU", "NATGAS", "COPPER",
+    # Stocks (Pacifica perp)
+    "TSLA", "NVDA", "PLTR", "GOOGL", "HOOD", "BP",
+    # FX (주의: USDJPY는 차단, 나머지는 실거래 확인 필요)
+    "EURUSD",
+    # 기타
+    "PAXG",
 }
 
 # ── 전략 ID ───────────────────────────────────────────────

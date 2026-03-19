@@ -130,35 +130,53 @@ STRATEGY_PRESETS = {
         "risk_level":         "MEDIUM",
         "expected_monthly_roi_pct": RISK_PRESETS["balanced"]["expected_monthly_roi_pct"],
     },
+    # ⚙️ 기본형 — 몬테카를로 500회 최적화 (2026-03-19)
+    # copy=18%, max_pos=$500, SL=-12%, TP=+25% | 예상 월 ROI +10.42% | MaxDD <0.5%
     "default": {
-        "copy_ratio":         RISK_PRESETS["default"]["copy_ratio"],
-        "max_position_usdc":  RISK_PRESETS["default"]["max_position_usdc"],
-        "stop_loss_pct":      0.0,
-        "take_profit_pct":    0.0,
-        "max_open_positions": 8,
-        "n_traders":          3,
-        "traders":            RISK_PRESETS["default"]["traders"],
-        "label":              "📋 기본형",
-        "desc":               "메인넷 CRS 상위 3명. 신규 사용자 권장 시작점. copy_ratio 10%.",
+        "copy_ratio":         0.18,
+        "max_position_usdc":  500.0,
+        "stop_loss_pct":      12.0,
+        "take_profit_pct":    25.0,
+        "max_open_positions": 10,
+        "n_traders":          4,
+        "traders": [
+            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # ROI30=+99.9% ROI7=+13.1% oi=2.2x
+            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # ROI30=+43.7% ROI7=+53.0% oi=0.7x
+            "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",  # ROI30=+29.0% ROI7=+32.4% oi=3.5x
+            "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1",  # ROI30=+15.3% ROI7=+1.9%  oi=0.4x
+        ],
+        "label":              "⚙️ 기본형",
+        "desc":               "몬테카를로 500회 최적화. 신규 사용자 권장 시작점. MDD <0.5%.",
         "risk_level":         "MEDIUM",
         "is_default":         True,
-        "expected_monthly_roi_pct": RISK_PRESETS["default"]["expected_monthly_roi_pct"],
+        "expected_monthly_roi_pct": 10.42,
         "expected_max_dd_pct": 0.5,
+        "optimized_at":       "2026-03-19",
+        "optimization_method": "Monte Carlo 500 simulations",
     },
+    # ⚡ 공격형 — 최대 수익. 고ROI 트레이더 6명 집중.
+    # copy=15%, max_pos=$500, SL=-12%, TP=+30% | 예상 월 ROI +4.1% | MaxDD ~1.5%
     "aggressive": {
-        "copy_ratio":         RISK_PRESETS["aggressive"]["copy_ratio"],
-        "max_position_usdc":  RISK_PRESETS["aggressive"]["max_position_usdc"],
-        "stop_loss_pct":      0.0,
-        "take_profit_pct":    0.0,
+        "copy_ratio":         0.15,
+        "max_position_usdc":  500.0,
+        "stop_loss_pct":      12.0,
+        "take_profit_pct":    30.0,
         "max_open_positions": 15,
-        "n_traders":          5,
-        "traders":            RISK_PRESETS["aggressive"]["traders"],
-        "label":              "🚀 공격형",
-        "desc":               "메인넷 고ROI 검증 5명. 높은 수익·변동성. 경험자 권장.",
+        "n_traders":          6,
+        "traders": [
+            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # ROI30=+99.9% oi=2.2x
+            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # ROI30=+43.7% oi=0.7x
+            "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV",  # ROI30=+48.8% oi=10x
+            "8AsJfKorQc1WANtdP5kxLdujvmNZHB1KQd1sQxS4Jvsm",  # ROI30=+38.5% oi=23x
+            "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",  # ROI30=+29.0% oi=3.5x
+            "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq",  # ROI30=+8.4%  oi=4.3x
+        ],
+        "label":              "⚡ 공격형",
+        "desc":               "최대 수익 추구. 고ROI 트레이더 6명 집중. 변동성 감수 필수. MDD ~1.5%.",
         "risk_level":         "HIGH",
         "is_default":         False,
-        "expected_monthly_roi_pct": RISK_PRESETS["aggressive"]["expected_monthly_roi_pct"],
-        "expected_max_dd_pct": 2.0,
+        "expected_monthly_roi_pct": 4.1,
+        "expected_max_dd_pct": 1.5,
     },
 }
 

@@ -130,21 +130,33 @@ STRATEGY_PRESETS = {
 
     # 📋 기본형 — 가장 검증된 설정. 신규 사용자 권장.
     # Mainnet 최적화: copy_ratio 10%, max_pos $500 → 60분 +$21 예상
+    # ⚙️ 기본형 — 몬테카를로 500회 최적화 (2026-03-19)
+    # copy_ratio=18%, max_pos=$500, SL=-12%, TP=+25%
+    # 4명 (Ph9y ROI30=99.9%·FN4s ROI30=43.7%·531e ROI30=29%·49R9 ROI30=15.3%)
+    # 예상: 월 ROI +10.42% ($1,042/$10k) | MaxDD <0.5%
     "default": {
         "name":           "기본형",
         "name_en":        "Default",
-        "emoji":          "📋",
-        "description":    "가장 검증된 설정. CRS 상위 3명, 균형 잡힌 copy_ratio. 신규 사용자 권장.",
-        "copy_ratio":     0.10,          # 10% (기존 10% 유지, 검증됨)
-        "max_position_usdc": 500.0,      # $500 (기존 $100→$500, PnL 5x)
-        "stop_loss_pct":  8.0,
-        "take_profit_pct": 15.0,
+        "emoji":          "⚙️",
+        "description":    "몬테카를로 500회 최적화 파라미터. 신규 사용자 권장 시작점. MDD <0.5%.",
+        "copy_ratio":     0.18,          # 18% (몬테카를로 최적값)
+        "max_position_usdc": 500.0,      # $500
+        "stop_loss_pct":  12.0,          # -12% (몬테카를로 최적)
+        "take_profit_pct": 25.0,         # +25% (몬테카를로 최적)
         "max_open_positions": 10,
-        "traders":        TRADERS_DEFAULT,
-        "expected_roi_30d_pct": 13.7,
-        "expected_pnl_60min":   21.0,    # Mainnet 실측 기반
+        "traders": [
+            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # ROI30=+99.9% ROI7=+13.1% oi=2.2x
+            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # ROI30=+43.7% ROI7=+53.0% oi=0.7x
+            "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",  # ROI30=+29.0% ROI7=+32.4% oi=3.5x
+            "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1",  # ROI30=+15.3% ROI7=+ 1.9% oi=0.4x
+        ],
+        "expected_roi_30d_pct": 10.42,
+        "expected_max_dd_pct":  0.5,
+        "expected_pnl_60min":   42.0,
         "risk_level":     2,
-        "tags":           ["추천", "기본"],
+        "tags":           ["추천", "최적화", "몬테카를로"],
+        "is_default":     True,
+        "optimized_at":   "2026-03-19",
     },
 
     # 🛡️ 안정형 — 원금 보존 최우선. Mainnet 실데이터 최적화.
