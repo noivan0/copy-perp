@@ -127,6 +127,21 @@
     .submit-btn:hover { background:#00b8d9; }
     .submit-btn:disabled { background:var(--muted); cursor:not-allowed; }
 
+    /* ── Preset Grid ── */
+    .preset-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+    @media(max-width:600px) { .preset-grid { grid-template-columns:repeat(2,1fr); } }
+    .preset-card {
+      background:#080c18; border:1.5px solid var(--border); border-radius:12px;
+      padding:12px 8px; text-align:center; cursor:pointer; transition:.15s;
+      user-select:none;
+    }
+    .preset-card:hover { border-color:var(--cyan); background:#00d4ff08; }
+    .preset-card.active { border-color:var(--cyan); background:#00d4ff15; }
+    .preset-icon { font-size:22px; margin-bottom:4px; }
+    .preset-name { font-size:12px; font-weight:700; color:var(--text); margin-bottom:2px; }
+    .preset-ratio { font-size:14px; font-weight:800; color:var(--cyan); }
+    .preset-roi { font-size:11px; color:var(--green); margin-top:2px; }
+
     /* ── Market List ── */
     .market-row { display:flex; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); gap:10px; }
     .market-row:last-child { border-bottom:none; }
@@ -383,22 +398,47 @@
         <button class="btn-primary" style="font-size:13px;padding:10px 24px;" onclick="openLoginModal()">Connect Wallet</button>
       </div>
       <div id="follow-form" style="display:none;">
+
+        <!-- 시나리오 프리셋 선택 UI -->
         <div class="form-group">
-          <label>Trader</label>
-          <input type="text" id="f-trader" placeholder="Trader wallet address..." />
+          <label>시나리오 선택</label>
+          <div class="preset-grid">
+            <div class="preset-card" data-preset="default" onclick="selectPreset('default')">
+              <div class="preset-icon">🛡️</div>
+              <div class="preset-name">기본형</div>
+              <div class="preset-ratio">5%</div>
+              <div class="preset-roi">예상 +3.5%/월</div>
+            </div>
+            <div class="preset-card active" data-preset="conservative" onclick="selectPreset('conservative')">
+              <div class="preset-icon">⚖️</div>
+              <div class="preset-name">안정형</div>
+              <div class="preset-ratio">10%</div>
+              <div class="preset-roi">예상 +7.8%/월</div>
+            </div>
+            <div class="preset-card" data-preset="balanced" onclick="selectPreset('balanced')">
+              <div class="preset-icon">📈</div>
+              <div class="preset-name">균형형</div>
+              <div class="preset-ratio">12%</div>
+              <div class="preset-roi">예상 +9.2%/월</div>
+            </div>
+            <div class="preset-card" data-preset="aggressive" onclick="selectPreset('aggressive')">
+              <div class="preset-icon">⚡</div>
+              <div class="preset-name">공격형</div>
+              <div class="preset-ratio">15%</div>
+              <div class="preset-roi">예상 +12.5%/월</div>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Copy Ratio</label>
-          <select id="f-ratio">
-            <option value="0.05">5% of my balance</option>
-            <option value="0.10" selected>10% of my balance</option>
-            <option value="0.25">25% of my balance</option>
-            <option value="0.50">50% of my balance</option>
-          </select>
+
+        <!-- 선택된 프리셋 상세 -->
+        <div id="preset-detail" style="margin-bottom:14px;padding:12px 14px;background:#080c18;border:1px solid var(--border);border-radius:10px;font-size:13px;">
+          <div id="preset-traders" style="color:var(--muted);margin-bottom:6px;">트레이더 목록 로딩 중...</div>
+          <div id="preset-sim" style="color:var(--sub);"></div>
         </div>
+
         <div class="form-group">
-          <label>Max Position Size (USD)</label>
-          <input type="number" id="f-max" value="50" min="10" step="10" />
+          <label>Trader (선택 사항 — 프리셋 자동 배정)</label>
+          <input type="text" id="f-trader" placeholder="직접 입력하거나 프리셋 자동 배정 사용..." />
         </div>
         <button class="submit-btn" id="follow-submit-btn" onclick="startCopying()">Start Copying →</button>
       </div>
@@ -1000,15 +1040,59 @@ function selectAndCopy(addr, btnEl) {
   fillTrader(addr);
 }
 
+// ── 시나리오 프리셋 ────────────────────────────────
+let _selectedPreset = 'conservative';
+
+function selectPreset(name) {
+  _selectedPreset = name;
+  // 카드 active 토글
+  document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
+  const card = document.querySelector(`[data-preset="${name}"]`);
+  if (card) card.classList.add('active');
+  // /presets/{name} API 호출 → 트레이더 목록 + 시뮬 PnL 표시
+  loadPresetDetail(name);
+}
+
+async function loadPresetDetail(name) {
+  const tradersEl = document.getElementById('preset-traders');
+  const simEl     = document.getElementById('preset-sim');
+  if (!tradersEl || !simEl) return;
+
+  tradersEl.textContent = '로딩 중...';
+  simEl.textContent = '';
+
+  try {
+    const r = await fetch(`${API}/presets/${name}`);
+    if (!r.ok) { tradersEl.textContent = '데이터 로드 실패'; return; }
+    const d = await r.json();
+
+    // 트레이더 목록
+    const traders = d.traders || [];
+    if (traders.length) {
+      tradersEl.innerHTML = `<span style="color:var(--muted);font-weight:600;">트레이더:</span> ` +
+        traders.map(a => `<span style="color:var(--cyan);font-family:monospace;">${a.substring(0,8)}…</span>`).join(' · ');
+    } else {
+      tradersEl.textContent = '트레이더 자동 배정 (DB 선별)';
+    }
+
+    // 시뮬 PnL (1k 기준)
+    const roi = d.expected_roi_30d_pct || 0;
+    const pnl1k = (1000 * roi / 100).toFixed(1);
+    const pnl5k = (5000 * roi / 100).toFixed(1);
+    simEl.innerHTML =
+      `<span style="color:var(--muted);">예상 수익/월:</span> ` +
+      `$1k→ <span style="color:var(--green);">+$${pnl1k}</span> | ` +
+      `$5k→ <span style="color:var(--green);">+$${pnl5k}</span> ` +
+      `<span style="color:var(--muted);font-size:11px;">(예상치, 보장 아님)</span>`;
+  } catch(e) {
+    tradersEl.textContent = '상세 로드 실패: ' + e.message;
+  }
+}
+
 async function startCopying() {
   if (!_walletAddress) { openLoginModal(); return; }
 
-  const trader = document.getElementById('f-trader').value.trim();
-  const ratio = parseFloat(document.getElementById('f-ratio').value);
-  const maxUsd = parseFloat(document.getElementById('f-max').value);
-
-  if (!trader) { toast('❌ 트레이더 주소를 입력하세요'); return; }
-  if (!ratio || ratio <= 0) { toast('❌ Copy ratio를 확인하세요'); return; }
+  const traderInput = document.getElementById('f-trader').value.trim();
 
   const btn = document.getElementById('follow-submit-btn');
   btn.disabled = true;
@@ -1017,10 +1101,12 @@ async function startCopying() {
   try {
     const body = {
       follower_address: _walletAddress,
-      traders: [trader],
-      copy_ratio: ratio,
-      max_position_usdc: maxUsd,
+      preset: _selectedPreset,
     };
+    // 직접 트레이더 주소 입력된 경우 추가
+    if (traderInput) {
+      body.traders = [traderInput];
+    }
 
     const r = await fetch(`${API}/followers/onboard`, {
       method: 'POST',
@@ -1329,6 +1415,8 @@ _configReady.then(() => {
   fetchStats();
   fetchCrsRanking();
   fetchOptimalPortfolio();
+  // 기본 프리셋 상세 로드 (conservative 기본 선택)
+  loadPresetDetail(_selectedPreset);
 
   // Privy SDK 사전 로드
   if (window.PRIVY_APP_ID && window.PrivyIntegration) {

@@ -25,6 +25,17 @@ from db.database import (
     delete_follower_position, get_all_follower_positions,
 )
 from core.retry import retry_sync, classify_error
+try:
+    from core.strategy import (
+        calc_stop_price, should_stop,
+        SUPPORTED_SYMBOLS,
+    )
+    from core.strategy_presets import get_preset as get_strategy_preset
+except ImportError:
+    calc_stop_price = None
+    should_stop = None
+    SUPPORTED_SYMBOLS = set()
+    get_strategy_preset = None
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +46,18 @@ MAX_ORDER_USDC = 5000.0 # 단일 주문 최대 금액 (안전장치)
 MAX_SLIPPAGE = "1.0"    # 1% 슬리피지 허용
 MIN_AMOUNT = 0.0001     # 최소 수량 (소수점 정밀도)
 
-# 리서치팀 확정 Tier A 트레이더 + 가중치 (copy_ratio 자동 조정)
+# 메인넷 확정 Tier A/S 트레이더 + 가중치 (2026-03-19 신뢰도 기반)
 TIER_A_WEIGHTS: dict[str, float] = {
-    'EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu': 0.30,
-    '4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq':  0.20,
-    '7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd':  0.20,
-    '7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y':  0.15,
-    '3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe':  0.15,
+    # S등급
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu": 0.30,   # trust 74.5, ROI 82.5%
+    # A등급 — 신뢰도 순
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep":  0.12,   # trust 58.2, ROI 58.9%
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq":  0.12,   # trust 61.9, ROI 58.8%
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y":  0.12,   # trust 61.0, ROI 51.5%
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe":  0.10,   # trust 60.8, ROI 47.4%
+    "E1vabqxiuUfBQKaH8L3P1tDvxG5mMj7nRkC2sQwYzXe9":  0.08,   # trust 58.2, ROI 47.6%
+    "5BPd5WYVvDE2tXg3aKj9mPqR7nLhB4cF8vZsWuYeC1Nd":  0.08,   # trust 59.9, ROI 43.6%
+    "9XCVb4SQVADNkLmP2rTgB5jHuF3wEzXc8nQsYvD7eAi":   0.08,   # trust 58.7, ROI 43.5%
 }
 
 
@@ -105,6 +121,33 @@ class CopyEngine:
         except Exception as e:
             logger.warning(f"[PnL] 포지션 복원 오류 (무시): {e}")
 
+    async def _get_trader_stats_sync(self, trader_address: str) -> dict | None:
+        """mainnet_stats에서 트레이더 통계 조회 (Kelly 계산용)"""
+        try:
+            async with self.db.execute("""
+                SELECT win_rate, payoff_ratio, kelly, profit_factor, closed_cnt, carp_score
+                FROM mainnet_stats
+                WHERE trader_address = ?
+                ORDER BY snapshot_ts DESC LIMIT 1
+            """, (trader_address,)) as cur:
+                row = await cur.fetchone()
+                if row:
+                    cols = [d[0] for d in cur.description]
+                    return dict(zip(cols, row))
+        except Exception:
+            pass
+        # mainnet_stats 없으면 traders 테이블 fallback
+        try:
+            async with self.db.execute("""
+                SELECT win_rate, sharpe as kelly FROM traders WHERE address = ?
+            """, (trader_address,)) as cur:
+                row = await cur.fetchone()
+                if row:
+                    return {"win_rate": row[0], "payoff_ratio": 1.5, "kelly": row[1], "closed_cnt": 50}
+        except Exception:
+            pass
+        return None
+
     def _get_client(self, account: str) -> PacificaClient:  # type-checked
         if account not in self._client_cache:
             self._client_cache[account] = PacificaClient(account)
@@ -148,7 +191,10 @@ class CopyEngine:
         logger.info(f"복사 대상: {len(followers)}명 | {symbol} {copy_side} {amount} @ {price}")
 
         tasks = [
-            self._copy_to_follower(follower, symbol, copy_side, amount, trader, symbol_price=float(price) if price else 0.0)
+            self._copy_to_follower(
+                follower, symbol, copy_side, amount, trader,
+                symbol_price=float(price) if price else 0.0
+            )
             for follower in followers
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -198,11 +244,22 @@ class CopyEngine:
         """Lock 획득 후 실제 복사 주문 실행 (내부 메서드)"""
         import math
 
-        # ── 리서치팀 가중치 적용 ──────────────────────────
-        # Tier A 트레이더는 사전 정의된 가중치로 copy_ratio 보정
-        tier_weight = TIER_A_WEIGHTS.get(trader_address)
-        if tier_weight is not None:
-            copy_ratio = copy_ratio * tier_weight  # 가중치만큼 실제 복사 비율 조정
+        # ── 전략 프리셋 로드 ──────────────────────────────
+        strategy_id = follower.get("strategy") or "default"
+        preset = get_strategy_preset(strategy_id)
+
+        # ── 심볼 필터: FX/미지원 종목 사전 차단 ──────────
+        if preset.get("symbol_filter", True):
+            if symbol.upper() not in SUPPORTED_SYMBOLS:
+                logger.info(f"[{follower_addr[:8]}] {symbol} 미지원 심볼 차단 (strategy={strategy_id})")
+                return
+
+        # ── 전략 프리셋 파라미터 적용 ────────────────────
+        copy_ratio = preset.get("copy_ratio", copy_ratio)
+        max_pos    = preset.get("max_position_usdc", max_pos)
+
+        # ── 트레이더 통계 조회 (로깅용) ──────────────────
+        trader_stats = await self._get_trader_stats_sync(trader_address)
 
         # ── 복사 수량 계산 ────────────────────────────────
         # 1. 비율 적용
@@ -419,16 +476,30 @@ class CopyEngine:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 숏청산 PnL={realized_pnl:+.4f}")
                 else:
-                    # 롱 포지션 진입
+                    # 롱 포지션 진입 — stop/take 계산 (strategy_presets 파라미터 기반)
+                    from core.strategy import _calc_stop_from_preset
+                    sl_price, tp_price = _calc_stop_from_preset(exec_price, "bid", preset)
                     follower_positions[pos_key] = {
                         "entry_price": exec_price,
                         "size": float(copy_amount),
                         "side": "bid",
+                        "high_price": exec_price,
+                        "stop_loss_price": sl_price or 0,
+                        "take_profit_price": tp_price or 0,
+                        "strategy": strategy_id,
                     }
                     try:
                         await upsert_follower_position(
                             self.db, follower_addr, pos_key, "bid", exec_price, float(copy_amount)
                         )
+                        await self.db.execute(
+                            "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
+                            "WHERE follower_address=? AND symbol=? AND status='open'",
+                            (exec_price, sl_price or 0, tp_price or 0, strategy_id, follower_addr, pos_key)
+                        )
+                        await self.db.commit()
+                        if sl_price:
+                            logger.info(f"[SL] {follower_addr[:8]} {symbol} 롱 SL=${sl_price:.4f}")
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 저장 오류 (무시): {_e}")
 
@@ -445,16 +516,30 @@ class CopyEngine:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 롱청산 PnL={realized_pnl:+.4f}")
                 else:
-                    # 숏 포지션 진입
+                    # 숏 포지션 진입 — stop/take 계산
+                    from core.strategy import _calc_stop_from_preset
+                    sl_price, tp_price = _calc_stop_from_preset(exec_price, "ask", preset)
                     follower_positions[pos_key] = {
                         "entry_price": exec_price,
                         "size": float(copy_amount),
                         "side": "ask",
+                        "high_price": exec_price,  # 숏에선 저점 추적
+                        "stop_loss_price": sl_price or 0,
+                        "take_profit_price": tp_price or 0,
+                        "strategy": strategy_id,
                     }
                     try:
                         await upsert_follower_position(
                             self.db, follower_addr, pos_key, "ask", exec_price, float(copy_amount)
                         )
+                        await self.db.execute(
+                            "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
+                            "WHERE follower_address=? AND symbol=? AND status='open'",
+                            (exec_price, sl_price or 0, tp_price or 0, strategy_id, follower_addr, pos_key)
+                        )
+                        await self.db.commit()
+                        if sl_price:
+                            logger.info(f"[SL] {follower_addr[:8]} {symbol} 숏 SL=${sl_price:.4f}")
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 저장 오류 (무시): {_e}")
 
@@ -483,6 +568,90 @@ class CopyEngine:
             "created_at": _now_ms,
             "error_msg": _error_msg if status == "failed" else None,
         })
+
+
+    async def force_close_follower(
+        self,
+        follower_addr: str,
+        symbol: str,
+        close_side: str,
+        size: float,
+        current_price: float,
+        reason: str,
+    ) -> None:
+        """StopLossMonitor 호출 — 특정 팔로워 포지션 강제 청산"""
+        # followers 테이블에서 팔로워 정보 조회
+        async with self.db.execute(
+            "SELECT * FROM followers WHERE address=?", (follower_addr,)
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                logger.warning(f"force_close: 팔로워 없음 {follower_addr[:16]}")
+                return
+            cols = [d[0] for d in cur.description]
+            follower = dict(zip(cols, row))
+
+        trader_address = follower.get("trader_address", "")
+        copy_amount    = str(size)
+        trade_id       = f"sl-{symbol}-{int(time.time() * 1000)}"
+        client_order_id = trade_id
+
+        logger.info(
+            f"[FORCE_CLOSE] {follower_addr[:8]} {symbol} {close_side} "
+            f"size={size} price={current_price:.4f} | {reason}"
+        )
+
+        if not self.mock_mode:
+            try:
+                bc = follower.get("builder_code_approved", 0)
+                builder = BUILDER_CODE if bc else ""
+                client = self._get_client(follower_addr)
+                resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: client.place_order(
+                        symbol=symbol,
+                        side=close_side,
+                        order_type="market",
+                        amount=copy_amount,
+                        builder_code=builder,
+                        reduce_only=True,
+                        client_order_id=client_order_id,
+                    )
+                )
+                status = "filled" if resp.get("status") not in ("failed", "rejected") else "failed"
+            except Exception as e:
+                status = "failed"
+                logger.error(f"[FORCE_CLOSE] 주문 오류: {e}")
+        else:
+            status = "filled"
+
+        # 포지션 삭제
+        try:
+            await delete_follower_position(self.db, follower_addr, symbol)
+        except Exception:
+            pass
+        follower_positions = self._positions.get(follower_addr, {})
+        follower_positions.pop(symbol, None)
+
+        # 기록
+        _now_ms = int(time.time() * 1000)
+        await record_copy_trade(self.db, {
+            "id": trade_id,
+            "follower_address": follower_addr,
+            "trader_address": trader_address,
+            "symbol": symbol,
+            "side": close_side,
+            "amount": copy_amount,
+            "price": str(current_price),
+            "client_order_id": client_order_id,
+            "status": status,
+            "pnl": None,
+            "entry_price": None,
+            "exec_price": current_price,
+            "created_at": _now_ms,
+            "error_msg": reason if status == "failed" else None,
+        })
+        logger.info(f"[FORCE_CLOSE] 완료: {follower_addr[:8]} {symbol} status={status}")
 
 
 # ── 테스트 ──────────────────────────────────

@@ -496,11 +496,23 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     from api.main import RATE_LIMIT_POLICY, _require_rate_limit
     _require_rate_limit(f"onboard:{client_ip}", request=request)
 
-    # ── 전략 프리셋 해석 ─────────────────────────────────
+    # ── risk_mode → RISK_PRESETS 적용 (copy_ratio/traders/max_position 미지정 시) ──
+    _risk_preset = RISK_PRESETS.get(body.risk_mode or "default", RISK_PRESETS["default"])
+    _risk_traders   = body.traders or _risk_preset["traders"]
+    _risk_copy_ratio = body.copy_ratio or _risk_preset["copy_ratio"]
+    _risk_max_pos    = body.max_position_usdc or _risk_preset["max_position_usdc"]
+    logger.info(
+        f"risk_mode={body.risk_mode or 'default'} | "
+        f"traders={len(_risk_traders)}명 | "
+        f"copy_ratio={_risk_copy_ratio*100:.0f}% | "
+        f"max_pos=${_risk_max_pos:.0f}"
+    )
+
+    # ── 전략 프리셋 해석 (기존 strategy 필드 호환) ───────
     preset = body.resolved_preset()
-    resolved_copy_ratio     = preset["copy_ratio"]
-    resolved_max_pos_usdc   = preset["max_position_usdc"]
-    resolved_strategy_label = preset["label"]
+    resolved_copy_ratio     = body.copy_ratio or _risk_copy_ratio
+    resolved_max_pos_usdc   = body.max_position_usdc or _risk_max_pos
+    resolved_strategy_label = preset.get("label", f"risk_mode:{body.risk_mode or 'default'}")
     logger.info(
         f"전략: {resolved_strategy_label} | "
         f"copy_ratio={resolved_copy_ratio*100:.0f}% | "
