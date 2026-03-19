@@ -33,13 +33,18 @@ BUILDER_FEE  = 0.0001   # 0.01%
 SLIPPAGE_BPS = 5        # 5 bps (0.05%)
 
 # ── 4가지 전략 정의 (메인넷 2026-03-19 확정) ─────────
+# ── 스노우볼 설계 ─────────────────────────────────────────────────────────
+# 트레이더의 모든 open/close 이벤트를 100% 추적
+# 투자금 = 현재 자산 × copy_ratio (복리: 자산 불면 다음 투자금도 증가)
+# max_pos_usdc = 단일 포지션 상한 (자산 보호용)
+# 동일 심볼 재진입 허용 = 트레이더가 같은 방향으로 다시 들어오면 재복사
 STRATEGIES = {
     "default": {
-        "label":         "📋 기본형",
-        "copy_ratio":     0.10,
-        "max_pos_usdc":   100.0,
-        "max_positions":  8,      # 전체 최대 동시 포지션 수
-        "per_trader_max": 3,      # 트레이더 1명당 최대 포지션
+        "label":        "📋 기본형",
+        "copy_ratio":    0.10,        # 현재 자산의 10%씩 투자 (복리)
+        "max_pos_usdc":  100.0,       # 단일 포지션 상한
+        "reinvest":      True,        # 수익 재투자 (스노우볼)
+        "reentry":       True,        # 동일 심볼 방향 재진입 허용
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",   # CRS 82.5, ROI 113.9%
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",  # CRS 82.4, ROI 157.5%
@@ -48,11 +53,11 @@ STRATEGIES = {
         "expected_30d_roi": 13.7,
     },
     "conservative": {
-        "label":         "🛡️ 안정형",
-        "copy_ratio":     0.10,
-        "max_pos_usdc":   50.0,
-        "max_positions":  5,
-        "per_trader_max": 3,
+        "label":        "🛡️ 안정형",
+        "copy_ratio":    0.05,        # 보수적: 5%씩
+        "max_pos_usdc":  50.0,
+        "reinvest":      True,
+        "reentry":       False,       # 재진입 없음 (안전 우선)
         "traders": [
             "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a",  # 일관성 4/4, 레버 0x
             "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",  # 일관성 4/4, 레버 3x
@@ -60,11 +65,11 @@ STRATEGIES = {
         "expected_30d_roi": 4.2,
     },
     "balanced": {
-        "label":         "⚖️ 균형형",
-        "copy_ratio":     0.10,
-        "max_pos_usdc":   100.0,
-        "max_positions":  10,
-        "per_trader_max": 3,
+        "label":        "⚖️ 균형형",
+        "copy_ratio":    0.10,
+        "max_pos_usdc":  100.0,
+        "reinvest":      True,
+        "reentry":       True,
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
@@ -75,11 +80,11 @@ STRATEGIES = {
         "expected_30d_roi": 11.4,
     },
     "aggressive": {
-        "label":         "🚀 공격형",
-        "copy_ratio":     0.15,
-        "max_pos_usdc":   200.0,
-        "max_positions":  12,
-        "per_trader_max": 4,
+        "label":        "🚀 공격형",
+        "copy_ratio":    0.15,        # 15% + 재투자 = 빠른 스노우볼
+        "max_pos_usdc":  200.0,
+        "reinvest":      True,
+        "reentry":       True,        # 적극적 재진입
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
@@ -289,16 +294,16 @@ def load_session_state(conn: sqlite3.Connection, strategy: str) -> Optional[dict
 
 class StrategyEngine:
     def __init__(self, key: str, cfg: dict, capital: float, conn: sqlite3.Connection):
-        self.key          = key
-        self.label        = cfg["label"]
-        self.ratio        = cfg["copy_ratio"]
-        self.max_pos      = cfg["max_pos_usdc"]
-        self.max_positions= cfg.get("max_positions", 8)   # 최대 동시 포지션
-        self.per_trader   = cfg.get("per_trader_max", 3)  # 트레이더당 최대
-        self.traders      = cfg["traders"]
-        self.exp_roi      = cfg["expected_30d_roi"]
-        self.conn         = conn
-        self.is_warmup    = True   # 첫 사이클: 스냅샷만, 진입 없음
+        self.key       = key
+        self.label     = cfg["label"]
+        self.ratio     = cfg["copy_ratio"]
+        self.max_pos   = cfg["max_pos_usdc"]
+        self.reinvest  = cfg.get("reinvest", True)   # 수익 재투자
+        self.reentry   = cfg.get("reentry", True)    # 동일 심볼 재진입
+        self.traders   = cfg["traders"]
+        self.exp_roi   = cfg["expected_30d_roi"]
+        self.conn      = conn
+        self.is_warmup = True   # 첫 사이클: prev 기록만, 진입 없음
 
         # 기존 세션 복구 시도
         old = load_session_state(conn, key)
@@ -347,24 +352,20 @@ class StrategyEngine:
         return (self.equity() - self.initial) / self.initial * 100
 
     def open_pos(self, symbol: str, side: str, trader: str) -> bool:
-        # 웜업 중이면 진입 금지 (첫 사이클은 현황만 기록)
+        # 웜업 중이면 진입 금지 (첫 사이클은 prev 기록만)
         if self.is_warmup:
             return False
 
         if symbol in self.positions:
             existing = self.positions[symbol]
             if existing["side"] == side:
-                return False  # 동일 방향 이미 보유
-            self.close_pos(symbol, "반전")
-
-        # 전체 포지션 수 제한
-        if len(self.positions) >= self.max_positions:
-            return False
-
-        # 트레이더당 포지션 수 제한
-        trader_count = sum(1 for p in self.positions.values() if p["trader_addr"] == trader)
-        if trader_count >= self.per_trader:
-            return False
+                # 동일 방향 재진입: reentry 허용 시 청산 후 재진입 (스노우볼)
+                if self.reentry:
+                    self.close_pos(symbol, "재진입")
+                else:
+                    return False  # 안정형: 재진입 금지
+            else:
+                self.close_pos(symbol, "반전")
 
         price = self.prices.get(symbol, 0)
         if not price:
@@ -372,10 +373,18 @@ class StrategyEngine:
 
         slip       = price * SLIPPAGE_BPS / 10000
         exec_price = price + slip if side == "long" else price - slip
-        usdc       = min(self.cash * self.ratio, self.max_pos)
 
-        # 현금 충분성 체크
-        if usdc < 3 or self.cash < usdc * 1.01:  # 수수료 포함
+        # 스노우볼: 투자금 = 현재 자산 × copy_ratio (복리 효과)
+        current_equity = self.equity()
+        base_usdc = current_equity * self.ratio if self.reinvest else self.initial * self.ratio
+        usdc = min(base_usdc, self.max_pos)
+
+        # 현금 최소 보유 (전체 자산의 20% 이상 현금 유지)
+        min_cash = current_equity * 0.20
+        if self.cash - usdc < min_cash:
+            usdc = max(0, self.cash - min_cash)
+
+        if usdc < 3:
             return False
 
         size = usdc / exec_price
