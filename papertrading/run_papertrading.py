@@ -119,38 +119,82 @@ def select_top_traders(n: int = 5) -> list:
 # ── 시나리오 프리셋 (Mainnet 실데이터 기반 최적화) ───────────────────
 # 기준: 60분 실행, copy_ratio=5%, max_pos=$300 → PnL +$12.57
 STRATEGY_PRESETS = {
-    "safe": {
-        "copy_ratio":        0.05,
-        "max_position_usdc": 300.0,
+    # 🔒 기본형: copy_ratio 8%, S등급 안정성 2명, max_pos $40
+    # 메인넷 최적화: 30일 ROI +4.77% (이전 5% → 8%)
+    "default": {
+        "copy_ratio":        0.08,
+        "max_position_usdc": 40.0,
         "stop_loss_pct":     8.0,
         "take_profit_pct":   15.0,
+        "max_open_positions": 8,
+        "n_traders":          2,
+        "grade_filter":      ["S"],
+        "sort_by":           "stability",
+        "capital":           1_000.0,
+        "label":             "🔒 기본형",
+        "expected_roi_30d":  4.77,
+    },
+    # 🛡️ 안정형: copy_ratio 10%, S등급 30일ROI 3명, max_pos $100
+    "conservative": {
+        "copy_ratio":        0.10,
+        "max_position_usdc": 100.0,
+        "stop_loss_pct":     8.0,
+        "take_profit_pct":   18.0,
         "max_open_positions": 10,
         "n_traders":          3,
-        "label":             "🛡 안전형",
+        "grade_filter":      ["S"],
+        "sort_by":           "roi_30d",
+        "capital":           1_000.0,
+        "label":             "🛡️ 안정형",
+        "expected_roi_30d":  5.38,
     },
+    # ⚖️ 균형형: copy_ratio 12%, S+A 복합점수 4명, max_pos $150
     "balanced": {
-        "copy_ratio":        0.10,
-        "max_position_usdc": 500.0,
+        "copy_ratio":        0.12,
+        "max_position_usdc": 150.0,
         "stop_loss_pct":     10.0,
-        "take_profit_pct":   20.0,
+        "take_profit_pct":   22.0,
         "max_open_positions": 12,
-        "n_traders":          5,
+        "n_traders":          4,
+        "grade_filter":      ["S", "A"],
+        "sort_by":           "score",
+        "capital":           5_000.0,
         "label":             "⚖️ 균형형",
+        "expected_roi_30d":  5.94,
     },
+    # ⚡ 공격형: copy_ratio 15%, 7일 모멘텀 3명, max_pos $200
     "aggressive": {
-        "copy_ratio":        0.20,
-        "max_position_usdc": 1000.0,
+        "copy_ratio":        0.15,
+        "max_position_usdc": 200.0,
         "stop_loss_pct":     12.0,
         "take_profit_pct":   30.0,
         "max_open_positions": 15,
-        "n_traders":          8,
+        "n_traders":          3,
+        "grade_filter":      ["S", "A"],
+        "sort_by":           "roi_7d",
+        "capital":           10_000.0,
         "label":             "⚡ 공격형",
+        "expected_roi_30d":  5.42,
+    },
+    # ── 레거시 호환 ───────────────────────────────────────────────────
+    "safe": {
+        "copy_ratio":        0.08,
+        "max_position_usdc": 40.0,
+        "stop_loss_pct":     8.0,
+        "take_profit_pct":   15.0,
+        "max_open_positions": 8,
+        "n_traders":          2,
+        "grade_filter":      ["S"],
+        "sort_by":           "stability",
+        "capital":           1_000.0,
+        "label":             "🔒 기본형 (compat)",
+        "expected_roi_30d":  4.77,
     },
 }
 
 # ── 설정 (기본: balanced — Mainnet 데이터 최적화) ────────────────────
 INITIAL_CAPITAL = 10_000.0
-_DEFAULT_STRATEGY = "balanced"   # 기본 시나리오를 balanced로 상향
+_DEFAULT_STRATEGY = "balanced"
 
 def _apply_preset(strategy: str) -> dict:
     p = STRATEGY_PRESETS.get(strategy, STRATEGY_PRESETS[_DEFAULT_STRATEGY])
@@ -596,7 +640,7 @@ if __name__ == "__main__":
         type=str,
         default=_DEFAULT_STRATEGY,
         choices=list(STRATEGY_PRESETS.keys()),
-        help="전략 프리셋: safe | balanced | aggressive (기본: balanced)",
+        help="전략 프리셋: default | conservative | balanced | aggressive (기본: balanced)",
     )
     args = p.parse_args()
 
