@@ -166,43 +166,32 @@ async def test_pnl_by_trader(db):
 # ── TC-PNL-004: snapshot 후 이력 조회 ────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_pnl_history(model_db: DB):
-    m = model_db
-    follower = "F_HISTORY"
-    trader   = "T_HISTORY"
+async def test_pnl_history():
+    """file-based DB로 snapshot → history 조회 검증 (스키마 통일)"""
+    import tempfile, os as _os, aiosqlite
 
-    # 직접 copy_trades 에 INSERT (model_db 내부 연결 이용)
-    import aiosqlite
-    async with aiosqlite.connect(":memory:") as _:
-        pass  # model_db는 이미 초기화됨
-
-    # model_db의 path는 ":memory:" — aiosqlite.connect()는 매번 새 연결이므로
-    # 대신 model_db.snapshot_follower_pnl 을 테스트하기 위해 직접 DB 사용
-    # in-memory 연결은 shared_cache 모드 필요 — 여기서는 file 기반으로 테스트
-    import tempfile, os as _os
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         tmp_path = f.name
 
     try:
-        m2 = DB(tmp_path)
-        await m2.init()
-
-        from db.database import init_db as _init_db, add_trader as _at, add_follower as _af, record_copy_trade as _rct
-        conn2 = await _init_db(tmp_path)
-        await _at(conn2, trader)
-        await _af(conn2, follower, trader)
+        # DB 모델로 초기화 (database.py 스키마 사용)
+        conn = await init_db(tmp_path)
+        await add_trader(conn, "T_HISTORY")
+        await add_follower(conn, "F_HISTORY", "T_HISTORY")
 
         today = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")
-        trade = _make_trade(follower, trader, pnl=75.0)
-        await _rct(conn2, trade)
-        await conn2.close()
+        trade = _make_trade("F_HISTORY", "T_HISTORY", pnl=75.0)
+        await record_copy_trade(conn, trade)
+        await conn.close()
 
-        # snapshot 실행
-        await m2.snapshot_follower_pnl(follower, date=today)
+        # DB 모델 클래스로 snapshot 실행 (같은 파일)
+        m = DB(tmp_path)
+        await m.init()   # 신규 테이블(follower_pnl_daily 등)만 추가
+        await m.snapshot_follower_pnl("F_HISTORY", date=today)
 
         # 이력 조회
-        history = await m2.get_follower_pnl_history(follower, days=30)
-        assert len(history) >= 1
+        history = await m.get_follower_pnl_history("F_HISTORY", days=30)
+        assert len(history) >= 1, f"이력이 비어있음: {history}"
         today_entry = next((h for h in history if h["date"] == today), None)
         assert today_entry is not None, f"오늘({today}) 기록이 없음: {history}"
         assert abs(float(today_entry["realized_pnl"]) - 75.0) < 1e-6
@@ -214,26 +203,25 @@ async def test_pnl_history(model_db: DB):
 
 @pytest.mark.asyncio
 async def test_snapshot_follower_pnl():
+    """file-based DB로 snapshot 저장 및 검증 (스키마 통일)"""
     import tempfile, os as _os, aiosqlite
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         tmp_path = f.name
 
     try:
-        m = DB(tmp_path)
-        await m.init()
-
-        from db.database import init_db as _init_db, add_trader as _at, add_follower as _af, record_copy_trade as _rct
-
-        conn = await _init_db(tmp_path)
-        await _at(conn, "T_SNAP")
-        await _af(conn, "F_SNAP", "T_SNAP")
+        # database.py 스키마로 초기화 후 트레이더/팔로워/거래 삽입
+        conn = await init_db(tmp_path)
+        await add_trader(conn, "T_SNAP")
+        await add_follower(conn, "F_SNAP", "T_SNAP")
 
         today = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")
         for pnl in [30.0, -10.0, 20.0]:
-            await _rct(conn, _make_trade("F_SNAP", "T_SNAP", pnl=pnl))
+            await record_copy_trade(conn, _make_trade("F_SNAP", "T_SNAP", pnl=pnl))
         await conn.close()
 
-        # snapshot 실행
+        # DB 모델 클래스로 신규 테이블 추가 후 snapshot
+        m = DB(tmp_path)
+        await m.init()
         await m.snapshot_follower_pnl("F_SNAP", date=today)
 
         # DB 직접 확인

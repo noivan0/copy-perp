@@ -252,23 +252,24 @@ async def test_rank_followers_empty(db):
 @pytest.mark.asyncio
 async def test_rank_followers_order(db):
     """ROI 높은 팔로워가 상위 랭크"""
-    # 팔로워 A: 고수익
-    follower_a = "FollowerAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    follower_a = "RankOrderFollowerAAAAAAAAAAAAAAAAAAA"
+    follower_b = "RankOrderFollowerBBBBBBBBBBBBBBBBBB"
+
+    # 팔로워 A: $1,000 자본에 $1,500 수익 → ROI 150%
     await _insert_follower_trades(db, follower_a, pnls=[+1000.0, +500.0])
     await record_follower_snapshot(db, follower_a, 1000.0)
 
-    # 팔로워 B: 저수익
-    follower_b = "FollowerBBBBBBBBBBBBBBBBBBBBBBBBB"
+    # 팔로워 B: $10,000 자본에 $15 수익 → ROI 0.15%
     await _insert_follower_trades(db, follower_b, pnls=[+10.0, +5.0])
-    await record_follower_snapshot(db, follower_b, 1000.0)
+    await record_follower_snapshot(db, follower_b, 10000.0)
 
     ranking = await rank_followers(db, limit=10)
 
-    # A가 B보다 ROI 높아야 함
-    addrs = [r["follower_masked"] for r in ranking]
     rank_a = next((r["rank"] for r in ranking if follower_a[:6] in r["follower_masked"]), 999)
     rank_b = next((r["rank"] for r in ranking if follower_b[:6] in r["follower_masked"]), 999)
-    assert rank_a < rank_b, "고ROI 팔로워가 상위여야 함"
+
+    # A ROI(150%) >> B ROI(0.15%) → A 랭크가 낮은 숫자(더 높은 위치)
+    assert rank_a < rank_b, f"고ROI 팔로워(A rank={rank_a})가 저ROI(B rank={rank_b})보다 상위여야 함"
 
 
 @pytest.mark.asyncio
