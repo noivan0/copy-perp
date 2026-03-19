@@ -29,17 +29,17 @@ MIGRATIONS = [
         follower_address    TEXT NOT NULL,
         trader_address      TEXT NOT NULL,
         symbol              TEXT NOT NULL,
-        side                TEXT NOT NULL,          -- 'bid'(LONG) / 'ask'(SHORT)
-        size                REAL NOT NULL DEFAULT 0, -- 현재 수량 (절댓값)
-        avg_entry_price     REAL NOT NULL DEFAULT 0, -- 가중평균 진입가
-        initial_size        REAL NOT NULL DEFAULT 0, -- 최초 진입 수량
-        initial_entry_price REAL NOT NULL DEFAULT 0, -- 최초 진입가
-        open_trade_id       TEXT,                   -- 오픈한 copy_trade id
+        side                TEXT NOT NULL,         
+        size                REAL NOT NULL DEFAULT 0,
+        avg_entry_price     REAL NOT NULL DEFAULT 0,
+        initial_size        REAL NOT NULL DEFAULT 0,
+        initial_entry_price REAL NOT NULL DEFAULT 0,
+        open_trade_id       TEXT,                  
         unrealized_pnl      REAL DEFAULT 0,
-        mark_price          REAL DEFAULT 0,         -- 마지막 갱신 마크가격
-        opened_at           INTEGER NOT NULL,       -- epoch ms
+        mark_price          REAL DEFAULT 0,        
+        opened_at           INTEGER NOT NULL,      
         last_updated        INTEGER NOT NULL,
-        status              TEXT DEFAULT 'open',    -- 'open' / 'closed'
+        status              TEXT DEFAULT 'open',   
         UNIQUE(follower_address, symbol, status)
     )
     """,
@@ -50,18 +50,18 @@ MIGRATIONS = [
         follower_address    TEXT NOT NULL,
         trader_address      TEXT NOT NULL,
         symbol              TEXT NOT NULL,
-        direction           TEXT NOT NULL,          -- 'long' / 'short'
+        direction           TEXT NOT NULL,         
         open_trade_id       TEXT,
         close_trade_id      TEXT,
-        size                REAL NOT NULL,          -- 체결 수량
+        size                REAL NOT NULL,         
         entry_price         REAL NOT NULL,
         exit_price          REAL NOT NULL,
-        gross_pnl           REAL NOT NULL,          -- 수수료 전 PnL
-        fee_usdc            REAL DEFAULT 0,         -- 지불한 수수료
-        builder_fee_usdc    REAL DEFAULT 0,         -- builder fee 분
-        net_pnl             REAL NOT NULL,          -- 최종 PnL
-        roi_pct             REAL,                   -- (net_pnl / cost_basis) × 100
-        hold_duration_sec   INTEGER,                -- 보유 시간 (초)
+        gross_pnl           REAL NOT NULL,         
+        fee_usdc            REAL DEFAULT 0,        
+        builder_fee_usdc    REAL DEFAULT 0,        
+        net_pnl             REAL NOT NULL,         
+        roi_pct             REAL,                  
+        hold_duration_sec   INTEGER,               
         opened_at           INTEGER NOT NULL,
         closed_at           INTEGER NOT NULL,
         created_at          INTEGER NOT NULL
@@ -72,11 +72,11 @@ MIGRATIONS = [
     CREATE TABLE IF NOT EXISTS equity_snapshots (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
         follower_address    TEXT NOT NULL,
-        equity_usdc         REAL NOT NULL,          -- 총 자산 (현금 + 미실현)
+        equity_usdc         REAL NOT NULL,         
         realized_pnl_cum    REAL NOT NULL DEFAULT 0,-- 누적 실현 PnL
         unrealized_pnl      REAL DEFAULT 0,
         open_positions      INTEGER DEFAULT 0,
-        snapshot_at         INTEGER NOT NULL,       -- epoch ms
+        snapshot_at         INTEGER NOT NULL,      
         UNIQUE(follower_address, snapshot_at)
     )
     """,
@@ -85,7 +85,7 @@ MIGRATIONS = [
     CREATE TABLE IF NOT EXISTS daily_stats (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
         follower_address    TEXT NOT NULL,
-        date_kst            TEXT NOT NULL,          -- 'YYYY-MM-DD'
+        date_kst            TEXT NOT NULL,         
         starting_equity     REAL DEFAULT 0,
         ending_equity       REAL DEFAULT 0,
         daily_pnl           REAL DEFAULT 0,
@@ -103,9 +103,9 @@ MIGRATIONS = [
     "ALTER TABLE copy_trades ADD COLUMN close_price REAL",
     "ALTER TABLE copy_trades ADD COLUMN realized_pnl REAL",
     "ALTER TABLE copy_trades ADD COLUMN fee_usdc REAL",
-    "ALTER TABLE copy_trades ADD COLUMN position_action TEXT",  -- 'open'/'reduce'/'close'/'flip'
+    "ALTER TABLE copy_trades ADD COLUMN position_action TEXT",
     "ALTER TABLE copy_trades ADD COLUMN hold_sec INTEGER",
-    "ALTER TABLE copy_trades ADD COLUMN filled_at_dt TEXT",     -- ISO datetime (가독성)
+    "ALTER TABLE copy_trades ADD COLUMN filled_at_dt TEXT",
     "ALTER TABLE copy_trades ADD COLUMN created_at_dt TEXT",
     # ── 인덱스 ───────────────────────────────────────────────
     "CREATE INDEX IF NOT EXISTS idx_positions_follower_symbol ON positions(follower_address, symbol, status)",
