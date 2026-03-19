@@ -15,6 +15,7 @@ DELETE /followers/{addr} — 팔로워 해지
 import os
 import re
 import time
+from datetime import datetime, timezone
 import json
 import base64
 import logging
@@ -958,4 +959,151 @@ async def get_risk_presets():
             }
             for k, v in RISK_PRESETS.items()
         ]
+    }
+
+
+
+@router.get("/paper-trading")
+async def get_paper_trading():
+    """
+    4가지 전략 병렬 페이퍼트레이딩 실시간 현황
+    paper_perp.db (별도 파일) 기반 — paper_trading_4x.py 엔진이 실시간 기록
+    """
+    import aiosqlite as _aiosqlite
+    import os as _os
+    _ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    paper_db = _os.path.join(_ROOT, "paper_perp.db")
+
+    if not _os.path.exists(paper_db):
+        return {
+            "status":  "not_started",
+            "message": "페이퍼트레이딩 미시작. python3 scripts/paper_trading_4x.py --capital 10000 실행 필요",
+            "comparison": [],
+        }
+
+    STRATEGY_META = {
+        "default":      {"label": "📋 기본형",  "expected_30d": 13.7, "traders": 3, "copy_ratio": 0.10, "max_pos": 100},
+        "conservative": {"label": "🛡️ 안정형", "expected_30d":  4.2, "traders": 2, "copy_ratio": 0.10, "max_pos":  50},
+        "balanced":     {"label": "⚖️ 균형형",  "expected_30d": 11.4, "traders": 5, "copy_ratio": 0.10, "max_pos": 100},
+        "aggressive":   {"label": "🚀 공격형",  "expected_30d": 23.6, "traders": 5, "copy_ratio": 0.15, "max_pos": 200},
+    }
+
+    try:
+        db = await _aiosqlite.connect(paper_db)
+        db.row_factory = _aiosqlite.Row
+
+        # 세션 현황
+        async with db.execute("SELECT * FROM paper_sessions ORDER BY strategy") as cur:
+            session_rows = await cur.fetchall()
+        sessions = [dict(r) for r in session_rows]
+
+        if not sessions:
+            await db.close()
+            return {
+                "status":  "not_started",
+                "message": "세션 없음. python3 scripts/paper_trading_4x.py --capital 10000 실행 필요",
+                "comparison": [],
+            }
+
+        # 최근 24h 스냅샷 히스토리 (전략별)
+        cutoff = int((time.time() - 86400) * 1000)
+        history = {}
+        for s in sessions:
+            strat = s["strategy"]
+            async with db.execute(
+                """SELECT snapshot_at, equity, realized_pnl, unrealized_pnl, win_rate
+                   FROM paper_snapshots WHERE strategy=? AND snapshot_at>?
+                   ORDER BY snapshot_at""",
+                (strat, cutoff)
+            ) as cur:
+                rows = await cur.fetchall()
+            history[strat] = [
+                {"ts": r[0], "equity": r[1], "realized_pnl": r[2],
+                 "unrealized_pnl": r[3], "win_rate": r[4]}
+                for r in rows
+            ]
+
+        # 전략별 최근 체결 거래 (최대 5건)
+        recent_trades = {}
+        for s in sessions:
+            strat = s["strategy"]
+            async with db.execute(
+                """SELECT symbol, side, action, pnl, roi_pct, hold_min
+                   FROM paper_trades WHERE session_strategy=? AND action='close'
+                   ORDER BY closed_at DESC LIMIT 5""",
+                (strat,)
+            ) as cur:
+                rows = await cur.fetchall()
+            recent_trades[strat] = [
+                {"symbol": r[0], "side": r[1], "pnl": r[3], "roi_pct": r[4], "hold_min": r[5]}
+                for r in rows
+            ]
+
+        # 전체 거래량 합산
+        async with db.execute(
+            "SELECT COUNT(*), SUM(ABS(pnl)) FROM paper_trades WHERE action='close'"
+        ) as cur:
+            agg = await cur.fetchone()
+        total_closed = agg[0] or 0
+        total_vol    = agg[1] or 0.0
+
+        await db.close()
+
+    except Exception as e:
+        return {"status": "error", "message": str(e), "comparison": []}
+
+    # 비교 테이블 구성
+    comparison = []
+    for s in sessions:
+        strat = s["strategy"]
+        meta  = STRATEGY_META.get(strat, {})
+        cap   = s["initial_capital"] or 10000
+        eq    = s["current_equity"]
+        roi   = (eq - cap) / cap * 100 if cap else 0
+        total = s["win_trades"] + s["lose_trades"]
+        wr    = s["win_trades"] / total * 100 if total else 0
+        days  = max(1, (int(time.time() * 1000) - s["started_at"]) / 86400000)
+
+        comparison.append({
+            "strategy":          strat,
+            "label":             meta.get("label", strat),
+            "copy_ratio_pct":    meta.get("copy_ratio", 0.10) * 100,
+            "max_pos_usdc":      meta.get("max_pos", 100),
+            "n_traders":         meta.get("traders", 0),
+            "initial_capital":   cap,
+            "current_equity":    round(eq, 2),
+            "realized_pnl":      round(s["realized_pnl"], 2),
+            "unrealized_pnl":    round(s["unrealized_pnl"], 2),
+            "total_pnl":         round(s["realized_pnl"] + s["unrealized_pnl"], 2),
+            "roi_pct":           round(roi, 4),
+            "roi_annualized_pct":round(roi / days * 365, 2),
+            "win_rate":          round(wr, 2),
+            "wins":              s["win_trades"],
+            "losses":            s["lose_trades"],
+            "total_trades":      total,
+            "expected_30d_roi":  meta.get("expected_30d", 0),
+            "vs_expected_pct":   round(roi - meta.get("expected_30d", 0), 2),
+            "days_running":      round(days, 2),
+            "snapshot_count":    len(history.get(strat, [])),
+            "recent_trades":     recent_trades.get(strat, []),
+        })
+
+    # 순위 (ROI 기준)
+    comparison_sorted = sorted(comparison, key=lambda x: x["roi_pct"], reverse=True)
+
+    return {
+        "status":               "running",
+        "last_updated":         datetime.now(timezone.utc).isoformat(),
+        "comparison":           comparison,
+        "ranking":              [c["strategy"] for c in comparison_sorted],
+        "history":              history,
+        "total_closed_trades":  total_closed,
+        "total_paper_volume":   round(total_vol, 2),
+        "builder_fee_simulated":round(total_vol * 0.001, 4),
+        "engine_script":        "scripts/paper_trading_4x.py",
+        "data_source":          "Mainnet 실트레이더 포지션 추적 (codetabs 프록시, 60초 폴링)",
+        "note": (
+            "페이퍼트레이딩: 실제 주문 없이 트레이더 포지션 변화를 감지해 "
+            "가상 진입/청산 시뮬레이션. 슬리피지 0.05% + taker fee 0.06% 반영."
+        ),
     }

@@ -1,0 +1,43 @@
+{
+  "strategy": "balanced",
+  "label": "\u2696\ufe0f\uade0\ud615\ud615",
+  "elapsed_min": 3.0,
+  "initial": 10000.0,
+  "capital": 9996.8156,
+  "unrealized": 27.2323,
+  "equity": 10024.0478,
+  "total_pnl": -3.1844,
+  "roi_pct": -0.0318,
+  "wins": 0,
+  "losses": 1,
+  "total_trades": 1,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "gross_profit": 0.0,
+  "gross_loss": -3.1844,
+  "max_dd_pct": 0.148,
+  "open_positions": 11,
+  "equity_series": [
+    10000.0,
+    10038.9,
+    10024.05
+  ],
+  "closed_trades": [
+    {
+      "symbol": "ASTER",
+      "side": "long",
+      "entry": 0.7684,
+      "exit": 0.69258,
+      "size": 42.0,
+      "pnl": -3.1844,
+      "pct": -9.87,
+      "held_min": 2.3,
+      "trader": "Ph9yECGo",
+      "reason": "SL"
+    }
+  ],
+  "copy_ratio": 0.1,
+  "max_pos_usdc": 800.0,
+  "stop_loss": 8.0,
+  "take_profit": 18.0
+}

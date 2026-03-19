@@ -297,7 +297,8 @@ class Engine:
     def __init__(self, traders: list):
         self.traders = traders
         self.stats = Stats()
-        self.snapshots: dict = {}   # address → list of positions (prev poll)
+        self.snapshots: dict = {}         # address → list of positions (prev poll)
+        self.trader_equity: dict = {}     # address → equity (prev poll, UPnL 추산용)
         self.session_start = time.time()
         self.poll_count = 0
 
@@ -478,17 +479,50 @@ class Engine:
             f"ROI={self.stats.roi:+.2f}% | DD={self.stats.max_dd_pct:.2f}%"
         )
 
+        # ── 트레이더별 포지션 + equity 업데이트 ────────────────────────
+        # Pacifica API는 mark_price를 제공하지 않음.
+        # UPnL 추산: 트레이더 equity(= 자본 + UPnL) 변화 × copy_ratio 로 근사
+        try:
+            lb_data = get_leaderboard(limit=500)
+            lb_map = {t.get("address"): t for t in lb_data}
+        except Exception as e:
+            log.warning(f"  leaderboard 조회 실패: {e}")
+            lb_map = {}
+
+        sim_upnl = 0.0
         for trader in self.traders:
+            addr = trader["address"]
             try:
-                positions = get_positions(trader["address"])
+                positions = get_positions(addr)
                 self._update_positions_from_snapshot(trader, positions)
-                if positions:
-                    log.info(f"  [{trader['alias'][:12]}] 포지션 {len(positions)}개")
+                n_pos = len(positions)
+                if n_pos:
+                    log.info(f"  [{trader['alias'][:12]}] 포지션 {n_pos}개")
                 else:
                     log.info(f"  [{trader['alias'][:12]}] 포지션 없음")
+
+                # ── UPnL 추산: equity delta × copy_ratio ──────────────────
+                lb_row = lb_map.get(addr)
+                if lb_row:
+                    cur_eq = float(lb_row.get("equity_current") or 0)
+                    prev_eq = self.trader_equity.get(addr, cur_eq)
+                    if prev_eq > 0 and cur_eq > 0:
+                        eq_delta_pct = (cur_eq - prev_eq) / prev_eq
+                        # 팔로워 투자금 = 보유 포지션 notional 합
+                        invested = sum(
+                            p.notional for p in self.stats.positions.values()
+                            if p.trader == trader.get("alias", addr)[:10]
+                        )
+                        sim_upnl += invested * eq_delta_pct * COPY_RATIO
+                    self.trader_equity[addr] = cur_eq
             except Exception as e:
                 log.warning(f"  [{trader['alias']}] 오류: {e}")
             time.sleep(0.5)
+
+        # UPnL 반영 (직접 접근 불가이므로 equity에 합산)
+        if sim_upnl != 0.0:
+            self.stats.capital += sim_upnl  # 미실현을 자본에 근사 반영
+            log.info(f"  📊 UPnL 추산(equity delta): ${sim_upnl:+.4f}")
 
         self._apply_risk_controls()
         self._update_stats()
@@ -652,9 +686,11 @@ if __name__ == "__main__":
     STOP_LOSS_PCT       = preset["stop_loss_pct"]
     TAKE_PROFIT_PCT     = preset["take_profit_pct"]
     n_traders           = args.traders or preset["n_traders"]
+    # ✅ BUG FIX: INITIAL_CAPITAL을 전략별 preset.capital로 설정
+    INITIAL_CAPITAL     = preset.get("capital", INITIAL_CAPITAL)
 
     log.info(f"전략: {preset['label']} | copy={COPY_RATIO*100:.0f}% | "
-             f"max_pos=${MAX_POSITION_USDC:.0f} | SL={STOP_LOSS_PCT}% | TP={TAKE_PROFIT_PCT}%")
+             f"자본=${INITIAL_CAPITAL:,.0f} | max_pos=${MAX_POSITION_USDC:.0f} | SL={STOP_LOSS_PCT}% | TP={TAKE_PROFIT_PCT}%")
 
     if args.quick:
         run(duration_min=5, interval_sec=60, output=args.output, n_traders=n_traders)

@@ -1,0 +1,30 @@
+{
+  "strategy": "conservative",
+  "label": "\ud83d\udee1\ufe0f\uc548\uc815\ud615",
+  "elapsed_min": 3.0,
+  "initial": 10000.0,
+  "capital": 10000.0,
+  "unrealized": 44.875,
+  "equity": 10044.875,
+  "total_pnl": 0.0,
+  "roi_pct": 0.0,
+  "wins": 0,
+  "losses": 0,
+  "total_trades": 0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "gross_profit": 0.0,
+  "gross_loss": 0.0,
+  "max_dd_pct": 0.0528,
+  "open_positions": 3,
+  "equity_series": [
+    10000.0,
+    10050.18,
+    10044.87
+  ],
+  "closed_trades": [],
+  "copy_ratio": 0.05,
+  "max_pos_usdc": 500.0,
+  "stop_loss": 5.0,
+  "take_profit": 12.0
+}

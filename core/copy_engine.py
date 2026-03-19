@@ -249,11 +249,13 @@ class CopyEngine:
             strategy_id = follower["strategy"] or "default"
         except (KeyError, IndexError, TypeError):
             strategy_id = "default"
-        preset = get_strategy_preset(strategy_id)
+        # ✅ None 가드: import 실패 시 기본값 사용
+        preset = get_strategy_preset(strategy_id) if get_strategy_preset is not None else {}
 
         # ── 심볼 필터: FX/미지원 종목 사전 차단 (mock_mode 제외) ──────────
         if preset.get("symbol_filter", True) and not self.mock_mode:
-            if symbol.upper() not in SUPPORTED_SYMBOLS:
+            _supported = SUPPORTED_SYMBOLS if SUPPORTED_SYMBOLS else set()
+            if _supported and symbol.upper() not in _supported:
                 logger.info(f"[{follower_addr[:8]}] {symbol} 미지원 심볼 차단 (strategy={strategy_id})")
                 return
 

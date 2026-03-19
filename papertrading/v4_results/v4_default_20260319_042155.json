@@ -1,0 +1,29 @@
+{
+  "strategy": "default",
+  "label": "\u2699\ufe0f\uae30\ubcf8\ud615",
+  "elapsed_min": 2.0,
+  "initial": 10000.0,
+  "capital": 10000.0,
+  "unrealized": -0.0958,
+  "equity": 9999.9042,
+  "total_pnl": 0.0,
+  "roi_pct": 0.0,
+  "wins": 0,
+  "losses": 0,
+  "total_trades": 0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "gross_profit": 0.0,
+  "gross_loss": 0.0,
+  "max_dd_pct": 1.6269,
+  "open_positions": 10,
+  "equity_series": [
+    10000.0,
+    9837.31
+  ],
+  "closed_trades": [],
+  "copy_ratio": 0.18,
+  "max_pos_usdc": 500.0,
+  "stop_loss": 12.0,
+  "take_profit": 25.0
+}

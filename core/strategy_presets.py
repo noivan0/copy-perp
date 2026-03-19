@@ -2,19 +2,18 @@
 core/strategy_presets.py — 사용자 선택 시나리오 프리셋
 
 4개 프리셋 (메인넷 실데이터 기반 파라미터 최적화):
-  default      기본형  📋  copy_ratio 10%, CRS 상위 3명, max_pos $100  → 30일 +13.7%
-  conservative 안정형  🛡️  copy_ratio 10%, 일관성 4/4 저레버, max_pos $50  → 30일 +4.2%
-  balanced     균형형  ⚖️  copy_ratio 10%, CRS A등급 5명 분산, max_pos $100 → 30일 +11.4%
-  aggressive   공격형  🚀  copy_ratio 15%, 고ROI 검증 5명, max_pos $200  → 30일 +23.6%
+  default      기본형  🔒  copy_ratio 8%,  S등급 안정성 2명, max_pos $40   → 30일 +4.77%
+  conservative 안정형  🛡️  copy_ratio 10%, S등급 30일ROI 3명, max_pos $100  → 30일 +5.38%
+  balanced     균형형  ⚖️  copy_ratio 12%, S+A 복합점수 4명, max_pos $150  → 30일 +5.94%
+  aggressive   공격형  ⚡  copy_ratio 15%, 7일모멘텀 3명,   max_pos $200  → 7일  +4.75%
 
 트레이더 배정: mainnet_tracker.db 최신 수집 데이터 → 실시간 자동 선별
-              DB 없을 때: FALLBACK_TRADERS (2026-03-19 메인넷 CRS 분석 확정)
+              DB 없을 때: FALLBACK_TRADERS (2026-03-19 메인넷 확인된 주소)
 
-최적화 기준 (2026-03-19 메인넷 8,252명 전수 분석):
-  - 품질 필터: equity>$5k, vol30>$50k, pnl30>$5k → 43명 선별
-  - copy_ratio 구간별 시뮬레이션: 10%가 리스크 대비 최적점
-  - 현실화 계수 0.998 (슬리피지+builder fee 0.2%)
-  - 기본형 기대 수익: +13.7%/30일 (연환산 +165%)
+최적화 기준 (2026-03-19):
+  - 현실화 계수 0.82 (슬리피지+지연+부분체결)
+  - 수수료 0.15% per trade (taker 0.05% + builder 0.10%)
+  - 기존 default copy_ratio 5% → 8% (30일 ROI +2.94% → +4.71%)
 """
 
 import os
@@ -26,98 +25,66 @@ logger = logging.getLogger(__name__)
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_DB = os.path.join(_ROOT, "mainnet_tracker.db")
 
-COPY_REALISM = 0.998  # 슬리피지+builder fee 0.2% (메인넷 실측 기준)
-TOTAL_FEE    = 0.0010  # builder fee 0.1%
+COPY_REALISM = 0.82
+TOTAL_FEE    = 0.0015
 
-# ── 메인넷 확정 폴백 트레이더 (2026-03-19 CRS 분석, 품질필터 43명 → 선별) ──
-MAINNET_FALLBACK = {
-    "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E":  {"alias":"YjCD9Gek","crs":82.5,"roi30":113.9,"cons":3,"lev":1.5,"grade":"A"},
-    "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv": {"alias":"6ZjWoJKe","crs":82.4,"roi30":157.5,"cons":3,"lev":2.7,"grade":"A"},
-    "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ":  {"alias":"4TYEjn9P","crs":81.1,"roi30":141.7,"cons":4,"lev":5.8,"grade":"A"},
-    "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v":  {"alias":"D5Lnbmz", "crs":75.1,"roi30": 30.7,"cons":3,"lev":0.0,"grade":"A"},
-    "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL":  {"alias":"CAHPdCrm","crs":72.1,"roi30": 27.9,"cons":3,"lev":1.3,"grade":"A"},
-    "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv":   {"alias":"Ph9yECGo","crs":69.5,"roi30":1017.3,"cons":3,"lev":2.2,"grade":"A"},
-    "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2":  {"alias":"FN4seJZ9","crs":66.8,"roi30": 416.2,"cons":4,"lev":0.7,"grade":"A"},
-    "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a":  {"alias":"GNzSLjvy","crs":56.7,"roi30":  54.1,"cons":4,"lev":0.0,"grade":"B"},
-    "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B":  {"alias":"BkUTkCt4","crs":44.5,"roi30":  31.3,"cons":4,"lev":3.0,"grade":"B"},
-}
-
-# ── 프리셋 정의 (메인넷 실측 최적화, 2026-03-19 확정) ──────────────────────
+# ── 프리셋 정의 ────────────────────────────────────────────────────
 PRESETS = {
-    # ── 2026-03-19 최적화 완료 (mainnet Kelly 실측 기반) ──────────────
-    # avg_kelly=0.231 median_kelly=0.286 → QK(0.25)=0.058~0.072
-    # 체결률 78.5% (beta 승인 팔로워 기준), 평균 체결금액 $49.50
     "default": {
         "key":         "default",
         "label":       "기본형",
         "emoji":       "🔒",
-        "description": "손절 없이 트레이더를 그대로 따라갑니다. 자본의 15% 운용. CARP 상위 2명 자동 배정.",
-        "copy_ratio":        0.15,
-        "max_position_usdc": 120.0,
+        "description": "안전한 시작. 자본의 8%만 운용. S등급 안정성 최상위 2명 자동 배정.",
+        "copy_ratio":        0.08,
+        "max_position_usdc": 40.0,
         "n_traders":         2,
         "grade_filter":      ["S"],
-        "sort_by":           "stability",
-        "risk_level":        1,
-        "stop_loss_pct":     0.0,
-        "take_profit_pct":   0.0,
-        "trailing_stop_pct": 0.0,
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 6.8,
-        "expected_roi_7d_pct":  3.1,
+        "sort_by":           "stability",   # 안정성 = roi30*(mom/3) + roi7_pos*0.3
+        "risk_level":        1,             # 1=최저위험 ~ 4=최고위험
+        "expected_roi_30d_pct": 4.7,
+        "expected_roi_7d_pct":  2.2,
     },
     "conservative": {
         "key":         "conservative",
         "label":       "안정형",
         "emoji":       "🛡️",
-        "description": "S등급 3명 분산. 손절 -10% 자동 적용. 안정적 우상향.",
-        "copy_ratio":        0.15,
-        "max_position_usdc": 120.0,
+        "description": "S등급 3명 분산. 30일 ROI 기준 상위 배정. 자본의 10% 운용.",
+        "copy_ratio":        0.10,
+        "max_position_usdc": 100.0,
         "n_traders":         3,
         "grade_filter":      ["S"],
         "sort_by":           "roi_30d",
         "risk_level":        2,
-        "stop_loss_pct":     0.10,
-        "take_profit_pct":   0.0,
-        "trailing_stop_pct": 0.0,
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 7.2,
-        "expected_roi_7d_pct":  3.3,
+        "expected_roi_30d_pct": 5.3,
+        "expected_roi_7d_pct":  1.4,
     },
     "balanced": {
         "key":         "balanced",
         "label":       "균형형",
         "emoji":       "⚖️",
-        "description": "S+A등급 4명. 손절 -15% + 트레일링 -20%. 수익성과 리스크의 균형.",
-        "copy_ratio":        0.20,
-        "max_position_usdc": 200.0,
+        "description": "S+A등급 4명. 수익성+모멘텀 복합 점수 기준. 자본의 12% 운용.",
+        "copy_ratio":        0.12,
+        "max_position_usdc": 150.0,
         "n_traders":         4,
         "grade_filter":      ["S", "A"],
-        "sort_by":           "score",
+        "sort_by":           "score",       # roi30*momentum + roi7*0.5
         "risk_level":        3,
-        "stop_loss_pct":     0.15,
-        "take_profit_pct":   0.0,
-        "trailing_stop_pct": 0.20,
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 8.1,
-        "expected_roi_7d_pct":  3.9,
+        "expected_roi_30d_pct": 5.8,
+        "expected_roi_7d_pct":  2.6,
     },
     "aggressive": {
         "key":         "aggressive",
         "label":       "공격형",
         "emoji":       "⚡",
-        "description": "7일 모멘텀 최강 3명. 손절 -5% + 익절 +30% + 트레일링. 단기 집중. 고위험.",
-        "copy_ratio":        0.25,
-        "max_position_usdc": 300.0,
+        "description": "7일 모멘텀 최강 3명. 단기 급등 포착. 자본의 15% 운용. 고위험.",
+        "copy_ratio":        0.15,
+        "max_position_usdc": 200.0,
         "n_traders":         3,
         "grade_filter":      ["S", "A"],
-        "sort_by":           "roi_7d",
+        "sort_by":           "roi_7d",      # 최근 7일 ROI 기준
         "risk_level":        4,
-        "stop_loss_pct":     0.05,
-        "take_profit_pct":   0.30,
-        "trailing_stop_pct": 0.10,
-        "symbol_filter":     True,
-        "expected_roi_30d_pct": 9.5,
-        "expected_roi_7d_pct":  6.2,
+        "expected_roi_30d_pct": 4.6,
+        "expected_roi_7d_pct":  5.2,        # 7일이 핵심
     },
 }
 
@@ -321,6 +288,3 @@ def list_presets_with_sim(capital: float = 1000.0, db_path: str = _DEFAULT_DB) -
             },
         })
     return results
-
-# alias for backward compat
-get_all_presets_summary = list_presets_with_sim

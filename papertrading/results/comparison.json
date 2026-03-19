@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-19T04:03:50.968205+00:00",
+  "generated_at": "2026-03-19T04:07:51.270184+00:00",
   "initial_capital": 10000.0,
   "strategies": [
     {
@@ -14,7 +14,7 @@
       "profit_factor": 9.99,
       "max_dd_pct": 0.0,
       "total_fees": 0.0154,
-      "session_count": 1,
+      "session_count": 3,
       "started_at": "2026-03-19T04:03:23.563159+00:00",
       "updated_at": "2026-03-19T04:03:25.013814+00:00",
       "expected_monthly_roi": 1.9,
@@ -33,7 +33,7 @@
       "profit_factor": 0.062,
       "max_dd_pct": 0.241,
       "total_fees": 0.7366,
-      "session_count": 1,
+      "session_count": 3,
       "started_at": "2026-03-19T04:03:28.167256+00:00",
       "updated_at": "2026-03-19T04:03:30.172817+00:00",
       "expected_monthly_roi": 2.7,
@@ -52,7 +52,7 @@
       "profit_factor": 0.055,
       "max_dd_pct": 0.257,
       "total_fees": 0.7926,
-      "session_count": 1,
+      "session_count": 3,
       "started_at": "2026-03-19T04:03:30.982879+00:00",
       "updated_at": "2026-03-19T04:03:34.611320+00:00",
       "expected_monthly_roi": 4.1,
@@ -71,7 +71,7 @@
       "profit_factor": 0.049,
       "max_dd_pct": 0.697,
       "total_fees": 2.1132,
-      "session_count": 1,
+      "session_count": 3,
       "started_at": "2026-03-19T04:03:25.819407+00:00",
       "updated_at": "2026-03-19T04:03:27.355238+00:00",
       "expected_monthly_roi": 10.42,
