@@ -35,9 +35,11 @@ SLIPPAGE_BPS = 5        # 5 bps (0.05%)
 # ── 4가지 전략 정의 (메인넷 2026-03-19 확정) ─────────
 STRATEGIES = {
     "default": {
-        "label":       "📋 기본형",
-        "copy_ratio":   0.10,
-        "max_pos_usdc": 100.0,
+        "label":         "📋 기본형",
+        "copy_ratio":     0.10,
+        "max_pos_usdc":   100.0,
+        "max_positions":  8,      # 전체 최대 동시 포지션 수
+        "per_trader_max": 3,      # 트레이더 1명당 최대 포지션
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",   # CRS 82.5, ROI 113.9%
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",  # CRS 82.4, ROI 157.5%
@@ -46,9 +48,11 @@ STRATEGIES = {
         "expected_30d_roi": 13.7,
     },
     "conservative": {
-        "label":       "🛡️ 안정형",
-        "copy_ratio":   0.10,
-        "max_pos_usdc": 50.0,
+        "label":         "🛡️ 안정형",
+        "copy_ratio":     0.10,
+        "max_pos_usdc":   50.0,
+        "max_positions":  5,
+        "per_trader_max": 3,
         "traders": [
             "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a",  # 일관성 4/4, 레버 0x
             "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",  # 일관성 4/4, 레버 3x
@@ -56,28 +60,32 @@ STRATEGIES = {
         "expected_30d_roi": 4.2,
     },
     "balanced": {
-        "label":       "⚖️ 균형형",
-        "copy_ratio":   0.10,
-        "max_pos_usdc": 100.0,
+        "label":         "⚖️ 균형형",
+        "copy_ratio":     0.10,
+        "max_pos_usdc":   100.0,
+        "max_positions":  10,
+        "per_trader_max": 3,
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
             "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",
-            "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v",  # CRS 75.1, ROI 30.7%
-            "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL",  # CRS 72.1, ROI 27.9%
+            "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v",
+            "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL",
         ],
         "expected_30d_roi": 11.4,
     },
     "aggressive": {
-        "label":       "🚀 공격형",
-        "copy_ratio":   0.15,
-        "max_pos_usdc": 200.0,
+        "label":         "🚀 공격형",
+        "copy_ratio":     0.15,
+        "max_pos_usdc":   200.0,
+        "max_positions":  12,
+        "per_trader_max": 4,
         "traders": [
             "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",
             "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",
             "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",
-            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # CRS 69.5, ROI 1017%
-            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # CRS 66.8, ROI 416%
+            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",
+            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",
         ],
         "expected_30d_roi": 23.6,
     },
@@ -281,13 +289,16 @@ def load_session_state(conn: sqlite3.Connection, strategy: str) -> Optional[dict
 
 class StrategyEngine:
     def __init__(self, key: str, cfg: dict, capital: float, conn: sqlite3.Connection):
-        self.key      = key
-        self.label    = cfg["label"]
-        self.ratio    = cfg["copy_ratio"]
-        self.max_pos  = cfg["max_pos_usdc"]
-        self.traders  = cfg["traders"]
-        self.exp_roi  = cfg["expected_30d_roi"]
-        self.conn     = conn
+        self.key          = key
+        self.label        = cfg["label"]
+        self.ratio        = cfg["copy_ratio"]
+        self.max_pos      = cfg["max_pos_usdc"]
+        self.max_positions= cfg.get("max_positions", 8)   # 최대 동시 포지션
+        self.per_trader   = cfg.get("per_trader_max", 3)  # 트레이더당 최대
+        self.traders      = cfg["traders"]
+        self.exp_roi      = cfg["expected_30d_roi"]
+        self.conn         = conn
+        self.is_warmup    = True   # 첫 사이클: 스냅샷만, 진입 없음
 
         # 기존 세션 복구 시도
         old = load_session_state(conn, key)
@@ -336,11 +347,24 @@ class StrategyEngine:
         return (self.equity() - self.initial) / self.initial * 100
 
     def open_pos(self, symbol: str, side: str, trader: str) -> bool:
+        # 웜업 중이면 진입 금지 (첫 사이클은 현황만 기록)
+        if self.is_warmup:
+            return False
+
         if symbol in self.positions:
             existing = self.positions[symbol]
             if existing["side"] == side:
                 return False  # 동일 방향 이미 보유
             self.close_pos(symbol, "반전")
+
+        # 전체 포지션 수 제한
+        if len(self.positions) >= self.max_positions:
+            return False
+
+        # 트레이더당 포지션 수 제한
+        trader_count = sum(1 for p in self.positions.values() if p["trader_addr"] == trader)
+        if trader_count >= self.per_trader:
+            return False
 
         price = self.prices.get(symbol, 0)
         if not price:
@@ -350,7 +374,8 @@ class StrategyEngine:
         exec_price = price + slip if side == "long" else price - slip
         usdc       = min(self.cash * self.ratio, self.max_pos)
 
-        if usdc < 3:
+        # 현금 충분성 체크
+        if usdc < 3 or self.cash < usdc * 1.01:  # 수수료 포함
             return False
 
         size = usdc / exec_price
@@ -581,6 +606,12 @@ def run_4x(capital: float = 10_000, interval: int = 60):
                         eng.close_pos(sym, "트레이더 청산")
                         total_changes += 1
                 eng.prev_positions[addr] = current
+
+        # 웜업 해제 (첫 사이클 완료 후)
+        for eng in engines.values():
+            if eng.is_warmup:
+                eng.is_warmup = False
+                log.info(f"  [{eng.key}] 웜업 완료 → 다음 사이클부터 실제 진입")
 
         if total_changes == 0:
             log.info(f"  → 포지션 변화 없음 (총 {len(unique_traders)}명 감시 중)")

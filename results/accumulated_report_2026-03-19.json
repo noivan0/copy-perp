@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-19T03:38:15",
-  "snapshot_count": 2,
+  "generated_at": "2026-03-19T05:38:39",
+  "snapshot_count": 4,
   "follower_capital": 10000,
   "slippage_haircut": 0.95,
   "grade_summary": {
@@ -27,12 +27,12 @@
   },
   "analysis": {
     "method": "multi_snapshot_delta",
-    "snapshot_count": 2,
-    "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38",
+    "snapshot_count": 4,
+    "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38",
     "traders": [
       {
         "address": "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 82.4727,
         "roi_30d_first": 82.4727,
         "trust_score": 78.35,
@@ -40,11 +40,11 @@
         "copy_ratio": 0.1,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 58.8069,
         "roi_30d_first": 58.8069,
         "trust_score": 56.27,
@@ -52,11 +52,11 @@
         "copy_ratio": 0.07,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 58.9251,
         "roi_30d_first": 58.9251,
         "trust_score": 55.6,
@@ -64,11 +64,11 @@
         "copy_ratio": 0.07,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 51.5264,
         "roi_30d_first": 51.5264,
         "trust_score": 55.46,
@@ -76,11 +76,11 @@
         "copy_ratio": 0.07,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 57.7829,
         "roi_30d_first": 57.7829,
         "trust_score": 54.5,
@@ -88,11 +88,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 47.4209,
         "roi_30d_first": 47.4209,
         "trust_score": 54.19,
@@ -100,11 +100,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "E1vabqxiuUfB29BAwLppTLLNMAq6HJqp7gSz1NiYwWz7",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 47.6226,
         "roi_30d_first": 47.6226,
         "trust_score": 51.47,
@@ -112,11 +112,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "5BPd5WYVvDE2kHMjzGmLHMaAorSm8bEfERcsycg5GCAD",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 43.5939,
         "roi_30d_first": 43.5939,
         "trust_score": 49.01,
@@ -124,11 +124,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "9XCVb4SQVADNeE6HBhZKytFHFqo1KyCDpqbqNfp48qen",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 43.479,
         "roi_30d_first": 43.479,
         "trust_score": 47.93,
@@ -136,11 +136,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "7kDTQZPTnaCidXZwEhkoLSia5BKb7zhQ6CmBX2g1RiG3",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 41.7492,
         "roi_30d_first": 41.7492,
         "trust_score": 46.49,
@@ -148,11 +148,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 35.7914,
         "roi_30d_first": 35.7914,
         "trust_score": 44.77,
@@ -160,11 +160,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "HcG1FFVfeW7Q8vpwH3twDQACoBtznXVCAYHaDdQtieMQ",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 36.8077,
         "roi_30d_first": 36.8077,
         "trust_score": 44.64,
@@ -172,11 +172,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "8r5HRJeSScGX1TB9D2FZ45xEDspm1qfK4CTuaZvqe7en",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 35.11,
         "roi_30d_first": 35.11,
         "trust_score": 45.64,
@@ -184,11 +184,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "DThxt2yhDvJv9KU9bPMuKsd7vcwdDtaRtuh4NvohutQi",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 36.6251,
         "roi_30d_first": 36.6251,
         "trust_score": 44.04,
@@ -196,11 +196,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "FuHMGqdrn77u944FSYvg9VTw3sD5RVeYS1ezLpGaFes7",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 33.7713,
         "roi_30d_first": 33.7713,
         "trust_score": 46.39,
@@ -208,11 +208,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "AF5a28meHjecM4dNy8FssFHquWJVv4BK1e5Z8ipRkDgT",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 33.1286,
         "roi_30d_first": 33.1286,
         "trust_score": 40.66,
@@ -220,11 +220,11 @@
         "copy_ratio": 0.04,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       },
       {
         "address": "A4XbPsH59TWjp6vx3QnY8sCb26ew4pBYkYc8Vk4kpbqk",
-        "snapshot_count": 2,
+        "snapshot_count": 4,
         "roi_30d_latest": 33.1763,
         "roi_30d_first": 33.1763,
         "trust_score": 34.91,
@@ -232,7 +232,7 @@
         "copy_ratio": 0.0,
         "accumulated_follower_pnl": 0.0,
         "calc_method": "multi_snapshot_delta",
-        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T05:38"
       }
     ]
   }

@@ -46,7 +46,19 @@ TAKER_FEE       = 0.0005 # 0.05%
 BUILDER_FEE     = 0.001  # 0.10%
 TOTAL_FEE       = TAKER_FEE + BUILDER_FEE
 
-# ── 4가지 전략 프리셋 ──────────────────────────────────────────────────────────
+# ── 스노우볼 설정 ──────────────────────────────────────────────────────────────
+# 자본이 증가할수록 copy_ratio를 비례 상향 → 복리 효과
+# capital > SNOWBALL_BASE → ratio *= (capital / SNOWBALL_BASE) ^ SNOWBALL_EXP
+SNOWBALL_BASE   = 10_000.0   # 기준 자본
+SNOWBALL_EXP    = 0.5        # 지수 (0.5 = 완만한 복리, 1.0 = 완전 선형)
+SNOWBALL_CAP    = 2.0        # 최대 2배 상향 (리스크 제한)
+
+# ── 4가지 전략 프리셋 (531e → BkUTkCt4/FMhCxyGk 교체, 2026-03-19) ──────────
+#
+# 531e 교체 이유:
+#   최근 100건 BTC 숏 편향, 승률 0%, PnL -$19,900
+#   → BkUTkCt4 (WR 100%, PnL +$1,281, SOL/SUI/WLFI 다변화)
+#   → FMhCxyGk (WR 62%, PnL +$1,194, SOL 중심)
 STRATEGIES = {
     "safe": {
         "label":       "🛡 안전형",
@@ -55,9 +67,9 @@ STRATEGIES = {
         "stop_loss":   0.08,   # 8%
         "take_profit": 0.15,   # 15%
         "traders": [
-            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s", "weight": 0.40},
-            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9", "weight": 0.35},
-            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y", "weight": 0.25},
+            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s",  "weight": 0.40},
+            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9",  "weight": 0.35},
+            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y",  "weight": 0.25},
         ],
         "expected_monthly_roi": 1.9,
     },
@@ -68,10 +80,10 @@ STRATEGIES = {
         "stop_loss":   0.12,   # 12%
         "take_profit": 0.25,   # 25%
         "traders": [
-            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y", "weight": 0.30},
-            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s", "weight": 0.30},
-            {"address": "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG", "alias": "531e", "weight": 0.25},
-            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9", "weight": 0.15},
+            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y",  "weight": 0.30},
+            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s",  "weight": 0.25},
+            {"address": "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B", "alias": "BkUT",  "weight": 0.25},  # 531e 대체: WR 100%
+            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9",  "weight": 0.20},
         ],
         "expected_monthly_roi": 10.42,
     },
@@ -82,11 +94,11 @@ STRATEGIES = {
         "stop_loss":   0.10,   # 10%
         "take_profit": 0.22,   # 22%
         "traders": [
-            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s", "weight": 0.25},
-            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y", "weight": 0.25},
-            {"address": "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG", "alias": "531e", "weight": 0.20},
-            {"address": "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq", "alias": "DQqr", "weight": 0.15},
-            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9", "weight": 0.15},
+            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s",  "weight": 0.25},
+            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y",  "weight": 0.25},
+            {"address": "FMhCxyGkfcFEyr7mRQ9qpGGqzk3BwvgXxQcCXunfwpA", "alias": "FMhC",  "weight": 0.20},  # 531e 대체: WR 62%
+            {"address": "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq", "alias": "DQqr",  "weight": 0.15},
+            {"address": "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1", "alias": "49R9",  "weight": 0.15},
         ],
         "expected_monthly_roi": 2.7,
     },
@@ -97,12 +109,12 @@ STRATEGIES = {
         "stop_loss":   0.12,   # 12%
         "take_profit": 0.30,   # 30%
         "traders": [
-            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y", "weight": 0.25},
-            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s", "weight": 0.20},
-            {"address": "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV", "alias": "6uC2", "weight": 0.20},
-            {"address": "8AsJfKorQc1WANtdP5kxLdujvmNZHB1KQd1sQxS4Jvsm", "alias": "8AsJ", "weight": 0.15},
-            {"address": "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG", "alias": "531e", "weight": 0.10},
-            {"address": "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq", "alias": "DQqr", "weight": 0.10},
+            {"address": "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",  "alias": "Ph9y",  "weight": 0.25},
+            {"address": "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2", "alias": "FN4s",  "weight": 0.20},
+            {"address": "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV", "alias": "6uC2",  "weight": 0.20},
+            {"address": "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B", "alias": "BkUT",  "weight": 0.15},  # 531e 대체: WR 100%
+            {"address": "FMhCxyGkfcFEyr7mRQ9qpGGqzk3BwvgXxQcCXunfwpA", "alias": "FMhC",  "weight": 0.10},  # 추가
+            {"address": "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq", "alias": "DQqr",  "weight": 0.10},
         ],
         "expected_monthly_roi": 4.1,
     },
@@ -292,13 +304,22 @@ class StrategyEngine:
             return None
 
         cfg = self.cfg
-        # 비율 계산
-        base_ratio = cfg["copy_ratio"] * trader["weight"]
+        # ── 스노우볼: 현재 자본 기반 copy_ratio 동적 상향 ────────────────────
+        # 자본이 초기 대비 늘어날수록 더 많이 복사 → 복리 효과
+        cur_capital = self.portfolio.capital
+        if cur_capital > SNOWBALL_BASE:
+            snowball_mult = min(SNOWBALL_CAP, (cur_capital / SNOWBALL_BASE) ** SNOWBALL_EXP)
+        else:
+            snowball_mult = 1.0   # 자본 감소 시 그대로 유지 (리스크 보호)
+
+        # 비율 계산 (스노우볼 적용)
+        base_ratio = cfg["copy_ratio"] * trader["weight"] * snowball_mult
         scale      = min(1.0, INITIAL_CAPITAL / equity) if equity > 0 else 1.0
         ratio      = base_ratio * scale
 
-        # max_pos 클램핑
-        capped_pos = min(pos_usdc * ratio, cfg["max_pos"])
+        # max_pos 클램핑 (스노우볼 적용: max_pos도 비례 확대)
+        effective_max = cfg["max_pos"] * snowball_mult
+        capped_pos = min(pos_usdc * ratio, effective_max)
         if pos_usdc * ratio > 0:
             ratio = capped_pos / pos_usdc
 
@@ -333,21 +354,22 @@ class StrategyEngine:
         self.portfolio.updated_at = datetime.now(timezone.utc).isoformat()
 
         record = {
-            "ts":          int(time.time() * 1000),
-            "dt":          datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "history_id":  hist_id,
-            "strategy":    self.name,
-            "trader":      trader["alias"],
-            "symbol":      trade.get("symbol", "?"),
-            "side":        side,
-            "pos_usdc":    round(capped_pos, 4),
-            "raw_pnl":     round(raw_pnl, 4),
-            "copy_pnl":    round(copy_pnl, 4),
-            "fee":         round(fee, 4),
-            "net":         round(net, 4),
-            "ratio":       round(ratio, 6),
-            "capital":     round(self.portfolio.capital, 4),
-            "roi_pct":     round(self.portfolio.roi_pct, 4),
+            "ts":              int(time.time() * 1000),
+            "dt":              datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "history_id":      hist_id,
+            "strategy":        self.name,
+            "trader":          trader["alias"],
+            "symbol":          trade.get("symbol", "?"),
+            "side":            side,
+            "pos_usdc":        round(capped_pos, 4),
+            "raw_pnl":         round(raw_pnl, 4),
+            "copy_pnl":        round(copy_pnl, 4),
+            "fee":             round(fee, 4),
+            "net":             round(net, 4),
+            "ratio":           round(ratio, 6),
+            "snowball_mult":   round(snowball_mult, 4),   # 스노우볼 배율
+            "capital":         round(self.portfolio.capital, 4),
+            "roi_pct":         round(self.portfolio.roi_pct, 4),
         }
         self.portfolio.trade_log.append(record)
         return record

@@ -14,6 +14,11 @@ v3 대비 개선:
   ③ 4전략 독립 인스턴스로 병렬 실행
   ④ 60초 폴링 (v3의 120초 → 절반)
 
+v4 스노우볼 개선 (snowball):
+  ⑤ 재진입 허용: 동일 sym+trader 최대 3개까지 중첩 포지션 허용
+  ⑥ 복리 포지션 사이즈: 자본 성장률에 비례해 포지션 크기 확대 (최대 2배)
+  ⑦ 회전 횟수(turnover_count) 추적으로 스노우볼 효과 측정
+
 4전략: conservative / default / balanced / aggressive
 """
 import json, os, ssl, socket, time, logging
@@ -107,7 +112,7 @@ class Strategy:
 
     # 런타임 상태
     capital:      float = 10_000.0
-    positions:    dict  = field(default_factory=dict)   # key: f"{sym}_{addr8}"
+    positions:    dict  = field(default_factory=dict)   # key: f"{sym}_{addr8}_{ts_ms}"
     snapshots:    dict  = field(default_factory=dict)   # addr → prev pos list
     mark_prices:  dict  = field(default_factory=dict)   # symbol → latest price
     closed:       list  = field(default_factory=list)
@@ -120,6 +125,9 @@ class Strategy:
     equity_series: list = field(default_factory=list)
     start_time:   float = field(default_factory=time.time)
     log:          object = None
+    # 스노우볼 추적
+    turnover_count: int   = 0    # 총 open 횟수 (회전 추적)
+    compound_gain:  float = 0.0  # 복리 누적 이익
 
     def __post_init__(self):
         self.log  = logging.getLogger(f"v4[{self.name[:4]}]")
@@ -127,6 +135,11 @@ class Strategy:
 
     def _key(self, sym: str, addr: str) -> str:
         return f"{sym}_{addr[:8]}"
+
+    def _keys_for(self, sym: str, addr: str) -> list:
+        """sym+addr 조합의 모든 활성 포지션 키 반환 (재진입 지원)"""
+        prefix = f"{sym}_{addr[:8]}_"
+        return [k for k in self.positions if k.startswith(prefix)]
 
     # ── positions 스냅샷 비교로 open/close 감지 ─────────────────────────────
     def update_from_positions(self, addr: str, alias: str, new_list: list):
@@ -150,20 +163,19 @@ class Strategy:
                 if ep > 0 and amt > 0:
                     self._open(addr, alias, sym, side, ep, amt)
 
-        # 사라진 포지션 → close (최신 mark_price 사용)
+        # 사라진 포지션 → 해당 sym+addr 키 전체 close (재진입 지원)
         for (sym, side), p in old_map.items():
             if (sym, side) not in new_map:
-                key = self._key(sym, addr)
-                if key in self.positions:
-                    exit_price = self.mark_prices.get(sym) or float(p.get("entry_price") or 0)
+                keys = self._keys_for(sym, addr)
+                exit_price = self.mark_prices.get(sym) or float(p.get("entry_price") or 0)
+                for key in keys:
                     self._close(key, exit_price, reason="trader_closed")
 
-        # 유지 포지션 → cur_price 업데이트
+        # 유지 포지션 → cur_price 업데이트 (타임스탬프 키 방식 대응)
         for (sym, side), p in new_map.items():
-            key = self._key(sym, addr)
-            if key in self.positions:
-                mp = self.mark_prices.get(sym)
-                if mp:
+            mp = self.mark_prices.get(sym)
+            if mp:
+                for key in self._keys_for(sym, addr):
                     self.positions[key].cur_price = mp
 
         self.snapshots[addr] = new_list
@@ -220,11 +232,16 @@ class Strategy:
     def _open(self, addr, alias, sym, side, ep, trader_amt):
         if len(self.positions) >= self.max_open:
             return
-        key = self._key(sym, addr)
-        if key in self.positions:
+        # 같은 심볼+트레이더 조합은 최대 3개까지만 동시 허용 (과도한 중첩 방지)
+        existing = self._keys_for(sym, addr)
+        if len(existing) >= 3:
             return
 
-        copy_size = trader_amt * self.copy_ratio
+        # 복리 효과: 현재 자본 기준으로 포지션 크기 스케일 (최대 2배)
+        capital_growth = self.capital / 10_000.0
+        copy_size = trader_amt * self.copy_ratio * capital_growth
+        copy_size = min(copy_size, trader_amt * self.copy_ratio * 2.0)
+
         notional  = copy_size * ep
         if notional > self.max_pos_usdc:
             copy_size = self.max_pos_usdc / ep
@@ -232,12 +249,17 @@ class Strategy:
         if notional < 1.0:
             return
 
+        # 타임스탬프 포함 고유 key (재진입 허용)
+        key = f"{sym}_{addr[:8]}_{int(time.time()*1000)}"
         pos = VPos(symbol=sym, side=side, entry_price=ep,
                    size=copy_size, opened_at=time.time(),
                    trader=alias, cur_price=ep)
         self.positions[key] = pos
+        self.turnover_count += 1  # 회전 횟수 추적
+        compound_ratio = round(self.capital / 10_000.0, 4)
         self.log.info(f"  📈 OPEN [{alias}] {sym} {side.upper()} "
-                      f"{copy_size:.4f} @ ${ep:.4f} = ${notional:.2f}")
+                      f"{copy_size:.4f} @ ${ep:.4f} = ${notional:.2f} "
+                      f"[복리x{compound_ratio:.3f} 회전#{self.turnover_count}]")
 
     def _close(self, key, exit_price, reason="closed"):
         pos = self.positions.pop(key, None)
@@ -366,6 +388,11 @@ class Strategy:
             "max_pos_usdc":  self.max_pos_usdc,
             "stop_loss":     self.stop_loss,
             "take_profit":   self.take_profit,
+            # 스노우볼 지표
+            "turnover_count": self.turnover_count,
+            "avg_hold_min":   (sum(c["held_min"] for c in self.closed) / len(self.closed))
+                              if self.closed else 0,
+            "compound_ratio": round(self.capital / 10_000.0, 4),
         }
 
 
@@ -436,34 +463,36 @@ class MultiStrategyRunner:
     def print_dashboard(self):
         elapsed = (time.time() - self.start_time) / 60
         print()
-        print("=" * 78)
-        print(f"  📊 Copy Perp 4전략 병렬 페이퍼트레이딩 v4")
+        print("=" * 96)
+        print(f"  📊 Copy Perp 4전략 병렬 페이퍼트레이딩 v4 [스노우볼]")
         print(f"     {elapsed:.0f}분 경과 | 폴 {self.poll_count}회 | trades API 가격 추적")
-        print("=" * 78)
+        print("=" * 96)
         print(f"  {'전략':<13} {'ROI':>8} {'실현PnL':>10} {'미실현':>8} "
-              f"{'자산':>12} {'W/L':>8} {'WR':>6} {'PF':>6} {'MDD':>6}")
-        print(f"  {'-'*13} {'-'*8} {'-'*10} {'-'*8} {'-'*12} {'-'*8} {'-'*6} {'-'*6} {'-'*6}")
+              f"{'자산':>12} {'W/L':>8} {'WR':>6} {'PF':>6} {'MDD':>6} {'회전':>6} {'복리배율':>8}")
+        print(f"  {'-'*13} {'-'*8} {'-'*10} {'-'*8} {'-'*12} {'-'*8} {'-'*6} {'-'*6} {'-'*6} {'-'*6} {'-'*8}")
         for s in self.strategies:
             pf = f"{s.profit_factor:.2f}" if s.profit_factor != float("inf") else "∞"
+            compound_ratio = s.capital / 10_000.0
             print(
                 f"  {s.label:<13} {s.roi:>+7.3f}% "
                 f"{s.total_pnl:>+9.2f}$ {s.unrealized:>+7.2f}$ "
                 f"{s.equity:>11,.2f}$ "
                 f"{s.wins:>3}W/{s.losses:<3}L "
-                f"{s.win_rate:>5.0%} {pf:>6} {s.max_dd_pct:>5.2f}%"
+                f"{s.win_rate:>5.0%} {pf:>6} {s.max_dd_pct:>5.2f}% "
+                f"{s.turnover_count:>6} {compound_ratio:>7.3f}x"
             )
         print()
         # 최근 청산 5건 통합
         all_closed = [(s.label, c) for s in self.strategies for c in s.closed]
         all_closed.sort(key=lambda x: x[1].get("held_min", 0))
         if all_closed:
-            print("  ── 최근 청산 ──────────────────────────────────────────────────")
+            print("  ── 최근 청산 ──────────────────────────────────────────────────────────────────────")
             for label, c in all_closed[-5:]:
                 emoji = "✅" if c["pnl"] >= 0 else "❌"
                 print(f"    {emoji} [{label}] {c['symbol']} {c['side'].upper()} "
                       f"${c['entry']:.4f}→${c['exit']:.4f} "
                       f"PnL=${c['pnl']:+.4f}({c['pct']:+.2f}%) [{c['held_min']}분]")
-        print("=" * 78)
+        print("=" * 96)
 
     def save_all(self, out_dir: str) -> dict:
         ts = time.strftime("%Y%m%d_%H%M%S")
