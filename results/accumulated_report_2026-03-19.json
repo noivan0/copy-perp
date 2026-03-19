@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-03-19T02:38:05",
-  "snapshot_count": 1,
+  "generated_at": "2026-03-19T03:38:15",
+  "snapshot_count": 2,
   "follower_capital": 10000,
   "slippage_haircut": 0.95,
   "grade_summary": {
     "S": {
       "count": 1,
-      "total_follower_pnl": 783.49,
-      "avg_follower_pnl": 783.49
+      "total_follower_pnl": 0.0,
+      "avg_follower_pnl": 0.0
     },
     "A": {
       "count": 3,
-      "total_follower_pnl": 1125.5700000000002,
-      "avg_follower_pnl": 375.19000000000005
+      "total_follower_pnl": 0.0,
+      "avg_follower_pnl": 0.0
     },
     "B": {
       "count": 12,
-      "total_follower_pnl": 1872.98,
-      "avg_follower_pnl": 156.08166666666668
+      "total_follower_pnl": 0.0,
+      "avg_follower_pnl": 0.0
     },
     "C": {
       "count": 1,
@@ -26,178 +26,213 @@
     }
   },
   "analysis": {
-    "method": "single_snapshot_estimate",
-    "snapshot_at": "2026-03-19T02:37:21",
+    "method": "multi_snapshot_delta",
+    "snapshot_count": 2,
+    "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38",
     "traders": [
       {
         "address": "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
-        "roi_30d": 82.4727,
+        "snapshot_count": 2,
+        "roi_30d_latest": 82.4727,
+        "roi_30d_first": 82.4727,
         "trust_score": 78.35,
         "grade": "S",
         "copy_ratio": 0.1,
-        "estimated_pnl_30d": 783.49,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",
-        "roi_30d": 58.8069,
+        "snapshot_count": 2,
+        "roi_30d_latest": 58.8069,
+        "roi_30d_first": 58.8069,
         "trust_score": 56.27,
         "grade": "A",
         "copy_ratio": 0.07,
-        "estimated_pnl_30d": 391.07,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",
-        "roi_30d": 58.9251,
+        "snapshot_count": 2,
+        "roi_30d_latest": 58.9251,
+        "roi_30d_first": 58.9251,
         "trust_score": 55.6,
         "grade": "A",
         "copy_ratio": 0.07,
-        "estimated_pnl_30d": 391.85,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",
-        "roi_30d": 51.5264,
+        "snapshot_count": 2,
+        "roi_30d_latest": 51.5264,
+        "roi_30d_first": 51.5264,
         "trust_score": 55.46,
         "grade": "A",
         "copy_ratio": 0.07,
-        "estimated_pnl_30d": 342.65,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "7C3sXQ6KvXJLkYGwzjNy2BHpkfEnRHzzfVAgUS64CDEd",
-        "roi_30d": 57.7829,
+        "snapshot_count": 2,
+        "roi_30d_latest": 57.7829,
+        "roi_30d_first": 57.7829,
         "trust_score": 54.5,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 219.58,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",
-        "roi_30d": 47.4209,
+        "snapshot_count": 2,
+        "roi_30d_latest": 47.4209,
+        "roi_30d_first": 47.4209,
         "trust_score": 54.19,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 180.2,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "E1vabqxiuUfB29BAwLppTLLNMAq6HJqp7gSz1NiYwWz7",
-        "roi_30d": 47.6226,
+        "snapshot_count": 2,
+        "roi_30d_latest": 47.6226,
+        "roi_30d_first": 47.6226,
         "trust_score": 51.47,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 180.97,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "5BPd5WYVvDE2kHMjzGmLHMaAorSm8bEfERcsycg5GCAD",
-        "roi_30d": 43.5939,
+        "snapshot_count": 2,
+        "roi_30d_latest": 43.5939,
+        "roi_30d_first": 43.5939,
         "trust_score": 49.01,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 165.66,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "9XCVb4SQVADNeE6HBhZKytFHFqo1KyCDpqbqNfp48qen",
-        "roi_30d": 43.479,
+        "snapshot_count": 2,
+        "roi_30d_latest": 43.479,
+        "roi_30d_first": 43.479,
         "trust_score": 47.93,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 165.22,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "7kDTQZPTnaCidXZwEhkoLSia5BKb7zhQ6CmBX2g1RiG3",
-        "roi_30d": 41.7492,
+        "snapshot_count": 2,
+        "roi_30d_latest": 41.7492,
+        "roi_30d_first": 41.7492,
         "trust_score": 46.49,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 158.65,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",
-        "roi_30d": 35.7914,
+        "snapshot_count": 2,
+        "roi_30d_latest": 35.7914,
+        "roi_30d_first": 35.7914,
         "trust_score": 44.77,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 136.01,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "HcG1FFVfeW7Q8vpwH3twDQACoBtznXVCAYHaDdQtieMQ",
-        "roi_30d": 36.8077,
+        "snapshot_count": 2,
+        "roi_30d_latest": 36.8077,
+        "roi_30d_first": 36.8077,
         "trust_score": 44.64,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 139.87,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "8r5HRJeSScGX1TB9D2FZ45xEDspm1qfK4CTuaZvqe7en",
-        "roi_30d": 35.11,
+        "snapshot_count": 2,
+        "roi_30d_latest": 35.11,
+        "roi_30d_first": 35.11,
         "trust_score": 45.64,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 133.42,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "DThxt2yhDvJv9KU9bPMuKsd7vcwdDtaRtuh4NvohutQi",
-        "roi_30d": 36.6251,
+        "snapshot_count": 2,
+        "roi_30d_latest": 36.6251,
+        "roi_30d_first": 36.6251,
         "trust_score": 44.04,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 139.18,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "FuHMGqdrn77u944FSYvg9VTw3sD5RVeYS1ezLpGaFes7",
-        "roi_30d": 33.7713,
+        "snapshot_count": 2,
+        "roi_30d_latest": 33.7713,
+        "roi_30d_first": 33.7713,
         "trust_score": 46.39,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 128.33,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "AF5a28meHjecM4dNy8FssFHquWJVv4BK1e5Z8ipRkDgT",
-        "roi_30d": 33.1286,
+        "snapshot_count": 2,
+        "roi_30d_latest": 33.1286,
+        "roi_30d_first": 33.1286,
         "trust_score": 40.66,
         "grade": "B",
         "copy_ratio": 0.04,
-        "estimated_pnl_30d": 125.89,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       },
       {
         "address": "A4XbPsH59TWjp6vx3QnY8sCb26ew4pBYkYc8Vk4kpbqk",
-        "roi_30d": 33.1763,
+        "snapshot_count": 2,
+        "roi_30d_latest": 33.1763,
+        "roi_30d_first": 33.1763,
         "trust_score": 34.91,
         "grade": "C",
         "copy_ratio": 0.0,
-        "estimated_pnl_30d": 0.0,
-        "snapshot_at": "2026-03-19T02:37:21",
-        "calc_method": "single_snapshot_estimate"
+        "accumulated_follower_pnl": 0.0,
+        "calc_method": "multi_snapshot_delta",
+        "time_range": "2026-03-19T02:37 ~ 2026-03-19T03:38"
       }
     ]
   }
