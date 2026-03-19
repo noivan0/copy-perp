@@ -173,33 +173,49 @@ class Strategy:
         """
         trades API에는 symbol 없음.
         포지션 entry_price와 trade price를 비교해 심볼 추론 후 mark_prices 갱신.
+
+        ⚠️ 안전 기준:
+        - 오차 3% 이내만 매핑 (기존 15% → 오류 발생원인)
+        - 복수 매핑 충돌 시 무시 (1:1 매핑만 허용)
+        - 매핑 실패 시 기존 mark_price 유지 (잘못된 가격으로 덮어쓰기 방지)
         """
         if not trades:
             return
         pos_list = self.snapshots.get(addr, [])
-        # entry_price → symbol 맵
-        ep_to_sym = {}
+        if not pos_list:
+            return
+
+        # entry_price → symbol 맵 (중복 entry_price 있으면 제외)
+        ep_to_sym: dict[float, str] = {}
+        seen_eps: set[float] = set()
         for p in pos_list:
-            ep = float(p.get("entry_price") or 0)
-            if ep > 0:
-                ep_to_sym[ep] = p.get("symbol","UNK")
+            ep  = float(p.get("entry_price") or 0)
+            sym = p.get("symbol", "UNK")
+            if ep > 0 and sym != "UNK":
+                if ep not in seen_eps:
+                    ep_to_sym[ep] = sym
+                    seen_eps.add(ep)
+                else:
+                    # 같은 entry_price를 가진 심볼 2개 → 매핑 불가, 제거
+                    ep_to_sym.pop(ep, None)
 
         for t in trades:
             price = float(t.get("price") or 0)
             if price <= 0:
                 continue
-            # 가장 가까운 entry_price 찾기 (5% 오차 허용)
-            best_sym = None
-            best_diff = float("inf")
+
+            # 오차 3% 이내, 유일한 매핑만 허용
+            matches = []
             for ep, sym in ep_to_sym.items():
-                if ep <= 0:
-                    continue
-                diff = abs(ep - price) / ep
-                if diff < 0.15 and diff < best_diff:   # 15% 이내
-                    best_diff = diff
-                    best_sym = sym
-            if best_sym:
-                self.mark_prices[best_sym] = price
+                diff = abs(ep - price) / ep if ep > 0 else 1.0
+                if diff <= 0.03:       # 3% 이내만 신뢰
+                    matches.append((diff, sym))
+
+            if len(matches) == 1:
+                # 유일한 매핑 → 안전하게 업데이트
+                _, sym = matches[0]
+                self.mark_prices[sym] = price
+            # 매핑 0개 or 2개 이상 → 무시 (신뢰 불가)
 
     def _open(self, addr, alias, sym, side, ep, trader_amt):
         if len(self.positions) >= self.max_open:
@@ -255,13 +271,32 @@ class Strategy:
         })
 
     def apply_sl_tp(self):
+        """
+        SL/TP 강제 청산.
+
+        안전 기준:
+        - mark_price 신뢰도 확인: entry_price 대비 10% 이상 괴리 시 무시
+          (trades 가격 매핑 오류 방어)
+        - 신뢰할 수 있는 가격만 SL/TP 트리거에 사용
+        """
         to_close = []
         for key, pos in self.positions.items():
-            cur = self.mark_prices.get(pos.symbol) or pos.cur_price or pos.entry_price
-            pos.cur_price = cur
+            raw_mark = self.mark_prices.get(pos.symbol)
+
+            # mark_price 신뢰도 검증: entry 대비 10% 이상 벗어나면 무시
+            if raw_mark and pos.entry_price > 0:
+                drift = abs(raw_mark - pos.entry_price) / pos.entry_price
+                if drift > 0.10:    # 10% 초과 괴리 → 매핑 오류 가능성
+                    raw_mark = None  # 해당 가격 무시
+
+            cur = raw_mark or pos.cur_price or pos.entry_price
+            if cur != pos.entry_price:
+                pos.cur_price = cur
+
             pct = pos.pct(cur)
             if   pct <= -self.stop_loss:   to_close.append((key, cur, "SL"))
             elif pct >= self.take_profit:  to_close.append((key, cur, "TP"))
+
         for key, cur, reason in to_close:
             self._close(key, cur, reason)
 
@@ -289,10 +324,18 @@ class Strategy:
         if self.gross_loss == 0:
             return float("inf") if self.gross_profit > 0 else 0.0
         return self.gross_profit / abs(self.gross_loss)
+    def _safe_price(self, pos: "VPos") -> float:
+        """신뢰도 검증된 가격 반환. 10% 이상 괴리 시 entry_price 유지."""
+        raw = self.mark_prices.get(pos.symbol) or pos.cur_price
+        if raw and pos.entry_price > 0:
+            drift = abs(raw - pos.entry_price) / pos.entry_price
+            if drift > 0.10:
+                return pos.entry_price   # 신뢰 불가 → 보수적으로 entry 유지
+        return raw or pos.entry_price
+
     @property
     def unrealized(self):
-        return sum(p.upnl(self.mark_prices.get(p.symbol) or p.cur_price or p.entry_price)
-                   for p in self.positions.values())
+        return sum(p.upnl(self._safe_price(p)) for p in self.positions.values())
     @property
     def equity(self): return self.capital + self.unrealized
 
