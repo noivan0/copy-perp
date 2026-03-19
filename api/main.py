@@ -95,6 +95,7 @@ from api.routers.pnl import router as pnl_router
 from api.routers.performance import router as performance_router
 from api.routers.tracker import router as tracker_router
 from api.routers.presets import router as presets_router
+from api.routers.papertrading import router as papertrading_router
 from core.alerting import get_alert_manager
 
 from contextlib import asynccontextmanager
@@ -254,7 +255,8 @@ app.include_router(builder_router)
 app.include_router(followers_router)
 app.include_router(pnl_router)       # /pnl/* — 팔로워 PnL 실적 조회
 app.include_router(tracker_router)   # /tracker/* — 메인넷 장기 PnL 추적
-app.include_router(presets_router)   # /presets/* — 시나리오 프리셋
+app.include_router(presets_router)       # /presets/* — 시나리오 프리셋
+app.include_router(papertrading_router)  # /papertrading/* — 4개 전략 페이퍼트레이딩 현황
 
 # ── 인메모리 Rate Limiter ────────────────────────────
 from collections import defaultdict
