@@ -1,0 +1,90 @@
+[
+  {
+    "ts": 1773887800592,
+    "dt": "2026-03-19T02:36:41.284998",
+    "leaderboard_total": 100,
+    "profitable": 68,
+    "analyzed": 30,
+    "tier_counts": {
+      "A": 6,
+      "B": 4,
+      "C": 20,
+      "D": 0
+    },
+    "platform_pnl": 6.351092138041631,
+    "platform_trades": 119,
+    "platform_wr": 21.8,
+    "top10": [
+      {
+        "alias": "YjCD9Gek6MVY",
+        "pnl_all": 1584117.66453,
+        "pnl_30d": 106104.804448,
+        "carp": 0,
+        "tier": "A"
+      },
+      {
+        "alias": "HtC4WT6JhKz8",
+        "pnl_all": 442280.648401,
+        "pnl_30d": 14785.270953,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "GTU92nBC8LMy",
+        "pnl_all": 40684.810789,
+        "pnl_30d": 20351.642614,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "AuQbtVLAySyK",
+        "pnl_all": 17710.140442,
+        "pnl_30d": 6474.985989,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "7RGfPRVtWfB2",
+        "pnl_all": 62532.024095,
+        "pnl_30d": 10439.163366,
+        "carp": 0,
+        "tier": "A"
+      },
+      {
+        "alias": "4TYEjn9PSpxo",
+        "pnl_all": 1965189.005591,
+        "pnl_30d": 66518.328759,
+        "carp": 0,
+        "tier": "A"
+      },
+      {
+        "alias": "49R9MFU7Jopa",
+        "pnl_all": 36130.727261,
+        "pnl_30d": 45559.338557,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "Ep1d8JdFw4Fn",
+        "pnl_all": 60616.721001,
+        "pnl_30d": 19622.241995,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "G5GWsm3f9C2r",
+        "pnl_all": 189008.490185,
+        "pnl_30d": -10994.575657,
+        "carp": 0,
+        "tier": "C"
+      },
+      {
+        "alias": "DftLLtov8QdY",
+        "pnl_all": 22472.895933,
+        "pnl_30d": -6459.914608,
+        "carp": 0,
+        "tier": "C"
+      }
+    ]
+  }
+]

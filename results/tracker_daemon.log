@@ -1,0 +1,71 @@
+[Thu Mar 19 02:37:08 Asia 2026] CopyPerp Mainnet 추적 데몬 시작
+[Thu Mar 19 02:37:08 Asia 2026] 작업 디렉토리: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp
+[Thu Mar 19 02:37:08 Asia 2026] ▶ mainnet_tracker.py 실행 중...
+02:37:08 [INFO] === Mainnet 스냅샷 수집 시작: 2026-03-19T02:37:08 ===
+02:37:08 [INFO] Tier1 트레이더 17명 로드
+02:37:08 [INFO] API 연결 테스트 중...
+02:37:08 [INFO] ✅ API 연결 성공 — 실시간 데이터 수집
+02:37:08 [INFO]   [1/17] EcX5xSDT45Nvhi2g... 수집 중
+02:37:08 [INFO]   [2/17] 4UBH19qUbXEaqyz9... 수집 중
+02:37:09 [INFO]   [3/17] A6VY4ZBUohgSLkwM... 수집 중
+02:37:09 [INFO]   [4/17] 7gV81bz99MUBVb2a... 수집 중
+02:37:10 [INFO]   [5/17] 7C3sXQ6KvXJLkYGw... 수집 중
+02:37:10 [INFO]   [6/17] 3rXoG6i55P7D1Q3t... 수집 중
+02:37:10 [INFO]   [7/17] E1vabqxiuUfB29BA... 수집 중
+02:37:11 [INFO]   [8/17] 5BPd5WYVvDE2kHMj... 수집 중
+02:37:11 [INFO]   [9/17] 9XCVb4SQVADNeE6H... 수집 중
+02:37:12 [INFO]   [10/17] 7kDTQZPTnaCidXZw... 수집 중
+02:37:12 [INFO]   [11/17] EYhhf8u9M6kN9tCR... 수집 중
+02:37:14 [INFO]   [12/17] HcG1FFVfeW7Q8vpw... 수집 중
+02:37:14 [INFO]   [13/17] 8r5HRJeSScGX1TB9... 수집 중
+02:37:16 [INFO]   [14/17] DThxt2yhDvJv9KU9... 수집 중
+02:37:17 [INFO]   [15/17] FuHMGqdrn77u944F... 수집 중
+02:37:17 [INFO]   [16/17] AF5a28meHjecM4dN... 수집 중
+02:37:18 [INFO]   [17/17] A4XbPsH59TWjp6vx... 수집 중
+02:37:18 [INFO] ✅ 스냅샷 저장 완료: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+02:37:18 [INFO]    실시간 API: 17명 | 폴백: 0명
+
+📸 스냅샷 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+   트레이더: 17명
+   데이터 소스: mainnet_live
+   실시간: 17명 | 폴백: 0명
+[Thu Mar 19 02:37:18 Asia 2026] ▶ analyze_accumulated.py 실행 중...
+
+============================================================
+=== CopyPerp 누적 분석 리포트 ===
+============================================================
+스냅샷 수: 1개
+분석 방법: 단일 스냅샷 기반 월간 추정
+
+[등급별 팔로워 PnL]
+등급       트레이더수      평균PnL        합계PnL
+----------------------------------------
+S            1명      +783$        +783$
+A            3명      +375$       +1126$
+B           12명      +156$       +1873$
+C            1명        +0$          +0$
+
+[전체 포트폴리오 PnL 합계]
+  S+A+B 전체: +$3782 (37.8%)
+  S+A만:      +$1909 (19.1%)
+
+✅ 리포트 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/accumulated_report_2026-03-19.json
+============================================================
+[Thu Mar 19 02:37:18 Asia 2026] ✅ 사이클 완료. 다음 수집까지 3600초 대기...
+02:37:16 [INFO]   [2/17] 4UBH19qUbXEaqyz9... 수집 중
+02:37:18 [INFO]   [3/17] A6VY4ZBUohgSLkwM... 수집 중
+02:37:20 [INFO]   [4/17] 7gV81bz99MUBVb2a... 수집 중
+[Thu Mar 19 02:37:21 Asia 2026] CopyPerp Mainnet 추적 데몬 시작
+[Thu Mar 19 02:37:21 Asia 2026] 작업 디렉토리: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp
+[Thu Mar 19 02:37:21 Asia 2026] ▶ mainnet_tracker.py 실행 중...
+02:37:21 [INFO] === Mainnet 스냅샷 수집 시작: 2026-03-19T02:37:21 ===
+02:37:21 [INFO] Tier1 트레이더 17명 로드
+02:37:21 [INFO] API 연결 테스트 중...
+02:37:21 [INFO]   [5/17] 7C3sXQ6KvXJLkYGw... 수집 중
+02:37:21 [INFO] ✅ API 연결 성공 — 실시간 데이터 수집
+02:37:21 [INFO]   [1/17] EcX5xSDT45Nvhi2g... 수집 중
+02:37:22 [INFO]   [2/17] 4UBH19qUbXEaqyz9... 수집 중
+02:37:23 [INFO]   [3/17] A6VY4ZBUohgSLkwM... 수집 중
+02:37:24 [INFO]   [4/17] 7gV81bz99MUBVb2a... 수집 중
+02:37:25 [INFO]   [6/17] 3rXoG6i55P7D1Q3t... 수집 중
+02:37:28 [INFO]   [7/17] E1vabqxiuUfB29BA... 수집 중
