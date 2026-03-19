@@ -187,13 +187,13 @@ async def test_pnl_persist_after_restart(db):
 
 @pytest.mark.asyncio
 async def test_follower_pnl_api():
-    """TC-PNL-004: GET /followers/{address}/pnl 응답 구조 검증"""
+    """TC-PNL-004: GET /followers/{address}/pnl 응답 구조 검증
+    httpx.AsyncClient + ASGITransport으로 실제 FastAPI 앱을 비동기 호출.
+    lifespan 없이 _db를 패치해 테스트.
+    """
     import httpx
-    from fastapi.testclient import TestClient
-
-    # TestClient는 동기 컨텍스트에서 실행 (lifespan bypass)
-    # _db를 인메모리 DB로 패치
     import api.main as _main
+    from api.main import app
     from db.database import init_db as _init_db, add_trader, add_follower, record_copy_trade
 
     test_db = await _init_db(":memory:")
@@ -233,14 +233,15 @@ async def test_follower_pnl_api():
         "error_msg": None,
     })
 
-    # _db 패치 — lifespan을 우회하기 위해 TestClient(lifespan=False) 사용
+    # _db 패치 — lifespan 없이 직접 패치 (ASGITransport은 lifespan 실행 안 함)
     original_db = _main._db
     _main._db = test_db
 
     try:
-        # lifespan=False: startup/shutdown 이벤트 건너뜀 → _db 덮어쓰기 방지
-        with TestClient(_main.app, raise_server_exceptions=True, lifespan="off") as client:
-            resp = client.get(f"/followers/{FOLLOWER}/pnl")
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(f"/followers/{FOLLOWER}/pnl")
+
         assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
         body = resp.json()
 
@@ -282,8 +283,9 @@ async def test_follower_pnl_api():
 @pytest.mark.asyncio
 async def test_trades_summary():
     """TC-PNL-005: GET /trades 응답에 summary 필드 포함 여부 검증"""
-    from fastapi.testclient import TestClient
+    import httpx
     import api.main as _main
+    from api.main import app
     from db.database import init_db as _init_db, add_trader, add_follower, record_copy_trade
 
     test_db = await _init_db(":memory:")
@@ -310,8 +312,10 @@ async def test_trades_summary():
     _main._db = test_db
 
     try:
-        with TestClient(_main.app, raise_server_exceptions=True, lifespan="off") as client:
-            resp = client.get("/trades?limit=5")
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/trades?limit=5")
+
         assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
         body = resp.json()
 

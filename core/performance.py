@@ -20,56 +20,56 @@ logger = logging.getLogger(__name__)
 
 # ── SQL 마이그레이션 ──────────────────────────────────────────────────────────
 
+_CREATE_FOLLOWER_SNAPSHOTS = (
+    "CREATE TABLE IF NOT EXISTS follower_snapshots ("
+    "  id               INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  follower_address TEXT NOT NULL,"
+    "  date             TEXT NOT NULL,"
+    "  equity           REAL DEFAULT 0,"
+    "  realized_pnl     REAL DEFAULT 0,"
+    "  unrealized_pnl   REAL DEFAULT 0,"
+    "  trade_count      INTEGER DEFAULT 0,"
+    "  win_count        INTEGER DEFAULT 0,"
+    "  loss_count       INTEGER DEFAULT 0,"
+    "  fee_paid         REAL DEFAULT 0,"
+    "  synced_at        INTEGER DEFAULT 0,"
+    "  UNIQUE(follower_address, date)"
+    ")"
+)
+
+_CREATE_FOLLOWER_PERFORMANCE = (
+    "CREATE TABLE IF NOT EXISTS follower_performance ("
+    "  follower_address TEXT PRIMARY KEY,"
+    "  initial_capital  REAL DEFAULT 0,"
+    "  current_equity   REAL DEFAULT 0,"
+    "  total_pnl        REAL DEFAULT 0,"
+    "  total_roi_pct    REAL DEFAULT 0,"
+    "  win_count        INTEGER DEFAULT 0,"
+    "  loss_count       INTEGER DEFAULT 0,"
+    "  win_rate_pct     REAL DEFAULT 0,"
+    "  best_day_pnl     REAL DEFAULT 0,"
+    "  worst_day_pnl    REAL DEFAULT 0,"
+    "  max_drawdown_pct REAL DEFAULT 0,"
+    "  sharpe_ratio     REAL DEFAULT 0,"
+    "  calmar_ratio     REAL DEFAULT 0,"
+    "  profit_factor    REAL DEFAULT 0,"
+    "  avg_win_usdc     REAL DEFAULT 0,"
+    "  avg_loss_usdc    REAL DEFAULT 0,"
+    "  streak_current   INTEGER DEFAULT 0,"
+    "  streak_best      INTEGER DEFAULT 0,"
+    "  total_fee_paid   REAL DEFAULT 0,"
+    "  total_trades     INTEGER DEFAULT 0,"
+    "  active_days      INTEGER DEFAULT 0,"
+    "  first_trade_at   INTEGER DEFAULT 0,"
+    "  last_trade_at    INTEGER DEFAULT 0,"
+    "  updated_at       INTEGER DEFAULT 0"
+    ")"
+)
+
 PERF_MIGRATIONS = [
-    # 팔로워 일별 자본 스냅샷 테이블
-    """
-    CREATE TABLE IF NOT EXISTS follower_snapshots (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        follower_address TEXT NOT NULL,
-        date            TEXT NOT NULL,          -- 'YYYY-MM-DD' UTC
-        equity          REAL DEFAULT 0,         -- 해당 시점 추정 자본
-        realized_pnl    REAL DEFAULT 0,         -- 당일 실현 PnL (copy_trades 합산)
-        unrealized_pnl  REAL DEFAULT 0,         -- 미실현 (옵션, 현재는 0)
-        trade_count     INTEGER DEFAULT 0,      -- 당일 거래 수
-        win_count       INTEGER DEFAULT 0,      -- 당일 수익 거래
-        loss_count      INTEGER DEFAULT 0,      -- 당일 손실 거래
-        fee_paid        REAL DEFAULT 0,         -- 당일 수수료
-        synced_at       INTEGER DEFAULT 0,
-        PRIMARY KEY (follower_address, date)
-    )
-    """,
-    # 팔로워 누적 성과 테이블 (캐시 — 매 스냅샷마다 갱신)
-    """
-    CREATE TABLE IF NOT EXISTS follower_performance (
-        follower_address TEXT PRIMARY KEY,
-        initial_capital  REAL DEFAULT 0,        -- 첫 거래 기준 추정 초기 자본
-        current_equity   REAL DEFAULT 0,
-        total_pnl        REAL DEFAULT 0,
-        total_roi_pct    REAL DEFAULT 0,
-        win_count        INTEGER DEFAULT 0,
-        loss_count       INTEGER DEFAULT 0,
-        win_rate_pct     REAL DEFAULT 0,
-        best_day_pnl     REAL DEFAULT 0,
-        worst_day_pnl    REAL DEFAULT 0,
-        max_drawdown_pct REAL DEFAULT 0,
-        sharpe_ratio     REAL DEFAULT 0,
-        calmar_ratio     REAL DEFAULT 0,
-        profit_factor    REAL DEFAULT 0,        -- gross_profit / gross_loss
-        avg_win_usdc     REAL DEFAULT 0,
-        avg_loss_usdc    REAL DEFAULT 0,
-        streak_current   INTEGER DEFAULT 0,     -- 현재 연속 수익(+) 또는 손실(-)
-        streak_best      INTEGER DEFAULT 0,     -- 최대 연속 수익
-        total_fee_paid   REAL DEFAULT 0,
-        total_trades     INTEGER DEFAULT 0,
-        active_days      INTEGER DEFAULT 0,
-        first_trade_at   INTEGER DEFAULT 0,
-        last_trade_at    INTEGER DEFAULT 0,
-        updated_at       INTEGER DEFAULT 0
-    )
-    """,
-    # copy_trades에 hold_seconds 컬럼 추가 (포지션 보유 시간)
+    _CREATE_FOLLOWER_SNAPSHOTS,
+    _CREATE_FOLLOWER_PERFORMANCE,
     "ALTER TABLE copy_trades ADD COLUMN hold_seconds INTEGER DEFAULT 0",
-    # copy_trades에 fee_usdc 컬럼 추가
     "ALTER TABLE copy_trades ADD COLUMN fee_usdc REAL DEFAULT 0",
 ]
 
@@ -78,12 +78,7 @@ async def apply_perf_migrations(conn: aiosqlite.Connection) -> None:
     """DB 마이그레이션 — 이미 존재하면 무시"""
     for sql in PERF_MIGRATIONS:
         try:
-            # CREATE TABLE은 executescript, ALTER TABLE은 execute
-            stripped = sql.strip()
-            if stripped.upper().startswith("CREATE"):
-                await conn.executescript(stripped)
-            else:
-                await conn.execute(stripped)
+            await conn.execute(sql.strip())
         except Exception:
             pass
     await conn.commit()
