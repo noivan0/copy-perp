@@ -93,6 +93,7 @@ from api.routers.ranked import router as ranked_router
 from api.routers.portfolio import router as portfolio_router
 from api.routers.pnl import router as pnl_router
 from api.routers.performance import router as performance_router
+from api.routers.tracker import router as tracker_router
 from core.alerting import get_alert_manager
 
 from contextlib import asynccontextmanager
@@ -251,6 +252,7 @@ app.include_router(traders_router)
 app.include_router(builder_router)
 app.include_router(followers_router)
 app.include_router(pnl_router)       # /pnl/* — 팔로워 PnL 실적 조회
+app.include_router(tracker_router)   # /tracker/* — 메인넷 장기 PnL 추적
 
 # ── 인메모리 Rate Limiter ────────────────────────────
 from collections import defaultdict

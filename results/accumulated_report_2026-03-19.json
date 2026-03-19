@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-19T02:37:18",
+  "generated_at": "2026-03-19T02:38:05",
   "snapshot_count": 1,
   "follower_capital": 10000,
   "slippage_haircut": 0.95,
@@ -27,7 +27,7 @@
   },
   "analysis": {
     "method": "single_snapshot_estimate",
-    "snapshot_at": "2026-03-19T02:37:08",
+    "snapshot_at": "2026-03-19T02:37:21",
     "traders": [
       {
         "address": "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
@@ -36,7 +36,7 @@
         "grade": "S",
         "copy_ratio": 0.1,
         "estimated_pnl_30d": 783.49,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -46,7 +46,7 @@
         "grade": "A",
         "copy_ratio": 0.07,
         "estimated_pnl_30d": 391.07,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -56,7 +56,7 @@
         "grade": "A",
         "copy_ratio": 0.07,
         "estimated_pnl_30d": 391.85,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -66,7 +66,7 @@
         "grade": "A",
         "copy_ratio": 0.07,
         "estimated_pnl_30d": 342.65,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -76,7 +76,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 219.58,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -86,7 +86,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 180.2,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -96,7 +96,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 180.97,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -106,7 +106,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 165.66,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -116,7 +116,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 165.22,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -126,7 +126,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 158.65,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -136,7 +136,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 136.01,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -146,7 +146,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 139.87,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -156,7 +156,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 133.42,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -166,7 +166,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 139.18,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -176,7 +176,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 128.33,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -186,7 +186,7 @@
         "grade": "B",
         "copy_ratio": 0.04,
         "estimated_pnl_30d": 125.89,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       },
       {
@@ -196,7 +196,7 @@
         "grade": "C",
         "copy_ratio": 0.0,
         "estimated_pnl_30d": 0.0,
-        "snapshot_at": "2026-03-19T02:37:08",
+        "snapshot_at": "2026-03-19T02:37:21",
         "calc_method": "single_snapshot_estimate"
       }
     ]

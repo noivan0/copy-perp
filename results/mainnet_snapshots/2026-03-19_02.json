@@ -1,9 +1,9 @@
 {
-  "snapshot_at": "2026-03-19T02:37:08",
+  "snapshot_at": "2026-03-19T02:37:21",
   "api_source": "mainnet_live",
   "traders_total": 17,
-  "api_success": 17,
-  "fallback_count": 0,
+  "api_success": 16,
+  "fallback_count": 1,
   "traders": [
     {
       "address": "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",
@@ -187,7 +187,7 @@
     },
     {
       "address": "EYhhf8u9M6kN9tCRVgd2Jki9fJm3XzJRnTF9k5eBC1q1",
-      "is_fallback": false,
+      "is_fallback": true,
       "equity": 215807.0,
       "pnl_all_time": 105807.0,
       "pnl_1d": 1108.0,
@@ -195,7 +195,7 @@
       "pnl_30d": 77240.0,
       "roi_30d": 35.7914,
       "roi_7d": 9.86,
-      "roi_1d": 0,
+      "roi_1d": 0.0,
       "trade_count_recent": 0,
       "last_trade_at": null,
       "sharpe_approx": 87.87,

@@ -69,3 +69,88 @@ C            1명        +0$          +0$
 02:37:24 [INFO]   [4/17] 7gV81bz99MUBVb2a... 수집 중
 02:37:25 [INFO]   [6/17] 3rXoG6i55P7D1Q3t... 수집 중
 02:37:28 [INFO]   [7/17] E1vabqxiuUfB29BA... 수집 중
+02:37:30 [INFO]   [5/17] 7C3sXQ6KvXJLkYGw... 수집 중
+02:37:32 [INFO]   [6/17] 3rXoG6i55P7D1Q3t... 수집 중
+02:37:32 [INFO]   [7/17] E1vabqxiuUfB29BA... 수집 중
+02:37:34 [INFO]   [8/17] 5BPd5WYVvDE2kHMj... 수집 중
+02:37:34 [INFO]   [8/17] 5BPd5WYVvDE2kHMj... 수집 중
+02:37:41 [INFO]   [9/17] 9XCVb4SQVADNeE6H... 수집 중
+02:37:41 [INFO]   [9/17] 9XCVb4SQVADNeE6H... 수집 중
+02:37:44 [INFO]   [10/17] 7kDTQZPTnaCidXZw... 수집 중
+02:37:49 [INFO]   [10/17] 7kDTQZPTnaCidXZw... 수집 중
+02:37:54 [INFO]   [11/17] EYhhf8u9M6kN9tCR... 수집 중
+02:37:56 [INFO]   [11/17] EYhhf8u9M6kN9tCR... 수집 중
+02:38:01 [WARNING]   [EYhhf8u9M6kN] API 실패 → 로컬 데이터 폴백
+02:38:01 [INFO]   [12/17] HcG1FFVfeW7Q8vpw... 수집 중
+02:38:02 [WARNING]   [EYhhf8u9M6kN] API 실패 → 로컬 데이터 폴백
+02:38:02 [INFO]   [12/17] HcG1FFVfeW7Q8vpw... 수집 중
+02:38:03 [INFO]   [13/17] 8r5HRJeSScGX1TB9... 수집 중
+02:38:03 [INFO]   [13/17] 8r5HRJeSScGX1TB9... 수집 중
+02:38:03 [INFO]   [14/17] DThxt2yhDvJv9KU9... 수집 중
+02:38:03 [INFO]   [14/17] DThxt2yhDvJv9KU9... 수집 중
+02:38:04 [INFO]   [15/17] FuHMGqdrn77u944F... 수집 중
+02:38:04 [INFO]   [15/17] FuHMGqdrn77u944F... 수집 중
+02:38:04 [INFO]   [16/17] AF5a28meHjecM4dN... 수집 중
+02:38:04 [INFO]   [16/17] AF5a28meHjecM4dN... 수집 중
+02:38:05 [INFO]   [17/17] A4XbPsH59TWjp6vx... 수집 중
+02:38:05 [INFO]   [17/17] A4XbPsH59TWjp6vx... 수집 중
+02:38:05 [INFO] ✅ 스냅샷 저장 완료: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+02:38:05 [INFO]    실시간 API: 16명 | 폴백: 1명
+
+📸 스냅샷 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+   트레이더: 17명
+   데이터 소스: mainnet_live
+   실시간: 16명 | 폴백: 1명
+[Thu Mar 19 02:38:05 Asia 2026] ▶ analyze_accumulated.py 실행 중...
+02:38:05 [INFO] ✅ 스냅샷 저장 완료: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+02:38:05 [INFO]    실시간 API: 16명 | 폴백: 1명
+
+📸 스냅샷 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/mainnet_snapshots/2026-03-19_02.json
+   트레이더: 17명
+   데이터 소스: mainnet_live
+   실시간: 16명 | 폴백: 1명
+[Thu Mar 19 02:38:05 Asia 2026] ▶ analyze_accumulated.py 실행 중...
+
+============================================================
+=== CopyPerp 누적 분석 리포트 ===
+============================================================
+스냅샷 수: 1개
+분석 방법: 단일 스냅샷 기반 월간 추정
+
+[등급별 팔로워 PnL]
+등급       트레이더수      평균PnL        합계PnL
+----------------------------------------
+S            1명      +783$        +783$
+A            3명      +375$       +1126$
+B           12명      +156$       +1873$
+C            1명        +0$          +0$
+
+[전체 포트폴리오 PnL 합계]
+  S+A+B 전체: +$3782 (37.8%)
+  S+A만:      +$1909 (19.1%)
+
+✅ 리포트 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/accumulated_report_2026-03-19.json
+============================================================
+[Thu Mar 19 02:38:05 Asia 2026] ✅ 사이클 완료. 다음 수집까지 3600초 대기...
+
+============================================================
+=== CopyPerp 누적 분석 리포트 ===
+============================================================
+스냅샷 수: 1개
+분석 방법: 단일 스냅샷 기반 월간 추정
+
+[등급별 팔로워 PnL]
+등급       트레이더수      평균PnL        합계PnL
+----------------------------------------
+S            1명      +783$        +783$
+A            3명      +375$       +1126$
+B           12명      +156$       +1873$
+C            1명        +0$          +0$
+
+[전체 포트폴리오 PnL 합계]
+  S+A+B 전체: +$3782 (37.8%)
+  S+A만:      +$1909 (19.1%)
+
+✅ 리포트 저장: /root/.openclaw/workspace/paperclip-company/projects/pacifica-hackathon/copy-perp/results/accumulated_report_2026-03-19.json
+============================================================
+[Thu Mar 19 02:38:05 Asia 2026] ✅ 사이클 완료. 다음 수집까지 3600초 대기...
