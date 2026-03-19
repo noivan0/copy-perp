@@ -553,6 +553,106 @@ async def list_followers(trader_address: Optional[str] = None) -> dict:
     return {"data": [dict(r) for r in rows], "count": len(rows)}
 
 
+@router.get("/{follower_address}/pnl")
+async def get_follower_pnl(follower_address: str) -> dict:
+    """
+    팔로워 누적 PnL 집계
+    - realized_pnl_usdc: SUM(pnl) FROM copy_trades (pnl IS NOT NULL)
+    - unrealized_pnl_usdc: follower_positions 기반 (mark_price 없으면 0)
+    - win_trades / lose_trades / win_rate
+    - total_volume_usdc: SUM(amount * price) FROM copy_trades (status=filled)
+    - builder_fee_paid: SUM(fee_usdc) FROM fee_records
+    - open_positions: follower_positions 목록
+    - pnl_by_trader: 트레이더별 PnL 집계
+    """
+    from api.main import _db
+    if not _db:
+        raise HTTPException(503, "DB 미초기화")
+
+    # ── 실현 PnL ──────────────────────────────────────────
+    async with _db.execute(
+        "SELECT COALESCE(SUM(pnl), 0) FROM copy_trades WHERE follower_address=? AND pnl IS NOT NULL",
+        (follower_address,),
+    ) as cur:
+        realized_pnl = float((await cur.fetchone())[0])
+
+    # ── 총 거래 수 / 승 / 패 ──────────────────────────────
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=?",
+        (follower_address,),
+    ) as cur:
+        total_trades = int((await cur.fetchone())[0])
+
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl > 0",
+        (follower_address,),
+    ) as cur:
+        win_trades = int((await cur.fetchone())[0])
+
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl < 0",
+        (follower_address,),
+    ) as cur:
+        lose_trades = int((await cur.fetchone())[0])
+
+    win_rate = round(win_trades / max(win_trades + lose_trades, 1) * 100, 2) if (win_trades + lose_trades) > 0 else 0.0
+
+    # ── 총 거래 볼륨 ─────────────────────────────────────
+    async with _db.execute(
+        """SELECT COALESCE(SUM(CAST(amount AS REAL) * CAST(price AS REAL)), 0)
+           FROM copy_trades WHERE follower_address=? AND status='filled'""",
+        (follower_address,),
+    ) as cur:
+        total_volume = float((await cur.fetchone())[0])
+
+    # ── Builder Fee ────────────────────────────────────────
+    async with _db.execute(
+        """SELECT COALESCE(SUM(fr.fee_usdc), 0)
+           FROM fee_records fr
+           JOIN copy_trades ct ON fr.trade_id = ct.id
+           WHERE ct.follower_address=?""",
+        (follower_address,),
+    ) as cur:
+        builder_fee_paid = float((await cur.fetchone())[0])
+
+    # ── 열린 포지션 목록 ─────────────────────────────────
+    from db.database import get_all_follower_positions
+    open_positions = await get_all_follower_positions(_db, follower_address)
+    # 미실현 PnL: mark_price 없으면 0
+    unrealized_pnl = 0.0
+
+    # ── 트레이더별 PnL ────────────────────────────────────
+    async with _db.execute(
+        """SELECT trader_address, COALESCE(SUM(pnl), 0) as pnl_sum, COUNT(*) as cnt
+           FROM copy_trades WHERE follower_address=? AND pnl IS NOT NULL
+           GROUP BY trader_address""",
+        (follower_address,),
+    ) as cur:
+        rows = await cur.fetchall()
+    pnl_by_trader = [
+        {"trader_address": dict(r)["trader_address"], "pnl_usdc": round(dict(r)["pnl_sum"], 4), "trades": dict(r)["cnt"]}
+        for r in rows
+    ]
+
+    # ── ROI (초기 자산 추정 불가 → 0) ────────────────────
+    roi_pct = 0.0
+
+    return {
+        "follower_address": follower_address,
+        "realized_pnl_usdc": round(realized_pnl, 4),
+        "unrealized_pnl_usdc": round(unrealized_pnl, 4),
+        "total_trades": total_trades,
+        "win_trades": win_trades,
+        "lose_trades": lose_trades,
+        "win_rate": win_rate,
+        "total_volume_usdc": round(total_volume, 2),
+        "open_positions": open_positions,
+        "pnl_by_trader": pnl_by_trader,
+        "roi_pct": roi_pct,
+        "builder_fee_paid": round(builder_fee_paid, 6),
+    }
+
+
 @router.delete("/{follower_address}")
 async def remove_follower(follower_address: str) -> dict:
     """팔로워 해지 (soft delete)"""

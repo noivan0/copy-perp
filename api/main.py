@@ -91,6 +91,7 @@ from api.routers.builder import router as builder_router
 from api.routers.followers import router as followers_router
 from api.routers.ranked import router as ranked_router
 from api.routers.portfolio import router as portfolio_router
+from api.routers.pnl import router as pnl_router
 from api.routers.performance import router as performance_router
 from core.alerting import get_alert_manager
 
@@ -249,6 +250,7 @@ app.include_router(performance_router)  # /performance — 팔로워 실적 기�
 app.include_router(traders_router)
 app.include_router(builder_router)
 app.include_router(followers_router)
+app.include_router(pnl_router)       # /pnl/* — 팔로워 PnL 실적 조회
 
 # ── 인메모리 Rate Limiter ────────────────────────────
 from collections import defaultdict
@@ -937,15 +939,71 @@ async def list_trades(
 
     data = [dict(r) for r in rows]
     filled  = [r for r in data if r.get("status") == "filled"]
+    failed  = [r for r in data if r.get("status") == "failed"]
     total_vol = sum(float(r.get("amount", 0) or 0) * float(r.get("price", 0) or 0) for r in filled)
     total_pnl = sum(float(r.get("pnl", 0) or 0) for r in filled)
+
+    # 전체 DB 기준 집계 (필터 없는 경우 전체, 있으면 해당 필터 기준)
+    try:
+        _conds, _params = [], []
+        if follower:
+            _conds.append("follower_address=?"); _params.append(follower)
+        if trader:
+            _conds.append("trader_address=?");   _params.append(trader)
+        _where_all = f"WHERE {' AND '.join(_conds)}" if _conds else ""
+        async with db.execute(
+            f"SELECT COUNT(*) FROM copy_trades {_where_all}", _params
+        ) as _cur:
+            _total_all = int((await _cur.fetchone())[0])
+        async with db.execute(
+            f"SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='filled'",
+            _params,
+        ) as _cur:
+            _filled_all = int((await _cur.fetchone())[0])
+        async with db.execute(
+            f"SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='failed'",
+            _params,
+        ) as _cur:
+            _failed_all = int((await _cur.fetchone())[0])
+        async with db.execute(
+            f"""SELECT COALESCE(SUM(CAST(amount AS REAL)*CAST(price AS REAL)),0)
+                FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='filled'""",
+            _params,
+        ) as _cur:
+            _vol_all = float((await _cur.fetchone())[0])
+        async with db.execute(
+            f"""SELECT COALESCE(SUM(pnl),0), COUNT(CASE WHEN pnl>0 THEN 1 END)
+                FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} pnl IS NOT NULL""",
+            _params,
+        ) as _cur:
+            _pnl_row = await _cur.fetchone()
+            _pnl_all = float(_pnl_row[0])
+            _win_all = int(_pnl_row[1])
+        async with db.execute(
+            f"""SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} pnl<0""",
+            _params,
+        ) as _cur:
+            _lose_all = int((await _cur.fetchone())[0])
+        _wr = round(_win_all / max(_win_all + _lose_all, 1) * 100, 2) if (_win_all + _lose_all) > 0 else 0.0
+    except Exception:
+        _total_all = len(data)
+        _filled_all = len(filled)
+        _failed_all = len(failed)
+        _vol_all = total_vol
+        _pnl_all = total_pnl
+        _win_all = 0
+        _wr = 0.0
+
     return {
         "data": data,
         "count": len(data),
         "summary": {
-            "filled": len(filled),
-            "total_volume_usdc": round(total_vol, 2),
-            "total_pnl_usdc": round(total_pnl, 4),
+            "total": _total_all,
+            "filled": _filled_all,
+            "failed": _failed_all,
+            "realized_pnl_usdc": round(_pnl_all, 4),
+            "total_volume_usdc": round(_vol_all, 2),
+            "win_rate_pct": _wr,
         },
     }
 

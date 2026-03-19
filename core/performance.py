@@ -78,7 +78,12 @@ async def apply_perf_migrations(conn: aiosqlite.Connection) -> None:
     """DB 마이그레이션 — 이미 존재하면 무시"""
     for sql in PERF_MIGRATIONS:
         try:
-            await conn.execute(sql)
+            # CREATE TABLE은 executescript, ALTER TABLE은 execute
+            stripped = sql.strip()
+            if stripped.upper().startswith("CREATE"):
+                await conn.executescript(stripped)
+            else:
+                await conn.execute(stripped)
         except Exception:
             pass
     await conn.commit()
