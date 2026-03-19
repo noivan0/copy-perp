@@ -1,165 +1,227 @@
-#!/usr/bin/env python3
 """
-scripts/pt_dashboard.py — 4개 전략 실시간 비교 대시보드
+CopyPerp 4전략 페이퍼트레이딩 대시보드
+results/multi_pt_state.json 읽어서 현재 성과 표 출력
 
 사용법:
-  python3 scripts/pt_dashboard.py            # 1회 출력
-  python3 scripts/pt_dashboard.py --watch    # 60초마다 갱신
-  python3 scripts/pt_dashboard.py --json     # JSON 출력 (API 연동용)
+    python3 scripts/pt_dashboard.py              # 1회 출력
+    python3 scripts/pt_dashboard.py --watch      # 30초마다 자동 갱신
+    python3 scripts/pt_dashboard.py --events 20  # 최근 이벤트 20개 출력
 """
-
-import os, sys, glob, json, time, argparse
+import json
+import os
+import sys
+import time
+import argparse
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SESSION_DIR = os.path.join(ROOT, "papertrading", "sessions")
-LOG_DIR = "/tmp/copy_perp_pt"
-
-STRATEGIES = [
-    ("default",      "🔒 기본형",  1_000,  4.77),
-    ("conservative", "🛡️ 안정형",  1_000,  5.38),
-    ("balanced",     "⚖️ 균형형",  5_000,  5.94),
-    ("aggressive",   "⚡ 공격형", 10_000,  5.42),
-]
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RESULTS_DIR = os.path.join(BASE_DIR, "results")
+STATE_FILE = os.path.join(RESULTS_DIR, "multi_pt_state.json")
+LOG_FILE = os.path.join(RESULTS_DIR, "multi_pt_log.jsonl")
+PID_FILE = os.path.join(RESULTS_DIR, "multi_pt.pid")
 
 
-def latest_session(strategy: str) -> dict | None:
-    """해당 전략의 최신 세션 JSON 로드"""
-    pattern = os.path.join(SESSION_DIR, f"{strategy}_*.json")
-    files = sorted(glob.glob(pattern))
-    if not files:
-        return None
+def load_state() -> dict:
+    if not os.path.exists(STATE_FILE):
+        return {}
     try:
-        with open(files[-1]) as f:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
-        return None
+    except Exception as e:
+        print(f"❌ 상태 파일 읽기 실패: {e}")
+        return {}
 
 
-def parse_log_tail(strategy: str, lines: int = 5) -> str:
-    """로그 마지막 N줄 추출"""
-    log_path = os.path.join(LOG_DIR, f"{strategy}.log")
-    if not os.path.exists(log_path):
-        return ""
+def load_recent_events(n: int = 10) -> list:
+    if not os.path.exists(LOG_FILE):
+        return []
+    events = []
     try:
-        with open(log_path) as f:
-            all_lines = f.readlines()
-        return "".join(all_lines[-lines:]).strip()
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        events.append(json.loads(line))
+                    except Exception:
+                        pass
     except Exception:
-        return ""
+        return []
+    return events[-n:]
 
 
-def is_running(strategy: str) -> bool:
-    pid_path = os.path.join(LOG_DIR, f"{strategy}.pid")
-    if not os.path.exists(pid_path):
-        return False
+def get_pid_status() -> str:
+    if not os.path.exists(PID_FILE):
+        return "N/A"
     try:
-        pid = int(open(pid_path).read().strip())
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, ValueError, OSError):
-        return False
-
-
-def render_dashboard() -> dict:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n{'='*70}")
-    print(f"  📊 Copy Perp — 4전략 페이퍼트레이딩 대시보드  |  {now}")
-    print(f"{'='*70}")
-    print(f"  {'전략':<12} {'상태':<6} {'자본':>8} {'실현PnL':>10} {'미실현':>10} {'ROI':>8} {'승률':>7} {'거래':>6}")
-    print(f"  {'-'*67}")
-
-    results = []
-    for key, label, capital, expected_roi in STRATEGIES:
-        sess = latest_session(key)
-        running = is_running(key)
-        status = "🟢 실행" if running else "⭕ 대기"
-
-        if sess:
-            pnl_r = sess.get("total_pnl", 0.0)
-            pnl_u = sess.get("unrealized_pnl", 0.0)
-            roi   = sess.get("roi_pct", pnl_r / capital * 100 if capital else 0)
-            wins  = sess.get("wins", 0)
-            losses= sess.get("losses", 0)
-            trades= sess.get("total_trades", 0)
-            wt    = wins + losses
-            wr    = f"{wins/wt*100:.0f}%" if wt else "—"
-            roi_str = f"{roi:+.2f}%"
+        with open(PID_FILE, "r") as f:
+            pid = int(f.read().strip())
+        # 프로세스 생존 확인
+        proc_exists = os.path.exists(f"/proc/{pid}")
+        if proc_exists:
+            return f"🟢 실행 중 (PID {pid})"
         else:
-            pnl_r = pnl_u = roi = 0.0
-            trades = wins = losses = 0
-            wr = "—"
-            roi_str = "—"
+            return f"🔴 종료됨 (PID {pid})"
+    except Exception as e:
+        return f"❓ 불명 ({e})"
 
-        gap = roi - expected_roi if sess else None
-        gap_str = f" ({gap:+.2f}% vs 예상)" if gap is not None else f" (예상 {expected_roi:+.2f}%)"
 
-        print(f"  {label:<12} {status:<6} ${capital:>7,.0f} ${pnl_r:>+9.2f} ${pnl_u:>+9.2f} {roi_str:>8} {wr:>7} {trades:>6}")
+def print_dashboard(state: dict, show_events: int = 0):
+    if not state or "scenarios" not in state:
+        print("⏳ 페이퍼트레이딩 데이터 없음. multi_scenario_pt.py가 실행 중인지 확인하세요.")
+        print(f"   상태 파일: {STATE_FILE}")
+        print(f"   데몬 상태: {get_pid_status()}")
+        return
 
-        results.append({
-            "strategy":       key,
-            "label":          label,
-            "status":         "running" if running else "idle",
-            "capital":        capital,
-            "pnl_realized":   round(pnl_r, 4),
-            "pnl_unrealized": round(pnl_u, 4),
-            "roi_pct":        round(roi, 4),
-            "expected_roi_30d": expected_roi,
-            "win_rate":       round(wins/max(1,wins+losses)*100, 1),
-            "total_trades":   trades,
-        })
+    scenarios = state.get("scenarios", {})
+    started_at = state.get("started_at", "")
+    generated_at = state.get("generated_at", "")
+    elapsed_hours = state.get("elapsed_hours", 0)
+    ranking = state.get("ranking", [])
 
-    print(f"{'='*70}\n")
+    # 시간 포맷
+    try:
+        start = datetime.fromisoformat(started_at)
+        start_str = start.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        start_str = started_at[:16].replace("T", " ") if started_at else "N/A"
 
-    # 효과성 요약
-    live = [r for r in results if r["status"] == "running"]
-    if live:
-        best = max(live, key=lambda x: x["roi_pct"])
-        worst = min(live, key=lambda x: x["roi_pct"])
-        print(f"  ✅ 실행 중: {len(live)}개 전략")
-        print(f"  🏆 최고 ROI: {best['label']}  {best['roi_pct']:+.2f}%")
-        if len(live) > 1:
-            print(f"  📉 최저 ROI: {worst['label']}  {worst['roi_pct']:+.2f}%")
+    try:
+        gen = datetime.fromisoformat(generated_at)
+        gen_str = gen.strftime("%H:%M:%S")
+    except Exception:
+        gen_str = generated_at[11:19] if generated_at else "N/A"
 
-    # Copy Perp 효과성 지표
-    running_pnl = sum(r["pnl_realized"] for r in live)
-    if live:
-        print(f"\n  💡 Copy Perp 효과성:")
-        print(f"     4전략 합산 실현PnL: ${running_pnl:+.2f}")
-        print(f"     vs 단순 보유 (HODL): 이 기간 BTC 대비 초과수익 계산 중...")
+    elapsed_h = int(elapsed_hours)
+    elapsed_m = int((elapsed_hours - elapsed_h) * 60)
 
-    return results
+    WIDTH = 74
+    print()
+    print("╔" + "═" * WIDTH + "╗")
+    title = "CopyPerp 4전략 실시간 페이퍼트레이딩 대시보드"
+    print(f"║{title:^{WIDTH}}║")
+    time_line = f"시작: {start_str} | 경과: {elapsed_h}h {elapsed_m:02d}m | 갱신: {gen_str} UTC"
+    print(f"║{time_line:^{WIDTH}}║")
+    pid_line = f"데몬: {get_pid_status()}"
+    print(f"║{pid_line:^{WIDTH}}║")
+    print("╠" + "═" * WIDTH + "╣")
+    header = f"{'전략':<12} {'자산':>10} {'PnL':>9} {'ROI':>8} {'연환산':>8} {'승률':>6} {'포지션':>6}"
+    print(f"║ {header} ║")
+    print("╠" + "═" * WIDTH + "╣")
+
+    # ranking 순으로 출력 (equity 내림차순)
+    display_order = ranking if ranking else list(scenarios.keys())
+    for name in display_order:
+        if name not in scenarios:
+            continue
+        data = scenarios[name]
+        label = data.get("label", name)
+        equity = data.get("equity", 10000)
+        total_pnl = data.get("total_pnl", 0)
+        roi = data.get("roi_pct", 0)
+        annual = data.get("annualized_roi_pct", 0)
+        win_rate = data.get("win_rate", 0)
+        open_pos = data.get("open_positions", 0)
+        api_ok = data.get("api_success", 0)
+        api_fail = data.get("api_fail", 0)
+        total_trades = data.get("total_trades", 0)
+
+        # API 연결 모드 표시
+        if api_ok > 0 and api_fail == 0:
+            mode = "📡"
+        elif api_ok > 0 and api_fail > 0:
+            mode = "⚡"
+        else:
+            mode = "💾"
+
+        equity_str = f"${equity:,.2f}"
+        pnl_sign = "+" if total_pnl >= 0 else ""
+        pnl_str = f"{pnl_sign}{total_pnl:.2f}"
+        roi_sign = "+" if roi >= 0 else ""
+        roi_str = f"{roi_sign}{roi:.3f}%"
+        ann_sign = "+" if annual >= 0 else ""
+        ann_str = f"{ann_sign}{annual:.1f}%"
+        win_str = f"{win_rate:.0f}%"
+        pos_str = f"{open_pos}개"
+
+        row = f"{label:<12} {equity_str:>10} {pnl_str:>9} {roi_str:>8} {ann_str:>8} {win_str:>6} {pos_str:>6}"
+        print(f"║ {row} {mode}║")
+
+    print("╠" + "═" * WIDTH + "╣")
+    exp_line = "예상 월 수익: 보수적 +7.8% | 기본 +13.4% | 균형 +18.3% | 적극 +33.6%"
+    print(f"║{exp_line:^{WIDTH}}║")
+    print("╚" + "═" * WIDTH + "╝")
+
+    # 상세 정보 (API 상태)
+    print()
+    print("📊 시나리오별 상세:")
+    for name in display_order:
+        if name not in scenarios:
+            continue
+        data = scenarios[name]
+        label = data.get("label", name)
+        traders = data.get("traders", 0)
+        total_trades = data.get("total_trades", 0)
+        realized = data.get("realized_pnl", 0)
+        unrealized = data.get("unrealized_pnl", 0)
+        api_ok = data.get("api_success", 0)
+        api_fail = data.get("api_fail", 0)
+        print(
+            f"  {label}: 트레이더 {traders}명 | 체결 {total_trades}회 | "
+            f"실현 PnL ${realized:+.2f} | 미실현 ${unrealized:+.2f} | "
+            f"API 성공/실패 {api_ok}/{api_fail}"
+        )
+
+    # 최근 이벤트
+    if show_events > 0:
+        events = load_recent_events(show_events)
+        if events:
+            print()
+            print(f"📜 최근 이벤트 (최대 {show_events}건):")
+            for ev in events:
+                ts = ev.get("ts", "")[:19]
+                scenario = ev.get("scenario", "")
+                event_type = ev.get("event", "")
+                symbol = ev.get("symbol", "")
+                side = ev.get("side", "")
+                trader = ev.get("trader", "")
+                if event_type == "open":
+                    usdc = ev.get("copy_usdc", 0)
+                    entry = ev.get("entry", 0)
+                    print(f"  [{ts}] [{scenario}] OPEN  {symbol} {side} ${usdc:.2f} @ ${entry:,.2f} [{trader}]")
+                elif event_type == "close":
+                    pnl = ev.get("pnl", 0)
+                    pnl_sign = "+" if pnl >= 0 else ""
+                    emoji = "✅" if pnl >= 0 else "❌"
+                    print(f"  [{ts}] [{scenario}] {emoji} CLOSE {symbol} {side} PnL={pnl_sign}{pnl:.4f} [{trader}]")
+    print()
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--watch", action="store_true", help="60초마다 갱신")
-    ap.add_argument("--interval", type=int, default=60, help="갱신 주기(초)")
-    ap.add_argument("--json", action="store_true", help="JSON 출력")
-    args = ap.parse_args()
-
-    if args.json:
-        results = []
-        for key, label, capital, exp in STRATEGIES:
-            sess = latest_session(key)
-            running = is_running(key)
-            pnl_r = sess.get("total_pnl", 0.0) if sess else 0.0
-            roi   = sess.get("roi_pct", 0.0) if sess else 0.0
-            results.append({
-                "strategy": key, "label": label, "status": "running" if running else "idle",
-                "pnl_realized": pnl_r, "roi_pct": roi, "expected_roi_30d": exp,
-            })
-        print(json.dumps({"timestamp": time.time(), "strategies": results}, indent=2))
-        return
+    parser = argparse.ArgumentParser(description="CopyPerp 4전략 페이퍼트레이딩 대시보드")
+    parser.add_argument("--watch", action="store_true",
+                        help="30초마다 자동 갱신 (watch 모드)")
+    parser.add_argument("--interval", type=int, default=30,
+                        help="watch 모드 갱신 간격 초 (기본 30)")
+    parser.add_argument("--events", type=int, default=10,
+                        help="최근 이벤트 표시 건수 (기본 10, 0=숨김)")
+    args = parser.parse_args()
 
     if args.watch:
+        print(f"👁 Watch 모드 (갱신: {args.interval}초마다). Ctrl+C로 종료.")
         while True:
-            os.system("clear")
-            render_dashboard()
-            print(f"  ⏱  {args.interval}초 후 갱신... (Ctrl+C 종료)\n")
-            time.sleep(args.interval)
+            try:
+                # 화면 클리어 (선택적)
+                os.system("clear" if os.name == "posix" else "cls")
+                state = load_state()
+                print_dashboard(state, show_events=args.events)
+                time.sleep(args.interval)
+            except KeyboardInterrupt:
+                print("\n종료.")
+                break
     else:
-        render_dashboard()
+        state = load_state()
+        print_dashboard(state, show_events=args.events)
 
 
 if __name__ == "__main__":
