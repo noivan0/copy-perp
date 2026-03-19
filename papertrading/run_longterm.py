@@ -17,6 +17,7 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 
 SESSION_DURATION_MIN = 120    # 2시간 단위 세션
 POLL_INTERVAL_SEC = 120       # 2분 폴링
+DEFAULT_STRATEGY  = "balanced"  # 기본 전략: balanced (Mainnet 최적화)
 
 
 def load_summary() -> dict:
@@ -129,22 +130,22 @@ def print_summary(summary: dict):
     print("=" * 65)
 
 
-def run_session(session_num: int) -> dict:
+def run_session(session_num: int, strategy: str = DEFAULT_STRATEGY) -> dict:
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = os.path.join(SESSION_DIR, f"session_{session_num:04d}_{ts}.json")
     script = os.path.join(WORK_DIR, "run_papertrading.py")
 
     print(f"\n{'='*65}")
-    print(f"  🚀 세션 #{session_num} 시작 | {SESSION_DURATION_MIN}분 실행")
+    print(f"  🚀 세션 #{session_num} 시작 | {SESSION_DURATION_MIN}분 | 전략: {strategy}")
     print(f"  출력: {os.path.basename(out)}")
     print(f"{'='*65}")
 
     cmd = [
         sys.executable, script,
-        "--duration", str(SESSION_DURATION_MIN),
-        "--interval", str(POLL_INTERVAL_SEC),
-        "--output", out,
-        "--traders", "8",   # CARP 필터 후 상위 8명 추적
+        "--duration",  str(SESSION_DURATION_MIN),
+        "--interval",  str(POLL_INTERVAL_SEC),
+        "--output",    out,
+        "--strategy",  strategy,   # ← 전략 프리셋 전달
     ]
     proc = subprocess.run(cmd, capture_output=False)
 
@@ -155,8 +156,15 @@ def run_session(session_num: int) -> dict:
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--strategy", default=DEFAULT_STRATEGY,
+                    choices=["safe", "balanced", "aggressive"],
+                    help="전략 프리셋 (기본: balanced)")
+    args = ap.parse_args()
+
     summary = load_summary()
-    print(f"장기 누적 Papertrading 시작")
+    print(f"장기 누적 Papertrading 시작 | 전략: {args.strategy}")
     print(f"세션당 {SESSION_DURATION_MIN}분 | 폴링 {POLL_INTERVAL_SEC}초")
     print(f"이미 {summary['sessions']}세션 완료됨")
 
@@ -164,7 +172,7 @@ def main():
 
     try:
         while True:
-            result = run_session(session_num)
+            result = run_session(session_num, strategy=args.strategy)
             if result:
                 summary = update_summary(summary, result)
                 print_summary(summary)

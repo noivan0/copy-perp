@@ -116,14 +116,53 @@ def select_top_traders(n: int = 5) -> list:
     return top
 
 
-# ── 설정 ─────────────────────────────────────────────────
+# ── 시나리오 프리셋 (Mainnet 실데이터 기반 최적화) ───────────────────
+# 기준: 60분 실행, copy_ratio=5%, max_pos=$300 → PnL +$12.57
+STRATEGY_PRESETS = {
+    "safe": {
+        "copy_ratio":        0.05,
+        "max_position_usdc": 300.0,
+        "stop_loss_pct":     8.0,
+        "take_profit_pct":   15.0,
+        "max_open_positions": 10,
+        "n_traders":          3,
+        "label":             "🛡 안전형",
+    },
+    "balanced": {
+        "copy_ratio":        0.10,
+        "max_position_usdc": 500.0,
+        "stop_loss_pct":     10.0,
+        "take_profit_pct":   20.0,
+        "max_open_positions": 12,
+        "n_traders":          5,
+        "label":             "⚖️ 균형형",
+    },
+    "aggressive": {
+        "copy_ratio":        0.20,
+        "max_position_usdc": 1000.0,
+        "stop_loss_pct":     12.0,
+        "take_profit_pct":   30.0,
+        "max_open_positions": 15,
+        "n_traders":          8,
+        "label":             "⚡ 공격형",
+    },
+}
+
+# ── 설정 (기본: balanced — Mainnet 데이터 최적화) ────────────────────
 INITIAL_CAPITAL = 10_000.0
-COPY_RATIO = 0.02           # 트레이더 포지션의 2% 복사 (보수적)
-MAX_POSITION_USDC = 200.0   # 단일 포지션 최대 $200
-MIN_NOTIONAL = 1.0          # 최소 명목가치 $1
-MAX_OPEN_POSITIONS = 15     # 동시 최대 포지션
-STOP_LOSS_PCT = 8.0         # 손절 8%
-TAKE_PROFIT_PCT = 15.0      # 익절 15%
+_DEFAULT_STRATEGY = "balanced"   # 기본 시나리오를 balanced로 상향
+
+def _apply_preset(strategy: str) -> dict:
+    p = STRATEGY_PRESETS.get(strategy, STRATEGY_PRESETS[_DEFAULT_STRATEGY])
+    return p
+
+# 실행 시 --strategy 인자로 override 가능 (하단 argparse 참조)
+COPY_RATIO          = STRATEGY_PRESETS[_DEFAULT_STRATEGY]["copy_ratio"]
+MAX_POSITION_USDC   = STRATEGY_PRESETS[_DEFAULT_STRATEGY]["max_position_usdc"]
+MAX_OPEN_POSITIONS  = STRATEGY_PRESETS[_DEFAULT_STRATEGY]["max_open_positions"]
+STOP_LOSS_PCT       = STRATEGY_PRESETS[_DEFAULT_STRATEGY]["stop_loss_pct"]
+TAKE_PROFIT_PCT     = STRATEGY_PRESETS[_DEFAULT_STRATEGY]["take_profit_pct"]
+MIN_NOTIONAL        = 1.0   # 최소 명목가치 $1
 
 
 @dataclass
@@ -547,15 +586,34 @@ def run(duration_min: int = 60, interval_sec: int = 120, output: str = None, n_t
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("--duration", type=int, default=60, help="실행 시간(분)")
-    p.add_argument("--interval", type=int, default=120, help="폴링 간격(초)")
-    p.add_argument("--output", type=str)
-    p.add_argument("--quick", action="store_true", help="5분 빠른 테스트")
-    p.add_argument("--traders", type=int, default=5, help="추적 트레이더 수")
+    p.add_argument("--duration",  type=int, default=60,   help="실행 시간(분)")
+    p.add_argument("--interval",  type=int, default=120,  help="폴링 간격(초)")
+    p.add_argument("--output",    type=str,               help="결과 JSON 저장 경로")
+    p.add_argument("--quick",     action="store_true",    help="5분 빠른 테스트")
+    p.add_argument("--traders",   type=int, default=None, help="추적 트레이더 수 (프리셋 override)")
+    p.add_argument(
+        "--strategy",
+        type=str,
+        default=_DEFAULT_STRATEGY,
+        choices=list(STRATEGY_PRESETS.keys()),
+        help="전략 프리셋: safe | balanced | aggressive (기본: balanced)",
+    )
     args = p.parse_args()
 
+    # 전략 프리셋 적용
+    preset = _apply_preset(args.strategy)
+    COPY_RATIO          = preset["copy_ratio"]
+    MAX_POSITION_USDC   = preset["max_position_usdc"]
+    MAX_OPEN_POSITIONS  = preset["max_open_positions"]
+    STOP_LOSS_PCT       = preset["stop_loss_pct"]
+    TAKE_PROFIT_PCT     = preset["take_profit_pct"]
+    n_traders           = args.traders or preset["n_traders"]
+
+    log.info(f"전략: {preset['label']} | copy={COPY_RATIO*100:.0f}% | "
+             f"max_pos=${MAX_POSITION_USDC:.0f} | SL={STOP_LOSS_PCT}% | TP={TAKE_PROFIT_PCT}%")
+
     if args.quick:
-        run(duration_min=5, interval_sec=60, output=args.output, n_traders=args.traders)
+        run(duration_min=5, interval_sec=60, output=args.output, n_traders=n_traders)
     else:
         run(duration_min=args.duration, interval_sec=args.interval,
-            output=args.output, n_traders=args.traders)
+            output=args.output, n_traders=n_traders)

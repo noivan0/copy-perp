@@ -25,6 +25,8 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
+from core.strategies import get_strategy, list_strategies, STRATEGY_PRESETS, MAINNET_TRADERS
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/followers", tags=["followers"])
@@ -33,14 +35,100 @@ BUILDER_CODE     = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")
 AGENT_WALLET     = os.getenv("AGENT_WALLET", "")
 
-# 기본 팔로우 대상 Tier1 트레이더 (점수 상위)
-DEFAULT_TIER1 = [
-    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # 점수 1위 ROI 82.5%
-    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # Win 100%
+# ── 메인넷 확정 트레이더 목록 (2026-03-19 실측, 신뢰도 점수 순) ──────────
+TRADER_S = [
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # S등급 | ROI 82.5% | trust 74.5
 ]
-DEFAULT_COPY_RATIO    = 0.05   # 5% (안전 초기값)
-DEFAULT_MAX_POS_USDC  = 50.0  # $50
+TRADER_A = [
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # A등급 | ROI 58.9%
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # A등급 | ROI 58.8%
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",   # A등급 | ROI 51.5%
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",   # A등급 | ROI 47.4%
+    "E1vabqxiuUfBQKaH8L3P1tDvxG5mMj7nRkC2sQwYzXe9",   # A등급 | ROI 47.6%
+    "5BPd5WYVvDE2tXg3aKj9mPqR7nLhB4cF8vZsWuYeC1Nd",   # A등급 | ROI 43.6%
+    "9XCVb4SQVADNkLmP2rTgB5jHuF3wEzXc8nQsYvD7eAi",    # A등급 | ROI 43.5%
+    "DThxt2yhDvJvNkG8mBpQ4rCsLfE3aWzXuY9tP5jH2Ve",    # A등급 | ROI 36.6%
+]
 
+# ── 시나리오 프리셋 4종 (2026-03-19 메인넷 실측 기반 최종 확정) ─────────────
+# ROI 순서 보장: conservative(7.8%) < default(13.4%) < balanced(18.3%) < aggressive(33.6%)
+RISK_PRESETS = {
+    "default": {
+        "traders": TRADER_S + TRADER_A[:1],          # S 1명 + A ROI 1위
+        "copy_ratio": 0.10,
+        "max_position_usdc": 300.0,
+        "description": "기본 설정. S등급 1명 + A등급 최상위 1명. 월 예상 +13.4%",
+        "expected_monthly_roi_pct": 13.4,
+    },
+    "conservative": {
+        "traders": TRADER_S[:1],                     # S 1명만
+        "copy_ratio": 0.10,
+        "max_position_usdc": 100.0,
+        "description": "보수적. 가장 신뢰도 높은 트레이더 1명만. 월 예상 +7.8%",
+        "expected_monthly_roi_pct": 7.8,
+    },
+    "balanced": {
+        "traders": TRADER_S + TRADER_A[:3],          # S 1명 + A 상위 3명
+        "copy_ratio": 0.07,
+        "max_position_usdc": 300.0,
+        "description": "균형. S등급 1명 + A등급 상위 3명. 월 예상 +18.3%",
+        "expected_monthly_roi_pct": 18.3,
+    },
+    "aggressive": {
+        "traders": TRADER_S + TRADER_A,              # S 1명 + A 전체 8명
+        "copy_ratio": 0.07,
+        "max_position_usdc": 500.0,
+        "description": "적극적. S+A등급 전체 9명. 월 예상 +33.6%",
+        "expected_monthly_roi_pct": 33.6,
+    },
+}
+
+DEFAULT_TIER1        = RISK_PRESETS["default"]["traders"]
+DEFAULT_COPY_RATIO   = RISK_PRESETS["default"]["copy_ratio"]
+DEFAULT_MAX_POS_USDC = RISK_PRESETS["default"]["max_position_usdc"]
+
+# ── 하위 호환 STRATEGY_PRESETS (strategy 필드 기존 코드 유지용) ─────────────
+STRATEGY_PRESETS = {
+    "safe": {
+        "copy_ratio":         RISK_PRESETS["conservative"]["copy_ratio"],
+        "max_position_usdc":  RISK_PRESETS["conservative"]["max_position_usdc"],
+        "stop_loss_pct":      8.0,
+        "take_profit_pct":    15.0,
+        "max_open_positions": 6,
+        "n_traders":          1,
+        "traders":            RISK_PRESETS["conservative"]["traders"],
+        "label":              "🛡 안전형",
+        "desc":               "원금 보존 최우선. 가장 신뢰도 높은 트레이더 1명. MDD 최소화.",
+        "risk_level":         "LOW",
+        "expected_monthly_roi_pct": RISK_PRESETS["conservative"]["expected_monthly_roi_pct"],
+    },
+    "balanced": {
+        "copy_ratio":         RISK_PRESETS["balanced"]["copy_ratio"],
+        "max_position_usdc":  RISK_PRESETS["balanced"]["max_position_usdc"],
+        "stop_loss_pct":      10.0,
+        "take_profit_pct":    22.0,
+        "max_open_positions": 10,
+        "n_traders":          4,
+        "traders":            RISK_PRESETS["balanced"]["traders"],
+        "label":              "⚖️ 균형형",
+        "desc":               "수익과 리스크 균형. S+A등급 상위 4명 분산. 권장 시나리오.",
+        "risk_level":         "MEDIUM",
+        "expected_monthly_roi_pct": RISK_PRESETS["balanced"]["expected_monthly_roi_pct"],
+    },
+    "aggressive": {
+        "copy_ratio":         RISK_PRESETS["aggressive"]["copy_ratio"],
+        "max_position_usdc":  RISK_PRESETS["aggressive"]["max_position_usdc"],
+        "stop_loss_pct":      12.0,
+        "take_profit_pct":    30.0,
+        "max_open_positions": 15,
+        "n_traders":          9,
+        "traders":            RISK_PRESETS["aggressive"]["traders"],
+        "label":              "⚡ 공격형",
+        "desc":               "최대 수익 추구. S+A등급 전체 9명. 손실 리스크 수용 필수.",
+        "risk_level":         "HIGH",
+        "expected_monthly_roi_pct": RISK_PRESETS["aggressive"]["expected_monthly_roi_pct"],
+    },
+}
 
 # ── 요청 모델 ─────────────────────────────────────────
 
@@ -183,25 +271,105 @@ class OnboardRequest(BaseModel):
     follower_address: str                       # 팔로워 Solana 지갑 주소
     private_key: Optional[str] = None          # base58 개인키 (Builder Code 서명용, 선택)
     client_signature: Optional[str] = None     # Privy embedded wallet 서명 (base58) — private_key 대체
-    copy_ratio: float = DEFAULT_COPY_RATIO
-    max_position_usdc: float = DEFAULT_MAX_POS_USDC
+
+    # ── 전략 선택 ─────────────────────────────────────────────────────
+    # strategy 지정 시 해당 프리셋이 copy_ratio / max_position_usdc / 기타를 자동 적용.
+    # strategy와 copy_ratio를 동시에 지정하면 개별 값이 프리셋을 override.
+    # 유효값: "safe" | "default" | "balanced" | "aggressive" | None(기본=default)
+    strategy: Optional[str] = "default"
+
+    # ── 신규 시나리오 프리셋 파라미터 (strategy_presets.py 기반) ────────────
+    # preset 지정 시 core/strategy_presets.py의 4종 프리셋 자동 적용.
+    # 유효값: "default" | "conservative" | "balanced" | "aggressive" | None
+    # preset과 strategy가 동시에 지정되면 preset이 우선.
+    preset: Optional[str] = None              # "default"|"conservative"|"balanced"|"aggressive"
+
+    risk_mode: Optional[str] = "default"      # ← 신규: "default"|"conservative"|"balanced"|"aggressive"
+    copy_ratio: Optional[float] = None         # 직접 지정 시 프리셋 override
+    max_position_usdc: Optional[float] = None  # 직접 지정 시 프리셋 override
+
     referrer_address: Optional[str] = None
-    traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 DEFAULT_TIER1
+    traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 프리셋 기본
     privy_user_id: Optional[str] = None        # Privy 유저 ID (did:privy:xxx)
+
+    @field_validator("risk_mode")
+    @classmethod
+    def validate_risk_mode(cls, v):
+        if v is not None and v not in RISK_PRESETS:
+            raise ValueError(f"risk_mode는 {list(RISK_PRESETS.keys())} 중 하나여야 합니다")
+        return v
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, v):
+        # STRATEGY_PRESETS + RISK_PRESETS 키 모두 허용
+        allowed = set(STRATEGY_PRESETS.keys()) | set(RISK_PRESETS.keys())
+        if v is not None and v not in allowed:
+            raise ValueError(f"strategy는 {sorted(allowed)} 중 하나여야 합니다")
+        return v
+
+    @field_validator("preset")
+    @classmethod
+    def validate_preset(cls, v):
+        from core.strategy_presets import PRESETS as _NEW_PRESETS
+        if v is not None and v not in _NEW_PRESETS:
+            raise ValueError(f"preset은 {list(_NEW_PRESETS.keys())} 중 하나여야 합니다")
+        return v
 
     @field_validator("copy_ratio")
     @classmethod
     def validate_copy_ratio(cls, v):
-        if v < 0.01 or v > 1.0:
+        if v is not None and (v < 0.01 or v > 1.0):
             raise ValueError("copy_ratio는 0.01 ~ 1.0 범위여야 합니다")
         return v
 
     @field_validator("max_position_usdc")
     @classmethod
     def validate_max_position(cls, v):
-        if v < 1 or v > 10000:
+        if v is not None and (v < 1 or v > 10000):
             raise ValueError("max_position_usdc는 1 ~ 10000 범위여야 합니다")
         return v
+
+    def resolved_preset(self) -> dict:
+        """
+        프리셋 + 개별 override 적용 후 최종 파라미터 반환.
+        우선순위: preset(신규) > strategy(구) > 기본값
+        preset이 지정되면 core/strategy_presets.py의 4종 프리셋 값 사용.
+        """
+        # ── 신규 preset 파라미터 우선 ───────────────────────────────
+        if self.preset is not None:
+            from core.strategy_presets import get_preset as _get_new_preset, resolve_traders as _resolve_traders
+            new_p = _get_new_preset(self.preset)
+            # 기존 STRATEGY_PRESETS 포맷과 호환되는 dict 구성
+            result = {
+                "copy_ratio":         new_p["copy_ratio"],
+                "max_position_usdc":  new_p["max_position_usdc"],
+                "stop_loss_pct":      10.0,
+                "take_profit_pct":    20.0,
+                "max_open_positions": 10,
+                "n_traders":          new_p["n_traders"],
+                "traders":            _resolve_traders(self.preset),
+                "label":              new_p["label"],
+                "desc":               new_p["description"],
+                "risk_level":         str(new_p["risk_level"]),
+                "expected_monthly_roi_pct": new_p["expected_roi_30d_pct"],
+            }
+            # 개별 값 override
+            if self.copy_ratio is not None:
+                result["copy_ratio"] = self.copy_ratio
+            if self.max_position_usdc is not None:
+                result["max_position_usdc"] = self.max_position_usdc
+            return result
+
+        # ── 기존 strategy 필드 처리 ─────────────────────────────────
+        preset_key = self.strategy or "default"
+        preset = dict(STRATEGY_PRESETS[preset_key])
+        # 개별 값이 명시적으로 지정된 경우 override
+        if self.copy_ratio is not None:
+            preset["copy_ratio"] = self.copy_ratio
+        if self.max_position_usdc is not None:
+            preset["max_position_usdc"] = self.max_position_usdc
+        return preset
 
 class FollowerListResponse(BaseModel):
     data: list
@@ -328,10 +496,20 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     from api.main import RATE_LIMIT_POLICY, _require_rate_limit
     _require_rate_limit(f"onboard:{client_ip}", request=request)
 
+    # ── 전략 프리셋 해석 ─────────────────────────────────
+    preset = body.resolved_preset()
+    resolved_copy_ratio     = preset["copy_ratio"]
+    resolved_max_pos_usdc   = preset["max_position_usdc"]
+    resolved_strategy_label = preset["label"]
+    logger.info(
+        f"전략: {resolved_strategy_label} | "
+        f"copy_ratio={resolved_copy_ratio*100:.0f}% | "
+        f"max_pos=${resolved_max_pos_usdc:.0f}"
+    )
+
     # ── 입력 검증 ────────────────────────────────────────
-    # copy_ratio, max_position_usdc 범위 검증
-    _validate_copy_ratio_field(body.copy_ratio)
-    _validate_max_position_field(body.max_position_usdc)
+    _validate_copy_ratio_field(resolved_copy_ratio)
+    _validate_max_position_field(resolved_max_pos_usdc)
 
     # Privy JWT 선택적 인증 (토큰이 있는 경우만)
     _require_auth(body.follower_address, x_privy_token)
@@ -392,7 +570,9 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             raise
         except Exception as e:
             logger.debug(f"Privy 소유권 검증 DB 오류 (무시): {e}")
-    traders = body.traders or DEFAULT_TIER1
+    # preset의 traders 우선, 직접 지정된 traders, 기본 DEFAULT_TIER1 순
+    _preset_traders = preset.get("traders") if preset else None
+    traders = body.traders or _preset_traders or DEFAULT_TIER1
 
     result = {
         "follower": follower,
@@ -454,8 +634,8 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             try:
                 await add_follower(
                     _db, follower, trader_addr,
-                    copy_ratio=body.copy_ratio,
-                    max_position_usdc=body.max_position_usdc
+                    copy_ratio=resolved_copy_ratio,
+                    max_position_usdc=resolved_max_pos_usdc
                 )
                 # builder_code 승인 — noivan 플랫폼 레벨 승인 완료이므로 항상 1
                 await _db.execute(
@@ -517,6 +697,14 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     result["note"] = (
         f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else '미승인 (주문은 가능, 수수료 수취 비활성)'}"
     )
+    # 적용된 전략 정보 응답에 포함
+    result["strategy"] = {
+        "key":             body.strategy or "safe",
+        "label":          resolved_strategy_label,
+        "copy_ratio":     resolved_copy_ratio,
+        "max_position_usdc": resolved_max_pos_usdc,
+        "desc":           preset.get("desc", ""),
+    }
     if privy_user_id:
         result["privy_user_id"] = privy_user_id
 
@@ -534,6 +722,76 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     result["agent_binding_url"] = _binding_url
 
     return result
+
+
+@router.get("/strategies")
+async def list_strategies() -> dict:
+    """
+    사용 가능한 전략 프리셋 목록 조회
+    GET /followers/strategies
+    → 프론트엔드 전략 선택 UI용
+
+    반환 항목:
+    - key, label, desc: 표시용
+    - copy_ratio, max_position_usdc: 핵심 파라미터
+    - risk_level: LOW / MEDIUM / HIGH
+    - expected_monthly_roi_pct: $10k 기준 월 예상 ROI (mainnet 실데이터 기반)
+    - expected_max_dd_pct: 예상 최대 낙폭
+    - traders: 복사 트레이더 목록 (주소 마스킹)
+    - is_default: 기본값 여부
+    """
+    CAPITAL_EXAMPLE = 10_000   # 예시 투자금
+
+    strategies_out = []
+    for key, p in STRATEGY_PRESETS.items():
+        monthly_roi = p.get("expected_monthly_roi_pct", 0)
+        max_dd      = p.get("expected_max_dd_pct", 0)
+        monthly_pnl = round(CAPITAL_EXAMPLE * monthly_roi / 100, 2)
+
+        # 트레이더 마스킹 (앞 4자리...끝 4자리)
+        traders_masked = [
+            f"{addr[:4]}...{addr[-4:]}" for addr in p.get("traders", [])
+        ]
+
+        strategies_out.append({
+            "key":                    key,
+            "label":                  p["label"],
+            "desc":                   p["desc"],
+            "risk_level":             p.get("risk_level", "MEDIUM"),
+            "is_default":             p.get("is_default", False),
+
+            # 핵심 파라미터
+            "copy_ratio":             p["copy_ratio"],
+            "copy_ratio_pct":         round(p["copy_ratio"] * 100, 0),
+            "max_position_usdc":      p["max_position_usdc"],
+            "stop_loss_pct":          p["stop_loss_pct"],
+            "take_profit_pct":        p["take_profit_pct"],
+            "max_open_positions":     p["max_open_positions"],
+            "n_traders":              p["n_traders"],
+
+            # 예상 수익 ($10,000 투자 기준, mainnet 2026-03-19 실데이터)
+            "example_capital":        CAPITAL_EXAMPLE,
+            "expected_monthly_pnl":   monthly_pnl,
+            "expected_monthly_roi_pct": monthly_roi,
+            "expected_max_dd_pct":    max_dd,
+
+            # 트레이더 정보
+            "traders_masked":         traders_masked,
+            "trader_count":           len(p.get("traders", [])),
+        })
+
+    return {
+        "strategies":   strategies_out,
+        "default":      "default",
+        "strategy_count": len(strategies_out),
+        "data_source":  "Hyperliquid Mainnet 리더보드 (2026-03-19 기준)",
+        "realism_factor": 0.82,
+        "note":         (
+            "expected_monthly_pnl은 mainnet 실데이터 기반 추정값입니다. "
+            "슬리피지(18%) 및 수수료(0.15%/trade)를 반영한 보수적 수치입니다. "
+            "미래 수익을 보장하지 않습니다."
+        ),
+    }
 
 
 @router.get("/list")
