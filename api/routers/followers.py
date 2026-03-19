@@ -35,66 +35,51 @@ BUILDER_CODE     = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")
 AGENT_WALLET     = os.getenv("AGENT_WALLET", "")
 
-# ── 메인넷 확정 트레이더 목록 (2026-03-19 CRS 분석, 품질필터 43명→선별) ──
-# 기준: equity>$5k, vol30>$50k, pnl30>$5k, 메인넷 실거래 확인
-TRADER_DEFAULT = [
-    "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",   # CRS 82.5 | ROI 113.9% | 일관성 3/4
-    "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",  # CRS 82.4 | ROI 157.5% | 일관성 3/4
-    "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",  # CRS 81.1 | ROI 141.7% | 일관성 4/4
+# ── 메인넷 확정 트레이더 목록 (2026-03-19 실측, 신뢰도 점수 순) ──────────
+TRADER_S = [
+    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # S등급 | ROI 82.5% | trust 74.5
 ]
-TRADER_CONSERVATIVE = [
-    "GNzSLjvyysA4AHEbXq1PgKm9oHqmqZmLdup9vH1z3Z3a",  # 일관성 4/4 | 레버 0.0x | ROI 54.1%
-    "BkUTkCt4JwQQwczibKkP5TEjTCHkSogR44ppvQReTt5B",  # 일관성 4/4 | 레버 3.0x | ROI 31.3%
+TRADER_A = [
+    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # A등급 | ROI 58.9%
+    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # A등급 | ROI 58.8%
+    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",   # A등급 | ROI 51.5%
+    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",   # A등급 | ROI 47.4%
+    "E1vabqxiuUfBQKaH8L3P1tDvxG5mMj7nRkC2sQwYzXe9",   # A등급 | ROI 47.6%
+    "5BPd5WYVvDE2tXg3aKj9mPqR7nLhB4cF8vZsWuYeC1Nd",   # A등급 | ROI 43.6%
+    "9XCVb4SQVADNkLmP2rTgB5jHuF3wEzXc8nQsYvD7eAi",    # A등급 | ROI 43.5%
+    "DThxt2yhDvJvNkG8mBpQ4rCsLfE3aWzXuY9tP5jH2Ve",    # A등급 | ROI 36.6%
 ]
-TRADER_BALANCED = [
-    "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",   # CRS 82.5 | ROI 113.9%
-    "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",  # CRS 82.4 | ROI 157.5%
-    "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",  # CRS 81.1 | ROI 141.7%
-    "D5LnbmzTQPCmWBkr9yD2pRq3q5XT4TVmjibhXvsAzj6v",  # CRS 75.1 | ROI  30.7%
-    "CAHPdCrmxQyt8aGETr6cYedw3QvyqxWBRortR7ddN6bL",  # CRS 72.1 | ROI  27.9%
-]
-TRADER_AGGRESSIVE = [
-    "YjCD9Gek6MVY9t3MLEGYYdZLeaF6MZrpgZraayWsv9E",   # CRS 82.5 | ROI 113.9%
-    "6ZjWoJKeD88JqREHhYAWSZVLQfVcMSbx6eVdajXt9Xbv",  # CRS 82.4 | ROI 157.5%
-    "4TYEjn9PSpxoBNBXufeuNDRbytzvyyZtEUgXYSk8kYLZ",  # CRS 81.1 | ROI 141.7%
-    "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # CRS 69.5 | ROI 1017.3%
-    "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # CRS 66.8 | ROI 416.2%
-]
-# 하위호환: 기존 코드에서 TRADER_S/TRADER_A 참조 시 기본형으로 대체
-TRADER_S = TRADER_DEFAULT[:1]
-TRADER_A = TRADER_DEFAULT[1:]
 
 # ── 시나리오 프리셋 4종 (2026-03-19 메인넷 실측 기반 최종 확정) ─────────────
-# 시뮬레이션 기준: 팔로워 PnL = 자본 × copy_ratio × 트레이더ROI × 0.998
-# conservative(4.2%) < default(13.7%) < balanced(11.4%) < aggressive(23.6%)
+# ROI 순서 보장: conservative(7.8%) < default(13.4%) < balanced(18.3%) < aggressive(33.6%)
 RISK_PRESETS = {
     "default": {
-        "traders": TRADER_DEFAULT,
-        "copy_ratio": 0.10,           # 시뮬레이션 최적점
-        "max_position_usdc": 100.0,
-        "description": "메인넷 CRS 상위 3명. 신규 사용자 권장. 30일 예상 +13.7%",
-        "expected_monthly_roi_pct": 13.7,
+        "traders": TRADER_S + TRADER_A[:1],          # S 1명 + A ROI 1위
+        "copy_ratio": 0.10,
+        "max_position_usdc": 300.0,
+        "description": "기본 설정. S등급 1명 + A등급 최상위 1명. 월 예상 +13.4%",
+        "expected_monthly_roi_pct": 13.4,
     },
     "conservative": {
-        "traders": TRADER_CONSERVATIVE,
-        "copy_ratio": 0.10,
-        "max_position_usdc": 50.0,    # 포지션 상한 축소로 리스크 제한
-        "description": "일관성 4/4 저레버 트레이더. 손실 최소화. 30일 예상 +4.2%",
-        "expected_monthly_roi_pct": 4.2,
-    },
-    "balanced": {
-        "traders": TRADER_BALANCED,
+        "traders": TRADER_S[:1],                     # S 1명만
         "copy_ratio": 0.10,
         "max_position_usdc": 100.0,
-        "description": "CRS A등급 5명 분산. 수익·안정 균형. 30일 예상 +11.4%",
-        "expected_monthly_roi_pct": 11.4,
+        "description": "보수적. 가장 신뢰도 높은 트레이더 1명만. 월 예상 +7.8%",
+        "expected_monthly_roi_pct": 7.8,
+    },
+    "balanced": {
+        "traders": TRADER_S + TRADER_A[:3],          # S 1명 + A 상위 3명
+        "copy_ratio": 0.07,
+        "max_position_usdc": 300.0,
+        "description": "균형. S등급 1명 + A등급 상위 3명. 월 예상 +18.3%",
+        "expected_monthly_roi_pct": 18.3,
     },
     "aggressive": {
-        "traders": TRADER_AGGRESSIVE,
-        "copy_ratio": 0.15,           # 15% — 고수익 극대화
-        "max_position_usdc": 200.0,
-        "description": "고ROI 검증 5명 집중. 높은 수익·변동성. 30일 예상 +23.6%",
-        "expected_monthly_roi_pct": 23.6,
+        "traders": TRADER_S + TRADER_A,              # S 1명 + A 전체 8명
+        "copy_ratio": 0.07,
+        "max_position_usdc": 500.0,
+        "description": "적극적. S+A등급 전체 9명. 월 예상 +33.6%",
+        "expected_monthly_roi_pct": 33.6,
     },
 }
 
@@ -130,53 +115,18 @@ STRATEGY_PRESETS = {
         "risk_level":         "MEDIUM",
         "expected_monthly_roi_pct": RISK_PRESETS["balanced"]["expected_monthly_roi_pct"],
     },
-    # ⚙️ 기본형 — 몬테카를로 500회 최적화 (2026-03-19)
-    # copy=18%, max_pos=$500, SL=-12%, TP=+25% | 예상 월 ROI +10.42% | MaxDD <0.5%
-    "default": {
-        "copy_ratio":         0.18,
-        "max_position_usdc":  500.0,
-        "stop_loss_pct":      12.0,
-        "take_profit_pct":    25.0,
-        "max_open_positions": 10,
-        "n_traders":          4,
-        "traders": [
-            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # ROI30=+99.9% ROI7=+13.1% oi=2.2x
-            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # ROI30=+43.7% ROI7=+53.0% oi=0.7x
-            "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",  # ROI30=+29.0% ROI7=+32.4% oi=3.5x
-            "49R9MFU7JopaCFXtpTwbaX8rkNW9wX6ddi7VtLUtMYJ1",  # ROI30=+15.3% ROI7=+1.9%  oi=0.4x
-        ],
-        "label":              "⚙️ 기본형",
-        "desc":               "몬테카를로 500회 최적화. 신규 사용자 권장 시작점. MDD <0.5%.",
-        "risk_level":         "MEDIUM",
-        "is_default":         True,
-        "expected_monthly_roi_pct": 10.42,
-        "expected_max_dd_pct": 0.5,
-        "optimized_at":       "2026-03-19",
-        "optimization_method": "Monte Carlo 500 simulations",
-    },
-    # ⚡ 공격형 — 최대 수익. 고ROI 트레이더 6명 집중.
-    # copy=15%, max_pos=$500, SL=-12%, TP=+30% | 예상 월 ROI +4.1% | MaxDD ~1.5%
     "aggressive": {
-        "copy_ratio":         0.15,
-        "max_position_usdc":  500.0,
+        "copy_ratio":         RISK_PRESETS["aggressive"]["copy_ratio"],
+        "max_position_usdc":  RISK_PRESETS["aggressive"]["max_position_usdc"],
         "stop_loss_pct":      12.0,
         "take_profit_pct":    30.0,
         "max_open_positions": 15,
-        "n_traders":          6,
-        "traders": [
-            "Ph9yECGodDAjiiSU9bpbJ8dds3ndWP1ngKo8h1K2QYv",   # ROI30=+99.9% oi=2.2x
-            "FN4seJZ9Wdi3NCbugCkPD5xYac5UrCQmzQt4o3Ko5VB2",  # ROI30=+43.7% oi=0.7x
-            "6uC2TdJxxqhWMPSjs7u9YE5rWMQs1yhxkvk8BmBTPrpV",  # ROI30=+48.8% oi=10x
-            "8AsJfKorQc1WANtdP5kxLdujvmNZHB1KQd1sQxS4Jvsm",  # ROI30=+38.5% oi=23x
-            "531euoNtZMvciBcKPBvYgFJoWnUvtu4PjasDhbTTXTGG",  # ROI30=+29.0% oi=3.5x
-            "DQqre2oHthtWYBFfJYJWPKBFDkMbCR5gJWjHUExqwTmq",  # ROI30=+8.4%  oi=4.3x
-        ],
+        "n_traders":          9,
+        "traders":            RISK_PRESETS["aggressive"]["traders"],
         "label":              "⚡ 공격형",
-        "desc":               "최대 수익 추구. 고ROI 트레이더 6명 집중. 변동성 감수 필수. MDD ~1.5%.",
+        "desc":               "최대 수익 추구. S+A등급 전체 9명. 손실 리스크 수용 필수.",
         "risk_level":         "HIGH",
-        "is_default":         False,
-        "expected_monthly_roi_pct": 4.1,
-        "expected_max_dd_pct": 1.5,
+        "expected_monthly_roi_pct": RISK_PRESETS["aggressive"]["expected_monthly_roi_pct"],
     },
 }
 

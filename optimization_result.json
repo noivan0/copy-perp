@@ -1,0 +1,79 @@
+{
+  "ts": 1773891279041,
+  "generated_at": "2026-03-19T03:34:39.041738",
+  "analysis": {
+    "n_traders": 6,
+    "avg_kelly": 0.2311,
+    "median_kelly": 0.286,
+    "max_kelly": 0.388,
+    "optimal_quarter_kelly": 0.0578,
+    "optimal_p50_kelly": 0.0715,
+    "fill_rate_pct": 78.5,
+    "avg_fill_usdc": 49.5,
+    "min_fill_usdc": 9.4,
+    "pct_403_fail": 90.6,
+    "pct_422_fail": 2.4,
+    "traders": [
+      {
+        "alias": "YjCD9Gek",
+        "kelly": 0.388,
+        "pf": 3.7273,
+        "wr": 53.03,
+        "carp": 68.3
+      },
+      {
+        "alias": "GTU92nBC",
+        "kelly": 0.2073,
+        "pf": 5.1633,
+        "wr": 25.71,
+        "carp": 54.2
+      },
+      {
+        "alias": "3iKDU1jU",
+        "kelly": 0.3091,
+        "pf": 2.3382,
+        "wr": 54.0,
+        "carp": 27.2
+      },
+      {
+        "alias": "5RX2DD42",
+        "kelly": 0.286,
+        "pf": 14.1891,
+        "wr": 30.77,
+        "carp": 18.2
+      },
+      {
+        "alias": "6ZjWoJKe",
+        "kelly": 0.0627,
+        "pf": 1.217,
+        "wr": 35.19,
+        "carp": 14.2
+      }
+    ]
+  },
+  "optimized_presets": {
+    "default": {
+      "copy_ratio": 0.15,
+      "max_position_usdc": 120,
+      "stop_loss_pct": 0
+    },
+    "conservative": {
+      "copy_ratio": 0.15,
+      "max_position_usdc": 120,
+      "stop_loss_pct": 0.1
+    },
+    "balanced": {
+      "copy_ratio": 0.2,
+      "max_position_usdc": 200,
+      "stop_loss_pct": 0.15,
+      "trailing_stop_pct": 0.2
+    },
+    "aggressive": {
+      "copy_ratio": 0.25,
+      "max_position_usdc": 300,
+      "stop_loss_pct": 0.05,
+      "take_profit_pct": 0.3,
+      "trailing_stop_pct": 0.1
+    }
+  }
+}
