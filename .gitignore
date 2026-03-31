@@ -1,8 +1,53 @@
+# 환경변수
 .env
-*.db
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
 .venv/
-.env
+venv/
+
+# DB 파일
 *.db
-__pycache__/
+*.db-shm
+*.db-wal
+
+# 로그
+logs/
+*.log
+
+# 페이퍼트레이딩 결과 (대량 데이터 — repo 제외)
+papertrading/results/
+papertrading/sessions/
+papertrading/v4_results/
+papertrading/v5_results/
+papertrading/v4_results/
+papertrading/*.jsonl
+
+# 결과 스냅샷 (대량 데이터 — repo 제외)
+results/mainnet_snapshots/
+results/accumulated_report_*.json
+results/multi_pt_daemon.log
+results/multi_pt_state.json
+results/tracker_daemon.log
+
+# 트레이더 분석 캐시 (대량)
+mainnet_*.json
+trader_*.json
+
+# 기타 임시 파일
+*.backup_*
+auto_research_result.json
+crs_result.json
+backtest_result*.json
+optimization_result.json
+user_pnl_*.json
+mainnet_carp_analysis.json

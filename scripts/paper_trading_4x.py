@@ -616,11 +616,20 @@ def run_4x(capital: float = 10_000, interval: int = 60):
                         total_changes += 1
                 eng.prev_positions[addr] = current
 
-        # 웜업 해제 (첫 사이클 완료 후)
+        # 웜업 해제 + 기존 포지션 즉시 진입 (첫 사이클 완료 후)
         for eng in engines.values():
             if eng.is_warmup:
                 eng.is_warmup = False
-                log.info(f"  [{eng.key}] 웜업 완료 → 다음 사이클부터 실제 진입")
+                log.info(f"  [{eng.key}] 웜업 완료 → 현재 포지션 즉시 진입 시작")
+                # 트레이더들의 현재 포지션을 지금 바로 진입
+                entered = 0
+                for addr, curr in eng.prev_positions.items():
+                    for sym, side in list(curr.items()):
+                        if eng.open_pos(sym, side, addr):
+                            entered += 1
+                if entered:
+                    log.info(f"  [{eng.key}] 초기 진입: {entered}개 포지션")
+                    total_changes += entered
 
         if total_changes == 0:
             log.info(f"  → 포지션 변화 없음 (총 {len(unique_traders)}명 감시 중)")
