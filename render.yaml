@@ -22,6 +22,6 @@ services:
       - key: AGENT_PRIVATE_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: "https://copy-perp.vercel.app,http://localhost:3000"
+        value: "*"
       - key: DB_PATH
         value: /tmp/copy_perp.db
