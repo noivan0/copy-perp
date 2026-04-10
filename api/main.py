@@ -653,7 +653,12 @@ class ReferralTrackRequest(BaseModel):
 
 # ── 기본 엔드포인트 ───────────────────────────────────
 @app.get("/")
-def root() -> dict:
+def root():
+    from fastapi.responses import FileResponse
+    import os
+    frontend_index = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "index.html")
+    if os.path.exists(frontend_index):
+        return FileResponse(frontend_index)
     return {"status": "ok", "service": "Copy Perp", "version": "1.1.0", "docs": "/docs"}
 
 
