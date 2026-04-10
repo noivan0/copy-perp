@@ -28,7 +28,7 @@
 
 ## 🌐 Live Demo
 
-> 🚀 **[Try Copy Perp Live](YOUR_LIVE_DEMO_URL)**
+> 🚀 **[Try Copy Perp Live](https://copy-perp.onrender.com)**
 >
 > *(Pacifica testnet — no real funds required)*
 
