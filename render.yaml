@@ -1,11 +1,10 @@
 services:
   - type: web
     name: copy-perp
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    healthCheckPath: /health
+    healthCheckPath: /healthz
     envVars:
       - key: NETWORK
         value: testnet
@@ -16,10 +15,14 @@ services:
       - key: PRIVY_APP_ID
         value: cmmvoxcix058e0ckv7uhp9ip0
       - key: ACCOUNT_ADDRESS
-        sync: false
+        value: 3AHZqrocSguMuo9sUUP8G8YN8NwHwWV2DPUQvbDvtfaQ
       - key: AGENT_WALLET
-        sync: false
+        sync: false   # Render Dashboard에서 입력
       - key: AGENT_PRIVATE_KEY
-        sync: false
+        sync: false   # Render Dashboard에서 입력
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: "https://copy-perp.vercel.app,http://localhost:3000"
+      - key: DB_PATH
+        value: /tmp/copy_perp.db
+      - key: PORT
+        value: "8001"
