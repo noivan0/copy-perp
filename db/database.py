@@ -14,6 +14,15 @@ from typing import Optional
 
 DB_PATH = os.getenv("DB_PATH", "copy_perp.db")
 
+# DB 디렉토리 자동 생성 (Render /var/data 등 마운트 경로 대비)
+_db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+if _db_dir and not os.path.exists(_db_dir):
+    try:
+        os.makedirs(_db_dir, exist_ok=True)
+    except OSError:
+        # 쓰기 권한 없으면 현재 디렉토리로 fallback
+        DB_PATH = "copy_perp.db"
+
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS traders (
     address     TEXT PRIMARY KEY,
