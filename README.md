@@ -30,6 +30,8 @@
 
 > 🚀 **[Try Copy Perp Live](https://copy-perp.onrender.com)**
 >
+> 📖 **[API Docs (Swagger)](https://copy-perp.onrender.com/docs)** | **[ReDoc](https://copy-perp.onrender.com/redoc)**
+>
 > *(Pacifica testnet — no real funds required)*
 
 ---
