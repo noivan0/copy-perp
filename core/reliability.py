@@ -166,13 +166,13 @@ def _score_momentum(p30: float, p7: float, p1: float, roi30: float) -> tuple[flo
 
     if m7_30 < 0:
         ratio_score = _norm(m7_30, -0.5, 0, invert=True) * 0.4
-        warnings.append(f"최근 7일 손실 (30일 대비 {m7_30:.0%})")
+        warnings.append(f"7d loss vs 30d ({m7_30:.0%})")
     elif m7_30 < 0.05:
         ratio_score = 20.0
-        warnings.append(f"최근 비활성 (7일 기여 {m7_30:.1%})")
+        warnings.append(f"Low recent activity ({m7_30:.1%} of 30d)")
     elif m7_30 > 0.80:
         ratio_score = 55.0
-        warnings.append(f"단발성 의심 (7일에 {m7_30:.0%} 집중)")
+        warnings.append(f"One-time spike suspected ({m7_30:.0%} in 7d)")
     else:
         # 이상적 범위 0.15~0.45에서 100점
         ratio_score = _norm(abs(m7_30 - 0.30), 0, 0.25, invert=True)
@@ -183,7 +183,7 @@ def _score_momentum(p30: float, p7: float, p1: float, roi30: float) -> tuple[flo
     elif p1 < 0:
         day_bonus = max(-20.0, p1 / max(p30, 1) * 100)
         if p1 < -p30 * 0.05:
-            warnings.append(f"오늘 손실 ${p1:,.0f}")
+            warnings.append(f"Today loss ${p1:,.0f}")
     else:
         day_bonus = 0
 
@@ -202,7 +202,7 @@ def _score_profitability(p30: float, roi30: float, p7: float,
     # ROI 점수: 5%~100% → 정상 범위, 100% 초과는 의심
     if roi30 > 200:
         roi_score = 40.0  # 고ROI는 오히려 감점 (단발 투기 의심)
-        warnings.append(f"ROI {roi30:.0f}% — 단발 투기 의심")
+        warnings.append(f"ROI {roi30:.0f}% — spike suspected")
     elif roi30 > 50:
         roi_score = 85.0
     elif roi30 >= 5:
@@ -219,11 +219,11 @@ def _score_profitability(p30: float, roi30: float, p7: float,
         pf_score = _norm(math.log(pf_capped + 0.01),
                          math.log(0.5), math.log(5.0))
         if pf > 100:
-            warnings.append(f"Profit Factor {pf:.0f} — 이상치 의심")
+            warnings.append(f"PF {pf:.0f} — outlier suspected")
         elif pf > 2.0:
-            pass  # 강점
+            pass  # strength
         elif pf < 1.2:
-            warnings.append(f"Profit Factor {pf:.2f} 낮음")
+            warnings.append(f"PF {pf:.2f} — low")
     else:
         pf_score = 50.0  # 데이터 없으면 중립
 
@@ -233,7 +233,7 @@ def _score_profitability(p30: float, roi30: float, p7: float,
         exp_score = min(100.0, _norm(exp, 0, 500))
     elif exp < 0:
         exp_score = 0.0
-        warnings.append(f"거래당 기대값 ${exp:.2f} (음수)")
+        warnings.append(f"Negative EV ${exp:.2f} per trade")
     else:
         exp_score = 50.0
 
@@ -256,10 +256,10 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     oi_ratio = oi / eq if eq > 0 else 0
     if oi_ratio > 3.0:
         oi_score = 0.0
-        warnings.append(f"OI/Equity {oi_ratio:.1f}x — 극단적 레버리지")
+        warnings.append(f"OI/Equity {oi_ratio:.1f}x — extreme leverage")
     elif oi_ratio > 1.5:
         oi_score = _norm(oi_ratio, 1.5, 3.0, invert=True) * 0.5
-        warnings.append(f"OI/Equity {oi_ratio:.1f}x (고위험)")
+        warnings.append(f"OI/Equity {oi_ratio:.1f}x — high risk")
     else:
         oi_score = _norm(oi_ratio, 0, 1.5, invert=True)
 
@@ -267,10 +267,10 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     liq_rate = stats.get("liquidation_rate", 0)
     if liq_rate > 0.05:
         liq_score = 0.0
-        warnings.append(f"청산 비율 {liq_rate:.1%} (신뢰 불가)")
+        warnings.append(f"Liq rate {liq_rate:.1%} — unreliable")
     elif liq_rate > 0.01:
         liq_score = 30.0
-        warnings.append(f"청산 발생 {liq_rate:.1%}")
+        warnings.append(f"Liq rate {liq_rate:.1%}")
     else:
         liq_score = 100.0
 
@@ -278,7 +278,7 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     streak = stats.get("max_consecutive_loss", 0)
     streak_score = _norm(streak, 0, 10, invert=True)
     if streak > 5:
-        warnings.append(f"최대 연속 손실 {streak}건")
+        warnings.append(f"Max losing streak {streak}")
 
     if stats:
         score = oi_score * 0.45 + liq_score * 0.30 + streak_score * 0.25
@@ -297,7 +297,7 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[f
     # API의 consistency 필드 (1~5 스케일 추정)
     cons_score = _norm(cons, 1, 5)
     if cons <= 1:
-        warnings.append("활동 일관성 최하위 (비정기적 매매)")
+        warnings.append("Very low consistency (irregular trading)")
 
     # 거래 빈도 (있으면)
     tc = stats.get("trade_count", 0)
@@ -306,7 +306,7 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[f
             freq_score = 100.0
         elif tc < 5:
             freq_score = 20.0
-            warnings.append(f"거래 {tc}건 — 표본 부족")
+            warnings.append(f"{tc} trades — insufficient sample")
         else:
             freq_score = _norm(tc, 200, 500, invert=True)
     else:
@@ -316,10 +316,10 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[f
     hold = stats.get("avg_hold_min", 60)
     if hold < 3:
         hold_score = 0.0
-        warnings.append(f"평균 보유 {hold:.1f}분 — 복사 불가")
+        warnings.append(f"Avg hold {hold:.1f}min — uncopyable")
     elif hold < 10:
         hold_score = 40.0
-        warnings.append(f"평균 보유 {hold:.1f}분 — 슬리피지 위험")
+        warnings.append(f"Avg hold {hold:.1f}min — slippage risk")
     else:
         hold_score = min(100.0, _norm(hold, 10, 480))
 
@@ -348,10 +348,10 @@ def _score_copyability(stats: dict, p30: float) -> tuple[float, list]:
         pos_score = 100.0
     elif avg_pos < 10:
         pos_score = 20.0
-        warnings.append(f"평균 포지션 ${avg_pos:.0f} — 너무 소규모")
+        warnings.append(f"Avg pos ${avg_pos:.0f} — too small")
     elif avg_pos > 50000:
         pos_score = 30.0
-        warnings.append(f"평균 포지션 ${avg_pos:,.0f} — 슬리피지 심각")
+        warnings.append(f"Avg pos ${avg_pos:,.0f} — severe slippage")
     else:
         pos_score = 70.0
 
@@ -390,7 +390,7 @@ class CRSResult:
     consistency_score:  float = 0.0   # 15%
     copyability_score:  float = 0.0   # 5%
 
-    # 강점 / 경고
+    # strength / 경고
     strengths: list = field(default_factory=list)
     warnings:  list = field(default_factory=list)
 
@@ -458,9 +458,9 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     if cons < HARD_FILTER["min_consistency"]:
         reasons.append(f"일관성 {cons} < {HARD_FILTER['min_consistency']}")
     if p30 > 0 and mom_ratio < HARD_FILTER["min_momentum_ratio"]:
-        reasons.append(f"최근 하락 {mom_ratio:.0%} (30일 대비 -30% 초과)")
+        reasons.append(f"Recent decline {mom_ratio:.0%} (>-30% vs 30d)")
     if roi30 > HARD_FILTER["max_roi_30d"]:
-        reasons.append(f"ROI {roi30:.0f}% 이상치 (단발 투기 의심)")
+        reasons.append(f"ROI {roi30:.0f}% — spike suspected")
 
     if reasons:
         result.disqualified = True
@@ -505,7 +505,7 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
             break
     result.recommended_copy_ratio = MAX_COPY_RATIO[result.grade]
 
-    # ── 강점 / 경고 수집 ──────────────────────────
+    # ── strength / 경고 수집 ──────────────────────────
     all_warn = m_warn + p_warn + r_warn + c_warn + cp_warn
 
     strengths = []
