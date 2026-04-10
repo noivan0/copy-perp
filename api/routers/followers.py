@@ -143,12 +143,17 @@ _SOLANA_ADDR_RE = re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
 def _validate_solana_address(address: str, field_name: str = "address") -> None:
     """Solana 주소 검증:
     1. 문자열 + 비어있지 않은지 확인
-    2. base58 문자셋 + 32-44자 regex 검증
-    3. base58 디코딩 + 32바이트 (Ed25519 공개키) 확인
+    2. did:privy: 형식 허용 (Privy user ID fallback)
+    3. base58 문자셋 + 32-44자 regex 검증
+    4. base58 디코딩 + 32바이트 (Ed25519 공개키) 확인
     실패 시 HTTPException(422) 발생
     """
     if not address or not isinstance(address, str):
         raise HTTPException(status_code=422, detail={"error": f"{field_name} is required", "code": "VALIDATION_ERROR"})
+
+    # Privy user ID (did:privy:xxx) 허용 — Solana 지갑 없는 Google/Email 유저
+    if address.startswith("did:privy:"):
+        return
 
     # 1차: regex 형식 검증
     if not _SOLANA_ADDR_RE.match(address):
@@ -834,8 +839,8 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
     if not _db:
         raise HTTPException(503, "DB 미초기화")
     if follower_address:
-        # 주소 형식 검증
-        if not _SOLANA_ADDR_RE.match(follower_address):
+        # 주소 형식 검증 (did:privy: 허용)
+        if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
             raise HTTPException(
                 status_code=422,
                 detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
