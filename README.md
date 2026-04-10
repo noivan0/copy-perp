@@ -8,6 +8,10 @@
 [![Builder Code](https://img.shields.io/badge/Builder%20Code-noivan-orange)](https://pacifica.gitbook.io/docs/builder-program)
 [![Tests](https://img.shields.io/badge/Tests-54%2F54%20PASS-brightgreen)](https://github.com/noivan0/copy-perp)
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/noivan0/copy-perp)
+[![Deploy Frontend](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/noivan0/copy-perp-web&env=NEXT_PUBLIC_PRIVY_APP_ID,NEXT_PUBLIC_API_URL&project-name=copy-perp-web)
+
+
 **Copy the best perpetual traders on Pacifica — automatically, in 30 seconds, with your funds staying in your wallet.**
 
 > 🔑 **Three things no perp DEX has done before:** non-custodial copy trading + algorithmic trader selection (CRS) + on-chain fee capture via Builder Code. All live on Pacifica testnet today.
