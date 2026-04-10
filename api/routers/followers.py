@@ -98,8 +98,8 @@ STRATEGY_PRESETS = {
         "max_open_positions": 6,
         "n_traders":          1,
         "traders":            RISK_PRESETS["conservative"]["traders"],
-        "label":              "🛡 안전형",
-        "desc":               "원금 보존 최우선. 가장 신뢰도 높은 트레이더 1명. MDD 최소화.",
+        "label":              "🛡 Safe",
+        "desc":               "Capital preservation first. 1 top-reliability trader. Minimum drawdown.",
         "risk_level":         "LOW",
         "expected_monthly_roi_pct": RISK_PRESETS["conservative"]["expected_monthly_roi_pct"],
     },
@@ -111,8 +111,8 @@ STRATEGY_PRESETS = {
         "max_open_positions": 10,
         "n_traders":          4,
         "traders":            RISK_PRESETS["balanced"]["traders"],
-        "label":              "⚖️ 균형형",
-        "desc":               "수익과 리스크 균형. S+A등급 상위 4명 분산. 권장 시나리오.",
+        "label":              "⚖️ Balanced",
+        "desc":               "Balanced risk-reward. Top 4 S+A grade traders diversified. Recommended.",
         "risk_level":         "MEDIUM",
         "expected_monthly_roi_pct": RISK_PRESETS["balanced"]["expected_monthly_roi_pct"],
     },
@@ -124,8 +124,8 @@ STRATEGY_PRESETS = {
         "max_open_positions": 15,
         "n_traders":          9,
         "traders":            RISK_PRESETS["aggressive"]["traders"],
-        "label":              "⚡ 공격형",
-        "desc":               "최대 수익 추구. S+A등급 전체 9명. 손실 리스크 수용 필수.",
+        "label":              "⚡ Aggressive",
+        "desc":               "Maximum return pursuit. All 9 S+A grade traders. High loss risk accepted.",
         "risk_level":         "HIGH",
         "expected_monthly_roi_pct": RISK_PRESETS["aggressive"]["expected_monthly_roi_pct"],
     },
@@ -148,7 +148,7 @@ def _validate_solana_address(address: str, field_name: str = "address") -> None:
     실패 시 HTTPException(422) 발생
     """
     if not address or not isinstance(address, str):
-        raise HTTPException(status_code=422, detail={"error": f"{field_name}가 필요합니다", "code": "VALIDATION_ERROR"})
+        raise HTTPException(status_code=422, detail={"error": f"{field_name} is required", "code": "VALIDATION_ERROR"})
 
     # 1차: regex 형식 검증
     if not _SOLANA_ADDR_RE.match(address):
@@ -552,14 +552,14 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             try:
                 _validate_solana_address(str(trader_addr), field_name=f"traders[{idx}]")
             except HTTPException as e:
-                raise HTTPException(status_code=422, detail={"error": f"traders[{idx}] 주소 오류: {e.detail}", "code": "INVALID_ADDRESS"})
+                raise HTTPException(status_code=422, detail={"error": f"traders[{idx}] invalid address: {e.detail}", "code": "INVALID_ADDRESS"})
 
     # referrer 주소 검증 (지정된 경우)
     if body.referrer_address:
         try:
             _validate_solana_address(body.referrer_address, field_name="referrer_address")
         except HTTPException as e:
-            raise HTTPException(status_code=422, detail={"error": f"referrer_address 오류: {e.detail}", "code": "INVALID_ADDRESS"})
+            raise HTTPException(status_code=422, detail={"error": f"referrer_address error: {e.detail}", "code": "INVALID_ADDRESS"})
 
     # Step 0b: Privy JWT 선택적 검증 (X-Privy-Token 또는 Authorization: Bearer 모두 허용)
     privy_user_id: Optional[str] = None
@@ -724,7 +724,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
 
     result["ok"] = len(result["followers_registered"]) > 0
     result["note"] = (
-        f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else 'Not approved (orders work, fee collection disabled)'}"
+        f"Builder Code '{BUILDER_CODE}' {'Approved' if result['builder_code_approved'] else 'Not approved (orders work, fee collection disabled)'}"
     )
     # 적용된 전략 정보 응답에 포함
     result["strategy"] = {
@@ -834,7 +834,7 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
         if not _SOLANA_ADDR_RE.match(follower_address):
             raise HTTPException(
                 status_code=422,
-                detail={"error": "유효하지 않은 Solana 주소 형식", "code": "INVALID_ADDRESS"}
+                detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
             )
         # 본인 주소에 해당하는 팔로워 데이터만 반환
         async with _db.execute(
@@ -844,7 +844,7 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
             rows = await cur.fetchall()
     else:
         # follower_address 미제공 시 빈 목록 반환 (전체 조회 불허)
-        return {"data": [], "count": 0, "note": "follower_address 파라미터가 필요합니다"}
+        return {"data": [], "count": 0, "note": "follower_address parameter is required"}
     return {"data": [dict(r) for r in rows], "count": len(rows)}
 
 
@@ -1006,10 +1006,10 @@ async def get_paper_trading():
         }
 
     STRATEGY_META = {
-        "default":      {"label": "📋 기본형",  "expected_30d": 13.7, "traders": 3, "copy_ratio": 0.10, "max_pos": 100},
-        "conservative": {"label": "🛡️ 안정형", "expected_30d":  4.2, "traders": 2, "copy_ratio": 0.10, "max_pos":  50},
-        "balanced":     {"label": "⚖️ 균형형",  "expected_30d": 11.4, "traders": 5, "copy_ratio": 0.10, "max_pos": 100},
-        "aggressive":   {"label": "🚀 공격형",  "expected_30d": 23.6, "traders": 5, "copy_ratio": 0.15, "max_pos": 200},
+        "default":      {"label": "📋 Default",  "expected_30d": 13.7, "traders": 3, "copy_ratio": 0.10, "max_pos": 100},
+        "conservative": {"label": "🛡️ Safe", "expected_30d":  4.2, "traders": 2, "copy_ratio": 0.10, "max_pos":  50},
+        "balanced":     {"label": "⚖️ Balanced",  "expected_30d": 11.4, "traders": 5, "copy_ratio": 0.10, "max_pos": 100},
+        "aggressive":   {"label": "🚀 Aggressive",  "expected_30d": 23.6, "traders": 5, "copy_ratio": 0.15, "max_pos": 200},
     }
 
     try:

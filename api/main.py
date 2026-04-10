@@ -385,12 +385,12 @@ def _require_valid_solana_address(addr: str, field: str = "address") -> None:  #
     if not addr or not isinstance(addr, str):
         raise HTTPException(
             status_code=400,
-            detail={"error": f"{field}가 필요합니다", "code": "INVALID_ADDRESS"}
+            detail={"error": f"{field} is required", "code": "INVALID_ADDRESS"}
         )
     if not _is_valid_solana_address(addr):
         raise HTTPException(
             status_code=400,
-            detail={"error": f"유효하지 않은 Solana 주소: {field}", "code": "INVALID_ADDRESS"}
+            detail={"error": f"Invalid Solana address: {field}", "code": "INVALID_ADDRESS"}
         )
 
 
@@ -706,7 +706,7 @@ async def leaderboard_alias(limit: int = 20) -> dict:
             logger.error(f"[Leaderboard] DB 조회 실패: {e}")
             raise HTTPException(
                 status_code=503,
-                detail={"error": "리더보드를 불러올 수 없습니다", "code": "SERVICE_UNAVAILABLE"}
+                detail={"error": "Unable to load leaderboard", "code": "SERVICE_UNAVAILABLE"}
             )
     return {"data": [], "count": 0}
 
@@ -784,7 +784,7 @@ def get_markets(request: Request, symbol: Optional[str] = None) -> dict:
         if not data:
             raise HTTPException(
                 status_code=404,
-                detail={"error": f"심볼 {symbol}을 찾을 수 없습니다", "code": "NOT_FOUND"}
+                detail={"error": f"Symbol {symbol} not found", "code": "NOT_FOUND"}
             )
         return {"data": data}
     items = sorted(_get_pc().values(), key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
@@ -825,12 +825,12 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
     if not _is_valid_solana_address(body.follower_address):
         raise HTTPException(
             status_code=400,
-            detail={"error": "유효하지 않은 follower_address (Solana 주소 형식 오류)", "code": "INVALID_ADDRESS"}
+            detail={"error": "Invalid follower_address (Solana address format)", "code": "INVALID_ADDRESS"}
         )
     if not _is_valid_solana_address(body.trader_address):
         raise HTTPException(
             status_code=400,
-            detail={"error": "유효하지 않은 trader_address (Solana 주소 형식 오류)", "code": "INVALID_ADDRESS"}
+            detail={"error": "Invalid trader_address (Solana address format)", "code": "INVALID_ADDRESS"}
         )
 
     try:
@@ -874,7 +874,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
         "max_position_usdc": body.max_position_usdc,
         "builder_code": BUILDER_CODE,
         "monitoring": True,
-        "note": f"Builder Code '{BUILDER_CODE}' — 프론트에서 유저 서명 승인 필요",
+        "note": f"Builder Code '{BUILDER_CODE}' — user signature approval required via frontend",
     }
 
 
@@ -890,13 +890,13 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
     if not _is_valid_solana_address(trader_address):
         raise HTTPException(
             status_code=400,
-            detail={"error": "유효하지 않은 trader_address", "code": "INVALID_ADDRESS"}
+            detail={"error": "Invalid trader_address", "code": "INVALID_ADDRESS"}
         )
 
     # query param 또는 body 중 follower_address 우선순위: query > body
     _follower_addr = follower_address or (body.follower_address if body else "")
     if not _follower_addr:
-        raise HTTPException(status_code=422, detail={"error": "follower_address 필요", "code": "MISSING_PARAM"})
+        raise HTTPException(status_code=422, detail={"error": "follower_address required", "code": "MISSING_PARAM"})
 
     try:
         db = await get_db()
@@ -943,12 +943,12 @@ async def list_trades(
     if limit < 1 or limit > 500:
         raise HTTPException(
             status_code=400,
-            detail={"error": "limit은 1~500 범위여야 합니다", "code": "INVALID_LIMIT"}
+            detail={"error": "limit must be between 1 and 500", "code": "INVALID_LIMIT"}
         )
     if status and status not in ("filled", "pending", "failed"):
         raise HTTPException(
             status_code=400,
-            detail={"error": "status는 filled | pending | failed 중 하나여야 합니다", "code": "INVALID_STATUS"}
+            detail={"error": "status must be one of: filled, pending, failed", "code": "INVALID_STATUS"}
         )
 
     try:
@@ -970,7 +970,7 @@ async def list_trades(
         logger.error(f"[{req_id}] trades DB 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "거래 내역을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Unable to load trade history", "code": "INTERNAL_SERVER_ERROR"}
         )
 
     data = [dict(r) for r in rows]
@@ -1080,7 +1080,7 @@ async def get_stats(request: Request) -> dict:
             logger.error(f"[{req_id}] stats fallback 오류: {e2}", exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail={"error": "통계를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+                detail={"error": "Unable to load statistics", "code": "INTERNAL_SERVER_ERROR"}
             )
 
     stats["ws_symbols"] = len(_get_pc())
@@ -1199,7 +1199,7 @@ async def track_referral(body: ReferralTrackRequest) -> dict:
         logger.error(f"레퍼럴 추적 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "레퍼럴 추적에 실패했습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Failed to track referral", "code": "INTERNAL_SERVER_ERROR"}
         )
 
 
@@ -1213,7 +1213,7 @@ def get_referral(address: str) -> dict:
         logger.error(f"레퍼럴 조회 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "레퍼럴 정보를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Unable to load referral info", "code": "INTERNAL_SERVER_ERROR"}
         )
 
 
@@ -1235,7 +1235,7 @@ async def health_detailed() -> dict:
             total_pnl = (await c.fetchone())[0]
         db_ok = True
     except Exception as e:
-        logger.error(f"health/detailed DB 오류: {e}")
+        logger.error(f"health/detailed DB error: {e}")
         db_ok = False
         trader_count = follower_count = filled_count = 0
         total_pnl = 0
