@@ -9,7 +9,7 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.0"
+        value: "3.11.9"
       - key: NETWORK
         value: testnet
       - key: BUILDER_CODE
@@ -27,4 +27,4 @@ services:
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: DB_PATH
-        value: ./copy_perp.db
+        value: /var/data/copy_perp.db
