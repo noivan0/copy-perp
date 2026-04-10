@@ -199,6 +199,24 @@ app.add_middleware(
 )
 
 # ── 전역 에러 핸들러 ────────────────────────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    req_id = getattr(request.state, "request_id", "??")
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    msg = first.get("msg", "Validation failed").replace("Value error, ", "")
+    field = " → ".join(str(x) for x in first.get("loc", []) if x != "body")
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": msg,
+            "code": "VALIDATION_ERROR",
+            "field": field or None,
+            "request_id": req_id,
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     req_id = getattr(request.state, "request_id", "??")
@@ -207,7 +225,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "error": "서버 오류가 발생했습니다",
+            "error": "Internal server error",
             "code": "INTERNAL_SERVER_ERROR",
             "request_id": req_id,
             **({"detail": str(exc)} if is_debug else {}),
@@ -233,7 +251,7 @@ async def not_found_handler(request: Request, exc: Exception):
     req_id = getattr(request.state, "request_id", "??")
     return JSONResponse(
         status_code=404,
-        content={"error": "요청한 리소스를 찾을 수 없습니다", "code": "NOT_FOUND", "path": str(request.url.path), "request_id": req_id},
+        content={"error": "Resource not found", "code": "NOT_FOUND", "path": str(request.url.path), "request_id": req_id},
     )
 
 def _status_to_code(status: int) -> str:
@@ -607,7 +625,7 @@ def _validate_copy_ratio(v: float) -> float:  # type-checked
     if v < 0.01 or v > 1.0:
         raise HTTPException(
             status_code=400,
-            detail={"error": "copy_ratio는 0.01 ~ 1.0 범위여야 합니다", "code": "INVALID_COPY_RATIO"}
+            detail={"error": "copy_ratio must be between 0.01 and 1.0", "code": "INVALID_COPY_RATIO"}
         )
     return v
 
@@ -616,7 +634,7 @@ def _validate_max_position(v: float) -> float:  # type-checked
     if v < 1 or v > 10000:
         raise HTTPException(
             status_code=400,
-            detail={"error": "max_position_usdc는 1 ~ 10000 범위여야 합니다", "code": "INVALID_MAX_POSITION"}
+            detail={"error": "max_position_usdc must be between 1 and 10000", "code": "INVALID_MAX_POSITION"}
         )
     return v
 
@@ -635,14 +653,14 @@ class FollowRequest(BaseModel):
     @classmethod
     def validate_copy_ratio(cls, v):
         if v < 0.01 or v > 1.0:
-            raise ValueError("copy_ratio는 0.01 ~ 1.0 범위여야 합니다")
+            raise ValueError("copy_ratio must be between 0.01 and 1.0")
         return v
 
     @field_validator("max_position_usdc")
     @classmethod
     def validate_max_position_usdc(cls, v):
         if v < 1 or v > 10000:
-            raise ValueError("max_position_usdc는 1 ~ 10000 범위여야 합니다")
+            raise ValueError("max_position_usdc must be between 1 and 10000")
         return v
 
 class UnfollowRequest(BaseModel):
@@ -824,7 +842,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
         logger.error(f"[{req_id}] follow DB 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "서버 오류가 발생했습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Internal server error", "code": "INTERNAL_SERVER_ERROR"}
         )
 
     # 레퍼럴 추적
@@ -886,7 +904,7 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
         logger.error(f"[{req_id}] unfollow DB 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "서버 오류가 발생했습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Internal server error", "code": "INTERNAL_SERVER_ERROR"}
         )
 
     try:

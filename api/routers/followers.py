@@ -321,14 +321,14 @@ class OnboardRequest(BaseModel):
     @classmethod
     def validate_copy_ratio(cls, v):
         if v is not None and (v < 0.01 or v > 1.0):
-            raise ValueError("copy_ratio는 0.01 ~ 1.0 범위여야 합니다")
+            raise ValueError("copy_ratio must be between 0.01 and 1.0")
         return v
 
     @field_validator("max_position_usdc")
     @classmethod
     def validate_max_position(cls, v):
         if v is not None and (v < 1 or v > 10000):
-            raise ValueError("max_position_usdc는 1 ~ 10000 범위여야 합니다")
+            raise ValueError("max_position_usdc must be between 1 and 10000")
         return v
 
     def resolved_preset(self) -> dict:
@@ -453,7 +453,7 @@ def _require_auth(follower_address: str, privy_token: Optional[str]) -> Optional
     if user_id is None:
         raise HTTPException(
             status_code=401,
-            detail={"error": "유효하지 않은 Privy 토큰입니다", "code": "AUTH_INVALID"}
+            detail={"error": "Invalid Privy token", "code": "AUTH_INVALID"}
         )
     # 검증 성공 로그 (user_id 마스킹)
     masked_uid = user_id[:12] + "..." if len(user_id) > 12 else user_id
@@ -468,7 +468,7 @@ def _validate_copy_ratio_field(v: float) -> float:
     if v < 0.01 or v > 1.0:
         raise HTTPException(
             status_code=400,
-            detail={"error": "copy_ratio는 0.01 ~ 1.0 범위여야 합니다", "code": "INVALID_COPY_RATIO"}
+            detail={"error": "copy_ratio must be between 0.01 and 1.0", "code": "INVALID_COPY_RATIO"}
         )
     return v
 
@@ -478,7 +478,7 @@ def _validate_max_position_field(v: float) -> float:
     if v < 1 or v > 10000:
         raise HTTPException(
             status_code=400,
-            detail={"error": "max_position_usdc는 1 ~ 10000 범위여야 합니다", "code": "INVALID_MAX_POSITION"}
+            detail={"error": "max_position_usdc must be between 1 and 10000", "code": "INVALID_MAX_POSITION"}
         )
     return v
 
@@ -593,7 +593,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
                 logger.warning(f"Privy ID 불일치: 기존={row[0][:20]} 요청={privy_user_id[:20]}")
                 raise HTTPException(
                     status_code=403,
-                    detail={"error": "이 지갑 주소는 다른 Privy 계정으로 등록되어 있습니다.", "code": "ADDRESS_CONFLICT"}
+                    detail={"error": "This wallet is registered under a different account.", "code": "ADDRESS_CONFLICT"}
                 )
         except HTTPException:
             raise
@@ -639,7 +639,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
         logger.warning("solders 없음 — Builder Code 승인 스킵")
         signature = None
     except Exception as e:
-        result["errors"].append(f"서명 생성 실패: {e}")
+        result["errors"].append(f"Signature generation failed: {e}")
         signature = None
 
     # ── Step 2: Pacifica approve API ──────────────────
@@ -655,7 +655,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
                 result["errors"].append(f"API 응답: {api_result}")
         except Exception as e:
             # 승인 실패해도 팔로우는 계속 (수수료 수취만 비활성)
-            result["errors"].append(f"Builder Code API 오류: {e}")
+            result["errors"].append(f"Builder Code API error: {e}")
 
     # ── Step 3: DB 팔로워 등록 ────────────────────────
     if _db:
@@ -724,7 +724,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
 
     result["ok"] = len(result["followers_registered"]) > 0
     result["note"] = (
-        f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else '미승인 (주문은 가능, 수수료 수취 비활성)'}"
+        f"Builder Code '{BUILDER_CODE}' {'승인됨' if result['builder_code_approved'] else 'Not approved (orders work, fee collection disabled)'}"
     )
     # 적용된 전략 정보 응답에 포함
     result["strategy"] = {

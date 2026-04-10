@@ -128,7 +128,7 @@ async def backtest_portfolio(
         return {"error": str(e)}
 
     if not results:
-        return {"error": "해당 트레이더를 DB에서 찾을 수 없음"}
+        return {"error": "Trader not found in DB"}
 
     # 가중 평균 PnL (equal weight)
     n = len(results)
@@ -139,15 +139,18 @@ async def backtest_portfolio(
     win_traders = sum(1 for r in results if (r.get("pnl_30d") or 0) > 0)
     win_rate = round(win_traders / n * 100, 1)
 
-    return {
+    response = {
         "traders_count": n,
         "copy_ratio": copy_ratio,
         "estimated_pnl_30d": round(total_pnl, 2),
         "estimated_pnl_7d": round(pnl_7d, 2),
         "win_rate_pct": win_rate,
         "avg_equity": round(avg_equity, 2),
-        "note": "단순 PnL 비례 추정 (슬리피지/수수료 미포함)",
+        "note": "Simple PnL estimate (slippage/fees not included)",
     }
+    # portfolio key for backward compatibility
+    response["portfolio"] = [{"address": r.get("address"), "pnl_30d": r.get("pnl_30d"), "equity": r.get("equity")} for r in results]
+    return response
 
 
 @router.get("/performance")
