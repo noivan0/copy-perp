@@ -11,9 +11,6 @@ Agent: env AGENT_PRIVATE_KEY
 import os
 import warnings; warnings.filterwarnings("ignore")
 import logging as _logging
-_logging.getLogger("scrapling").setLevel(_logging.CRITICAL)
-_logging.getLogger("scrapling.engines").setLevel(_logging.CRITICAL)
-_logging.getLogger("scrapling.engines.toolbelt").setLevel(_logging.CRITICAL)
 import json
 import time
 import uuid
@@ -28,10 +25,16 @@ import urllib.parse as _urlparse
 import base58
 from solders.keypair import Keypair
 import warnings as _warnings
-with _warnings.catch_warnings():
-    _warnings.simplefilter("ignore")
-    from scrapling import Fetcher as _Fetcher
-    _fetcher = _Fetcher()
+
+# scrapling은 선택적 의존성 — 없으면 CloudFront SNI 직접 소켓만 사용
+_fetcher = None
+try:
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        from scrapling import Fetcher as _Fetcher
+        _fetcher = _Fetcher()
+except Exception:
+    pass
 
 NETWORK = os.getenv("NETWORK", "testnet")
 REST_URL = os.getenv("PACIFICA_REST_URL", "https://do5jt23sqak4.cloudfront.net/api/v1")
@@ -163,24 +166,31 @@ def _proxy_get(path: str) -> dict:
     target_url = f"{PACIFICA_REST_URL_DIRECT}/{path}"
 
     # 1차: allorigins.win (파라미터 없는 URL에 강함)
-    try:
-        proxy_url = CORS_PROXY + _urlparse.quote(target_url, safe="")
-        page = _fetcher.get(proxy_url, timeout=15)
-        text = page.get_all_text()
-        # 500/520 오류면 codetabs로 폴백
-        if text and not any(e in text[:50] for e in ("500", "520", "Error", "nginx")):
-            result = _unwrap(_parse_json(text))
-            # 유효한 결과만 반환 (빈 dict/list도 OK, None은 폴백)
-            if result is not None:
-                return result
-    except Exception:
-        pass
+    if _fetcher is not None:
+        try:
+            proxy_url = CORS_PROXY + _urlparse.quote(target_url, safe="")
+            page = _fetcher.get(proxy_url, timeout=15)
+            text = page.get_all_text()
+            # 500/520 오류면 codetabs로 폴백
+            if text and not any(e in text[:50] for e in ("500", "520", "Error", "nginx")):
+                result = _unwrap(_parse_json(text))
+                # 유효한 결과만 반환 (빈 dict/list도 OK, None은 폴백)
+                if result is not None:
+                    return result
+        except Exception:
+            pass
 
-    # 2차: codetabs.com (쿼리파라미터 포함 URL에 강함)
+    # 2차: codetabs.com (쿼리파라미터 포함 URL에 강함, scrapling 불필요)
     try:
+        import urllib.request as _urllib_req
         codetabs_url = f"https://api.codetabs.com/v1/proxy/?quest={target_url}"
-        page2 = _fetcher.get(codetabs_url, timeout=15)
-        text2 = page2.get_all_text()
+        if _fetcher is not None:
+            page2 = _fetcher.get(codetabs_url, timeout=15)
+            text2 = page2.get_all_text()
+        else:
+            req2 = _urllib_req.Request(codetabs_url, headers={"User-Agent": "CopyPerp/1.0"})
+            with _urllib_req.urlopen(req2, timeout=15) as r2:
+                text2 = r2.read().decode("utf-8", "ignore")
         if len(text2) > 10:
             return _parse_json(text2)
     except Exception as e:
