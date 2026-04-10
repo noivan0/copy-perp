@@ -20,8 +20,8 @@ if _db_dir and not os.path.exists(_db_dir):
     try:
         os.makedirs(_db_dir, exist_ok=True)
     except OSError:
-        # 쓰기 권한 없으면 현재 디렉토리로 fallback
-        DB_PATH = "copy_perp.db"
+        # 쓰기 권한 없으면 /tmp로 fallback
+        DB_PATH = "/tmp/copy_perp.db"
 
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS traders (

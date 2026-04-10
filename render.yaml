@@ -27,4 +27,4 @@ services:
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: DB_PATH
-        value: /var/data/copy_perp.db
+        value: /tmp/copy_perp.db
