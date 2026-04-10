@@ -794,11 +794,12 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
     _require_rate_limit(f"signals:{client_ip}")
     items = list(_get_pc().values())
     funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
-    divergence_top = sorted(
-        [m for m in items if float(m.get("oracle", 0)) > 0],
-        key=lambda x: abs(float(x.get("mark", 0)) - float(x.get("oracle", 0))) / float(x.get("oracle", 1)),
-        reverse=True
-    )[:top_n]
+    raw_div = [m for m in items if float(m.get("oracle", 0)) > 0]
+    for m in raw_div:
+        oracle = float(m.get("oracle", 1))
+        mark = float(m.get("mark", 0))
+        m["divergence_pct"] = round((mark - oracle) / oracle * 100, 4) if oracle else 0.0
+    divergence_top = sorted(raw_div, key=lambda x: abs(x.get("divergence_pct", 0)), reverse=True)[:top_n]
     return {
         "ok": True,
         "funding_extremes": funding_top,
