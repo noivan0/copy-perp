@@ -357,7 +357,7 @@ def _require_rate_limit(key: str, max_calls: int = None, window_sec: int = 60, r
             status_code=429,
             headers={"Retry-After": str(retry_after)},
             detail={
-                "error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.",
+                "error": "Rate limit exceeded. Please try again later.",
                 "code": "RATE_LIMIT_EXCEEDED",
                 "retry_after_seconds": retry_after,
                 "limit": max_calls,
@@ -679,7 +679,7 @@ def root():
     frontend_index = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "index.html")
     if os.path.exists(frontend_index):
         return FileResponse(frontend_index)
-    return {"status": "ok", "service": "Copy Perp", "version": "1.1.0", "docs": "/docs"}
+    return {"status": "ok", "service": "Copy Perp", "version": "1.2.0", "docs": "/docs"}
 
 
 @app.get("/leaderboard")
@@ -766,7 +766,7 @@ def health(request: Request) -> dict:
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
         "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
-        "version": "1.1.0",
+        "version": "1.2.0",
         "pacifica_ratelimit": _get_ratelimit_status_safe(),
     }
 
