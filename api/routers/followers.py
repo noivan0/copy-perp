@@ -151,33 +151,34 @@ def _validate_solana_address(address: str, field_name: str = "address") -> None:
     if not address or not isinstance(address, str):
         raise HTTPException(status_code=422, detail={"error": f"{field_name} is required", "code": "VALIDATION_ERROR"})
 
-    # Privy user ID (did:privy:xxx) 허용 — Solana 지갑 없는 Google/Email 유저
-    if address.startswith("did:privy:"):
-        return
-
-    # 1차: regex 형식 검증
-    if not _SOLANA_ADDR_RE.match(address):
+    # did:privy: fallback 거부 — 실제 Solana 주소 필요
+    if address.startswith("did:privy:") or address.startswith("did:"):
         raise HTTPException(
-            422,
-            f"유효하지 않은 Solana 주소 형식: '{address[:20]}...' "
-            f"(base58 문자셋, 32-44자 필요)"
+            status_code=422,
+            detail={"error": f"{field_name} must be a valid Solana address, not a Privy user ID. Please wait for your wallet to be created.", "code": "INVALID_ADDRESS"}
         )
 
-    # 2차: base58 디코딩 + 32바이트 확인
+    # Regex format check (base58, 32-44 chars)
+    if not _SOLANA_ADDR_RE.match(address):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": f"Invalid Solana address format: '{address[:20]}...' (base58, 32-44 chars required)", "code": "INVALID_ADDRESS"}
+        )
+
+    # base58 decode + 32-byte Ed25519 check
     try:
         decoded = _base58.b58decode(address)
         if len(decoded) != 32:
             raise HTTPException(
-                422,
-                f"유효하지 않은 Solana 주소: base58 디코딩 결과가 {len(decoded)}바이트 "
-                f"(32바이트 Ed25519 공개키 필요)"
+                status_code=422,
+                detail={"error": f"Invalid Solana address: decoded {len(decoded)} bytes (32 required)", "code": "INVALID_ADDRESS"}
             )
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            422,
-            f"유효하지 않은 Solana 주소: base58 디코딩 실패 — {e}"
+            status_code=422,
+            detail={"error": f"Invalid Solana address: base58 decode failed — {e}", "code": "INVALID_ADDRESS"}
         )
 
 
