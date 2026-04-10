@@ -178,6 +178,10 @@ async def add_request_id(request: Request, call_next):
     logger.info(f"[{request_id}] {request.method} {request.url.path}")
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
+    # 보안 헤더
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # CORS — 프로덕션: 실제 도메인만 허용
