@@ -277,7 +277,7 @@ class OnboardRequest(BaseModel):
     # strategy 지정 시 해당 프리셋이 copy_ratio / max_position_usdc / 기타를 자동 적용.
     # strategy와 copy_ratio를 동시에 지정하면 개별 값이 프리셋을 override.
     # 유효값: "safe" | "default" | "balanced" | "aggressive" | None(기본=default)
-    strategy: Optional[str] = "default"
+    strategy: Optional[str] = "safe"
 
     # ── 신규 시나리오 프리셋 파라미터 (strategy_presets.py 기반) ────────────
     # preset 지정 시 core/strategy_presets.py의 4종 프리셋 자동 적용.
@@ -363,8 +363,24 @@ class OnboardRequest(BaseModel):
             return result
 
         # ── 기존 strategy 필드 처리 ─────────────────────────────────
-        preset_key = self.strategy or "default"
-        preset = dict(STRATEGY_PRESETS[preset_key])
+        preset_key = self.strategy or "safe"
+        # STRATEGY_PRESETS에 없으면 RISK_PRESETS → 그것도 없으면 safe
+        if preset_key in STRATEGY_PRESETS:
+            preset = dict(STRATEGY_PRESETS[preset_key])
+        elif preset_key in RISK_PRESETS:
+            rp = RISK_PRESETS[preset_key]
+            preset = {
+                "copy_ratio": rp["copy_ratio"],
+                "max_position_usdc": rp["max_position_usdc"],
+                "stop_loss_pct": 10.0, "take_profit_pct": 20.0,
+                "max_open_positions": 10, "n_traders": len(rp.get("traders", [])),
+                "traders": rp.get("traders", []),
+                "label": rp.get("label", preset_key),
+                "desc": "", "risk_level": "MEDIUM",
+                "expected_monthly_roi_pct": rp.get("expected_monthly_roi_pct", 5.0),
+            }
+        else:
+            preset = dict(STRATEGY_PRESETS["safe"])
         # 개별 값이 명시적으로 지정된 경우 override
         if self.copy_ratio is not None:
             preset["copy_ratio"] = self.copy_ratio
