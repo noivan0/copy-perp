@@ -728,9 +728,11 @@ async def leaderboard_alias(limit: int = 20) -> dict:
     return {"data": [], "count": 0}
 
 
+_STARTUP_AT = int(__import__("time").time())
+
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "startup_at": _STARTUP_AT}
 
 @app.get("/health")
 def health(request: Request) -> dict:
