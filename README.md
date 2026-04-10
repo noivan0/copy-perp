@@ -324,6 +324,50 @@ pip install supervisor && supervisord -c supervisord.conf
 
 ---
 
+## 🎬 Demo Video
+
+> **[▶ Watch Demo](https://www.youtube.com/watch?v=TBD)** ← 업로드 후 링크 교체 예정
+
+**Demo Highlights:**
+- Privy Google 로그인 → Solana 지갑 자동 생성 (30초)
+- CRS 랭킹 리더보드 → 트레이더 선택
+- 1-click 팔로우 → Copy Engine 실시간 주문 체결 (522ms)
+- Builder Code `noivan` 수수료 자동 수취 확인
+- 백테스팅 결과: ratio=20% → **+82.7% ROI** vs 무작위 -3.2%
+
+---
+
+## 🧪 Test Results
+
+```bash
+# Core tests: 69 PASS (2026-04-10)
+pytest tests/test_copy_engine.py tests/test_db.py tests/test_e2e_mock.py -q
+# → 69 passed in 38.89s ✅
+
+# Full suite (testnet API 포함): 54 PASS (2026-03-18)
+# → 54 passed, 3 skipped (HMG 환경 제한) ✅
+```
+
+---
+
+## 📊 Submission Checklist
+
+| Item | Status |
+|------|--------|
+| GitHub repo (Public) | ✅ github.com/noivan0/copy-perp |
+| Backend (FastAPI) | ✅ 완성 |
+| Frontend (Next.js + Privy) | ✅ 완성 |
+| Copy Engine (E2E) | ✅ Testnet 주문 체결 확인 |
+| Builder Code `noivan` | ✅ 서명 플로우 구현 완료 |
+| CRS 랭킹 알고리즘 | ✅ S/A/B/C 등급 |
+| Fuul 레퍼럴 | ✅ 연동 완료 |
+| Privy 소셜 로그인 | ✅ Google/Discord |
+| Test Suite | ✅ 69+ PASS |
+| Demo Video | ⏳ 촬영 예정 (4/14) |
+| Submission Form | ⏳ 4/16 제출 예정 |
+
+---
+
 ## 👥 Team
 
 Built by **Pipe Company** for Pacifica Hackathon 2026.
