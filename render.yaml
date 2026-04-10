@@ -28,3 +28,5 @@ services:
         value: "https://copy-perp-frontend.vercel.app,https://copy-perp.onrender.com,http://localhost:3000"
       - key: DB_PATH
         value: ./copy_perp.db
+      - key: DEBUG
+        value: "true"
