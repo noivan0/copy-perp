@@ -824,19 +824,27 @@ async def list_strategies() -> dict:
 
 
 @router.get("/list")
-async def list_followers(trader_address: Optional[str] = None) -> dict:
-    """팔로워 목록 조회"""
+async def list_followers(follower_address: Optional[str] = None) -> dict:
+    """팔로워 목록 조회 — follower_address로 본인 데이터만 조회"""
     from api.main import _db
-    from db.database import get_followers
     if not _db:
         raise HTTPException(503, "DB 미초기화")
-    if trader_address:
-        rows = await get_followers(_db, trader_address)
-    else:
+    if follower_address:
+        # 주소 형식 검증
+        if not _SOLANA_ADDR_RE.match(follower_address):
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "유효하지 않은 Solana 주소 형식", "code": "INVALID_ADDRESS"}
+            )
+        # 본인 주소에 해당하는 팔로워 데이터만 반환
         async with _db.execute(
-            "SELECT * FROM followers WHERE active=1 ORDER BY created_at DESC LIMIT 100"
+            "SELECT * FROM followers WHERE address=? AND active=1 ORDER BY created_at DESC",
+            (follower_address,)
         ) as cur:
             rows = await cur.fetchall()
+    else:
+        # follower_address 미제공 시 빈 목록 반환 (전체 조회 불허)
+        return {"data": [], "count": 0, "note": "follower_address 파라미터가 필요합니다"}
     return {"data": [dict(r) for r in rows], "count": len(rows)}
 
 
