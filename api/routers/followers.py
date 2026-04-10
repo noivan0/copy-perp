@@ -320,8 +320,12 @@ class OnboardRequest(BaseModel):
     @field_validator("copy_ratio")
     @classmethod
     def validate_copy_ratio(cls, v):
-        if v is not None and (v < 0.01 or v > 1.0):
-            raise ValueError("copy_ratio must be between 0.01 and 1.0")
+        if v is not None:
+            import math
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                raise ValueError("copy_ratio must be a finite number")
+            if v < 0.01 or v > 1.0:
+                raise ValueError("copy_ratio must be between 0.01 and 1.0")
         return v
 
     @field_validator("max_position_usdc")
