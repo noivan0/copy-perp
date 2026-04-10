@@ -1015,6 +1015,7 @@ async def list_trades(
             "filled": _filled_all,
             "failed": _failed_all,
             "realized_pnl_usdc": round(_pnl_all, 4),
+            "total_pnl_usdc": round(_pnl_all, 4),
             "total_volume_usdc": round(_vol_all, 2),
             "win_rate_pct": _wr,
         },
