@@ -9,7 +9,7 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.9"
+        value: "3.11.0"
       - key: NETWORK
         value: testnet
       - key: BUILDER_CODE
@@ -25,6 +25,6 @@ services:
       - key: AGENT_PRIVATE_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: "https://copy-perp.onrender.com,https://copy-perp-web.vercel.app,http://localhost:3000"
       - key: DB_PATH
-        value: /tmp/copy_perp.db
+        value: ./copy_perp.db
