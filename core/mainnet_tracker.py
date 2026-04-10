@@ -23,10 +23,10 @@ MIN_PNL_ALL  = 0.0      # 전체 수익 양수
 N_TRADERS    = 6        # 선발 인원
 
 SCENARIOS = [
-    {"key": "conservative_1k",  "label": "안정형", "capital": 1_000,  "n": 3, "grade_filter": ["S"]},
-    {"key": "balanced_5k",      "label": "균형형", "capital": 5_000,  "n": 3, "grade_filter": ["S","A"]},
-    {"key": "aggressive_10k",   "label": "공격형", "capital": 10_000, "n": 3, "grade_filter": ["A"]},
-    {"key": "full_10k",         "label": "풀포트", "capital": 10_000, "n": 6, "grade_filter": ["S","A","B"]},
+    {"key": "conservative_1k",  "label": "Safe", "capital": 1_000,  "n": 3, "grade_filter": ["S"]},
+    {"key": "balanced_5k",      "label": "Balanced", "capital": 5_000,  "n": 3, "grade_filter": ["S","A"]},
+    {"key": "aggressive_10k",   "label": "Aggressive", "capital": 10_000, "n": 3, "grade_filter": ["A"]},
+    {"key": "full_10k",         "label": "Full Portfolio", "capital": 10_000, "n": 6, "grade_filter": ["S","A","B"]},
 ]
 
 COPY_REALISM  = 0.82

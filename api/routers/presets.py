@@ -38,7 +38,7 @@ async def get_preset_detail(
     """특정 프리셋 상세 (트레이더 목록 + 시뮬 PnL 포함)"""
     from core.strategy_presets import PRESETS, get_preset_sim_pnl, resolve_traders
     if name not in PRESETS:
-        raise HTTPException(status_code=404, detail={"error": f"프리셋 '{name}' 없음. 유효한 값: {list(PRESETS.keys())}"})
+        raise HTTPException(status_code=404, detail={"error": f"Preset '{name}' not found. Valid: {list(PRESETS.keys())}"})
     preset  = PRESETS[name]
     sim     = get_preset_sim_pnl(name, capital=capital, db_path=_DB_PATH)
     traders = resolve_traders(name, db_path=_DB_PATH)
@@ -54,7 +54,7 @@ async def sim_preset_pnl(
     """자본 기준 예상 PnL 계산"""
     from core.strategy_presets import PRESETS, get_preset_sim_pnl
     if name not in PRESETS:
-        raise HTTPException(status_code=404, detail={"error": f"프리셋 '{name}' 없음"})
+        raise HTTPException(status_code=404, detail={"error": f"Preset '{name}' not found"})
     sim = get_preset_sim_pnl(name, capital=capital, db_path=_DB_PATH)
     preset = PRESETS[name]
     return {
@@ -85,13 +85,13 @@ async def apply_preset(
     """
     from core.strategy_presets import PRESETS, resolve_traders, get_preset_sim_pnl
     if name not in PRESETS:
-        raise HTTPException(status_code=404, detail={"error": f"프리셋 '{name}' 없음"})
+        raise HTTPException(status_code=404, detail={"error": f"Preset '{name}' not found"})
 
     preset  = PRESETS[name]
     traders = resolve_traders(name, db_path=_DB_PATH)
 
     if not traders:
-        raise HTTPException(status_code=503, detail={"error": "트레이더 선별 실패. 잠시 후 재시도하세요."})
+        raise HTTPException(status_code=503, detail={"error": "Trader selection failed. Please try again."})
 
     # followers/onboard 직접 호출
     from api.routers.followers import OnboardRequest, onboard_follower
@@ -109,7 +109,7 @@ async def apply_preset(
             background_tasks=background_tasks,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": f"온보딩 실패: {str(e)}"})
+        raise HTTPException(status_code=500, detail={"error": f"Onboarding failed: {str(e)}"})
 
     # 시뮬 PnL 첨부
     capital = body.capital_usdc or 1000.0

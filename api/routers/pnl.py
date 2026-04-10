@@ -23,10 +23,10 @@ def _get_db():
     try:
         from api.main import _db
         if _db is None:
-            raise HTTPException(status_code=503, detail={"error": "DB가 초기화되지 않았습니다", "code": "SERVICE_UNAVAILABLE"})
+            raise HTTPException(status_code=503, detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"})
         return _db
     except ImportError:
-        raise HTTPException(status_code=503, detail={"error": "DB 모듈 로드 실패", "code": "SERVICE_UNAVAILABLE"})
+        raise HTTPException(status_code=503, detail={"error": "DB module load failed", "code": "SERVICE_UNAVAILABLE"})
 
 
 @router.get("/{follower_address}/summary")
@@ -82,7 +82,7 @@ async def get_pnl_summary(
         raise
     except Exception as e:
         logger.error(f"[PnL] summary 조회 오류: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "PnL 요약 조회 실패", "code": "INTERNAL_SERVER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Failed to load PnL summary", "code": "INTERNAL_SERVER_ERROR"})
 
 
 @router.get("/{follower_address}/history")

@@ -54,7 +54,7 @@ async def get_optimal_portfolio(
 
     qualified = await _get_qualified_traders(min_crs)
     if not qualified:
-        return {"traders": [], "weights": {}, "message": "조건 충족 트레이더 없음"}
+        return {"traders": [], "weights": {}, "message": "No traders meeting criteria"}
 
     # Sharpe(모멘텀) 기준 상위 N명 선별
     qualified.sort(key=lambda x: x["crs"].crs, reverse=True)

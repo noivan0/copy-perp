@@ -42,14 +42,14 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
     if not _check_rate_limit(f"traders:{client_ip}", *RATE_LIMIT_POLICY["traders"]):
         raise HTTPException(
             status_code=429,
-            detail={"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"}
+            detail={"error": "Rate limit exceeded", "code": "RATE_LIMIT_EXCEEDED"}
         )
 
     # limit 검증
     if limit < 1 or limit > 200:
         raise HTTPException(
             status_code=400,
-            detail={"error": "limit은 1~200 범위여야 합니다", "code": "INVALID_LIMIT"}
+            detail={"error": "limit must be between 1 and 200", "code": "INVALID_LIMIT"}
         )
 
     if mock:
@@ -104,7 +104,7 @@ async def register_trader(body: TraderRegister, background_tasks: BackgroundTask
     if not _is_valid_solana_address(body.address):
         raise HTTPException(
             status_code=400,
-            detail={"error": "유효하지 않은 Solana 주소 (address)", "code": "INVALID_ADDRESS"}
+            detail={"error": "Invalid Solana address (address)", "code": "INVALID_ADDRESS"}
         )
 
     try:

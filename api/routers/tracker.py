@@ -70,7 +70,7 @@ def get_snapshots(
     db_path = os.environ.get("MAINNET_DB_PATH", DEFAULT_DB_PATH)
     conn = _get_conn(db_path)
     if not conn:
-        return {"ok": True, "data": [], "count": 0, "note": "DB 없음. 수집 후 재조회."}
+        return {"ok": True, "data": [], "count": 0, "note": "DB empty. Check back after data collection."}
 
     since = int(time.time()) - days * 86400
     try:
@@ -109,7 +109,7 @@ def get_sim_pnl(
     db_path = os.environ.get("MAINNET_DB_PATH", DEFAULT_DB_PATH)
     conn = _get_conn(db_path)
     if not conn:
-        return {"ok": True, "data": [], "count": 0, "note": "DB 없음. 수집 후 재조회."}
+        return {"ok": True, "data": [], "count": 0, "note": "DB empty. Check back after data collection."}
 
     since = int(time.time()) - days * 86400
     try:
@@ -167,7 +167,7 @@ def get_trust_metrics(
     db_path = os.environ.get("MAINNET_DB_PATH", DEFAULT_DB_PATH)
     conn = _get_conn(db_path)
     if not conn:
-        return {"ok": True, "data": [], "count": 0, "note": "DB 없음. 수집 후 재조회."}
+        return {"ok": True, "data": [], "count": 0, "note": "DB empty. Check back after data collection."}
 
     since = int(time.time()) - days * 86400
     try:

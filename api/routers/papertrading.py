@@ -21,10 +21,10 @@ _BASE = os.path.join(
 )
 STRATEGY_NAMES = ["safe", "default", "balanced", "aggressive"]
 STRATEGY_LABELS = {
-    "safe":       "🛡 안전형",
-    "default":    "⚙️ 기본형",
-    "balanced":   "⚖️ 균형형",
-    "aggressive": "⚡ 공격형",
+    "safe":       "🛡 Safe",
+    "default":    "⚙️ Default",
+    "balanced":   "⚖️ Balanced",
+    "aggressive": "⚡ Aggressive",
 }
 
 
@@ -48,7 +48,7 @@ def _load_portfolio(name: str) -> dict:
 def _load_comparison() -> dict:
     path = os.path.join(_BASE, "comparison.json")
     if not os.path.exists(path):
-        return {"strategies": [], "note": "아직 데이터 없음"}
+        return {"strategies": [], "note": "No data yet"}
     with open(path) as f:
         return json.load(f)
 
@@ -82,7 +82,7 @@ async def papertrading_status():
         return {
             "strategies":     summaries,
             "initial_capital": 10000,
-            "note":           "mainnet 실데이터 페이퍼트레이딩",
+            "note":           "mainnet live data paper trading",
             "status":         "initializing",
         }
 

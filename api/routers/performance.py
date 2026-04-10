@@ -31,7 +31,7 @@ async def _get_db():
 
 def _validate_addr(address: str) -> None:
     if not address or len(address) < 10:
-        raise HTTPException(422, detail=f"유효하지 않은 주소: {address!r}")
+        raise HTTPException(422, detail=f"Invalid address: {address!r}")
 
 
 def _mask(addr: str) -> str:
@@ -84,7 +84,7 @@ async def get_follower_ranking(limit: int = Query(20, ge=1, le=100)):
                 "win_rate_pct": round(wins / total * 100, 1) if total else 0,
                 "total_fee_paid": r["total_fee"],
             })
-        return {"ranking": ranking, "count": len(ranking), "note": "주소 마스킹 처리됨"}
+        return {"ranking": ranking, "count": len(ranking), "note": "Address masked for privacy"}
     except Exception as e:
         logger.exception("ranking 오류")
         raise HTTPException(500, detail=str(e))
@@ -170,9 +170,9 @@ async def get_performance_report(
             "badge_label": badge_msg,
             "summary": summary,
             "message": (
-                f"지난 {days}일 동안 {summary['total_trades']}건 거래, "
-                f"실현 PnL ${summary['realized_pnl']:+,.2f}, "
-                f"승률 {summary['win_rate_pct']:.1f}%, "
+                f"Last {days} days: {summary['total_trades']} trades, "
+                f"Realized PnL ${summary['realized_pnl']:+,.2f}, "
+                f"Win rate {summary['win_rate_pct']:.1f}%, "
                 f"Sharpe {summary['sharpe_30d']:.2f}"
             ),
         }

@@ -135,7 +135,7 @@ STRATEGY_PRESETS = {
     # 4명 (Ph9y ROI30=99.9%·FN4s ROI30=43.7%·531e ROI30=29%·49R9 ROI30=15.3%)
     # 예상: 월 ROI +10.42% ($1,042/$10k) | MaxDD <0.5%
     "default": {
-        "name":           "기본형",
+        "name":           "Default",
         "name_en":        "Default",
         "emoji":          "⚙️",
         "description":    "몬테카를로 500회 최적화 파라미터. 신규 사용자 권장 시작점. MDD <0.5%.",
@@ -163,7 +163,7 @@ STRATEGY_PRESETS = {
     # 최적화: WR 80%+ 트레이더만, SL -5%(타이트), TP +12%(빠른 익절)
     # max_pos $50→$500: PnL 10x, copy_ratio 5% 유지(safe 철학)
     "conservative": {
-        "name":           "안정형",
+        "name":           "Safe",
         "name_en":        "Conservative",
         "emoji":          "🛡️",
         "description":    "원금 보존 최우선. WR 80%+ 트레이더만 선별. 빠른 손절·익절로 MDD 최소화.",
@@ -183,7 +183,7 @@ STRATEGY_PRESETS = {
     # 최적화: copy_ratio 10%→10% 유지, max_pos $100→$800 (8x 확장)
     # WR 79%+ 5명 분산, SL -8%, TP +18%
     "balanced": {
-        "name":           "균형형",
+        "name":           "Balanced",
         "name_en":        "Balanced",
         "emoji":          "⚖️",
         "description":    "수익과 안정성 균형. WR 79%+ 트레이더 5명 분산. 권장 시나리오.",
@@ -203,7 +203,7 @@ STRATEGY_PRESETS = {
     # 최적화: copy_ratio 15%→20%, max_pos $200→$1,500 (7.5x 확장)
     # 8명 분산, SL -12%(포지션 유지), TP +35%(큰 추세 추구)
     "aggressive": {
-        "name":           "공격형",
+        "name":           "Aggressive",
         "name_en":        "Aggressive",
         "emoji":          "🚀",
         "description":    "최대 수익 추구. 검증된 고수익 트레이더 8명 집중. 손실 리스크 수용 필수.",

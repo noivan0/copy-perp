@@ -32,7 +32,7 @@ TOTAL_FEE    = 0.0015
 PRESETS = {
     "default": {
         "key":         "default",
-        "label":       "기본형",
+        "label":       "Default",
         "emoji":       "🔒",
         "description": "안전한 시작. 자본의 8%만 운용. S등급 안정성 최상위 2명 자동 배정.",
         "copy_ratio":        0.08,
@@ -46,7 +46,7 @@ PRESETS = {
     },
     "conservative": {
         "key":         "conservative",
-        "label":       "안정형",
+        "label":       "Safe",
         "emoji":       "🛡️",
         "description": "S등급 3명 분산. 30일 ROI 기준 상위 배정. 자본의 10% 운용.",
         "copy_ratio":        0.10,
@@ -60,7 +60,7 @@ PRESETS = {
     },
     "balanced": {
         "key":         "balanced",
-        "label":       "균형형",
+        "label":       "Balanced",
         "emoji":       "⚖️",
         "description": "S+A등급 4명. 수익성+모멘텀 복합 점수 기준. 자본의 12% 운용.",
         "copy_ratio":        0.12,
@@ -74,7 +74,7 @@ PRESETS = {
     },
     "aggressive": {
         "key":         "aggressive",
-        "label":       "공격형",
+        "label":       "Aggressive",
         "emoji":       "⚡",
         "description": "7일 모멘텀 최강 3명. 단기 급등 포착. 자본의 15% 운용. 고위험.",
         "copy_ratio":        0.15,

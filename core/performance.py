@@ -424,15 +424,15 @@ async def get_performance_report(
 
     if total_pnl > 0:
         message = (
-            f"{active_days}일 동안 {trades}건 거래, "
-            f"총 {sign}${total_pnl:,.2f} USDC 수익 달성 🎉"
+            f"{active_days}days: {trades} trades, "
+            f"Total {sign}${total_pnl:,.2f} USDC profit 🎉"
         )
     elif total_pnl == 0:
-        message = "아직 체결된 거래가 없습니다. 트레이더를 팔로우하고 시작하세요!"
+        message = "No filled trades yet. Follow a trader to get started!"
     else:
         message = (
-            f"{active_days}일 동안 {trades}건 거래, "
-            f"현재 ${abs(total_pnl):,.2f} USDC 손실 중. 전략 재검토를 권장합니다."
+            f"{active_days}days: {trades} trades, "
+            f"Currently ${abs(total_pnl):,.2f} USDC in loss. Consider reviewing your strategy."
         )
 
     return {
