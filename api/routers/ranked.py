@@ -21,7 +21,18 @@ router = APIRouter(prefix="/traders/ranked", tags=["ranked"])
 def _leaderboard_row_to_crs(row: dict) -> dict:
     """DB/API leaderboard row → CRS 계산 → dict 반환"""
     try:
-        result = compute_crs(row)
+        # roi_30d가 0이고 equity + pnl_30d가 있으면 계산해서 채움
+        r = dict(row)
+        if not r.get("roi_30d") and r.get("equity") and r.get("pnl_30d"):
+            try:
+                equity = float(r["equity"])
+                pnl = float(r["pnl_30d"])
+                cost_basis = equity - pnl
+                if cost_basis > 0:
+                    r["roi_30d"] = pnl / cost_basis * 100
+            except Exception:
+                pass
+        result = compute_crs(r)
         d = result.to_dict()
         # 프론트 편의 필드 추가
         d["tier_label"] = _tier_label(result.grade)

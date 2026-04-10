@@ -1111,8 +1111,10 @@ async def get_stats(request: Request) -> dict:
     except Exception:
         stats["builder_fee_total_usdc"] = 0.0
         stats["builder_fee_count"] = 0
-    # 응답 표준화 — ok 필드 추가
+    # 응답 표준화
     stats["ok"] = True
+    stats["version"] = "1.2.3"
+    stats["network"] = os.getenv("NETWORK", "testnet")
     return stats
 
 
