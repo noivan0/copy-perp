@@ -50,14 +50,15 @@ CREATE TABLE IF NOT EXISTS traders (
 );
 
 CREATE TABLE IF NOT EXISTS followers (
-    address                 TEXT PRIMARY KEY,
+    address                 TEXT NOT NULL,
     trader_address          TEXT REFERENCES traders(address),
-    copy_ratio              REAL DEFAULT 1.0,   -- 팔로워 자금 대비 복사 비율
-    max_position_usdc       REAL DEFAULT 100,   -- 포지션당 최대 금액
-    builder_approved        INTEGER DEFAULT 0,  -- 구 컬럼 (하위 호환)
-    builder_code_approved   INTEGER DEFAULT 0,  -- Builder Code 승인 여부 (noivan)
+    copy_ratio              REAL DEFAULT 1.0,
+    max_position_usdc       REAL DEFAULT 100,
+    builder_approved        INTEGER DEFAULT 0,
+    builder_code_approved   INTEGER DEFAULT 0,
     active                  INTEGER DEFAULT 1,
-    created_at              INTEGER
+    created_at              INTEGER,
+    PRIMARY KEY (address, trader_address)
 );
 
 CREATE TABLE IF NOT EXISTS copy_trades (

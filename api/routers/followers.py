@@ -1135,3 +1135,113 @@ async def get_paper_trading():
             "가상 진입/청산 시뮬레이션. 슬리피지 0.05% + taker fee 0.06% 반영."
         ),
     }
+
+
+# ── 포트폴리오 (pnl alias + followed traders) ─────────────────────────────
+@router.get("/{follower_address}/portfolio")
+async def get_follower_portfolio(follower_address: str) -> dict:
+    """
+    팔로워 포트폴리오 전체 조회
+    - realized/unrealized PnL
+    - 팔로우 중인 트레이더 목록
+    - 거래 통계
+    """
+    from api.main import _db
+    if not _db:
+        raise HTTPException(503, "DB not initialized")
+
+    if not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(422, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
+
+    # PnL 데이터
+    async with _db.execute(
+        "SELECT COALESCE(SUM(pnl), 0) FROM copy_trades WHERE follower_address=? AND pnl IS NOT NULL",
+        (follower_address,)
+    ) as cur:
+        realized_pnl = (await cur.fetchone())[0] or 0.0
+
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=?",
+        (follower_address,)
+    ) as cur:
+        total_trades = (await cur.fetchone())[0] or 0
+
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl > 0",
+        (follower_address,)
+    ) as cur:
+        win_trades = (await cur.fetchone())[0] or 0
+
+    async with _db.execute(
+        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl < 0",
+        (follower_address,)
+    ) as cur:
+        lose_trades = (await cur.fetchone())[0] or 0
+
+    async with _db.execute(
+        "SELECT COALESCE(SUM(amount * price), 0) FROM copy_trades WHERE follower_address=? AND status='filled'",
+        (follower_address,)
+    ) as cur:
+        total_volume = (await cur.fetchone())[0] or 0.0
+
+    # 팔로우 중인 트레이더 목록
+    async with _db.execute(
+        """SELECT f.trader_address, f.copy_ratio, f.max_position_usdc, f.created_at,
+                  t.win_rate, t.pnl_30d, t.roi_30d
+           FROM followers f
+           LEFT JOIN traders t ON f.trader_address = t.address
+           WHERE f.address=? AND f.active=1""",
+        (follower_address,)
+    ) as cur:
+        rows = await cur.fetchall()
+
+    followed_traders = []
+    for r in rows:
+        followed_traders.append({
+            "trader_address": r[0],
+            "copy_ratio": r[1],
+            "max_position_usdc": r[2],
+            "followed_at": r[3],
+            "trader_win_rate": r[4],
+            "trader_pnl_30d": r[5],
+            "trader_roi_30d": r[6],
+        })
+
+    # 최근 거래 5건
+    async with _db.execute(
+        """SELECT symbol, side, status, pnl, created_at, trader_address
+           FROM copy_trades WHERE follower_address=?
+           ORDER BY created_at DESC LIMIT 5""",
+        (follower_address,)
+    ) as cur:
+        recent_rows = await cur.fetchall()
+
+    recent_trades = [
+        {
+            "symbol": r[0], "side": r[1], "status": r[2],
+            "pnl": r[3], "created_at": r[4], "trader": r[5]
+        }
+        for r in recent_rows
+    ]
+
+    win_rate = win_trades / total_trades * 100 if total_trades > 0 else 0.0
+
+    return {
+        "ok": True,
+        "follower_address": follower_address,
+        "pnl": {
+            "realized_usdc": round(realized_pnl, 4),
+            "unrealized_usdc": 0.0,
+            "total_usdc": round(realized_pnl, 4),
+        },
+        "stats": {
+            "total_trades": total_trades,
+            "win_trades": win_trades,
+            "lose_trades": lose_trades,
+            "win_rate_pct": round(win_rate, 1),
+            "total_volume_usdc": round(total_volume, 2),
+        },
+        "followed_traders": followed_traders,
+        "followed_count": len(followed_traders),
+        "recent_trades": recent_trades,
+    }
