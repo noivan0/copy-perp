@@ -514,13 +514,13 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     if stats.get("profit_factor", 0) > 2.0:
         strengths.append(f"PF {stats['profit_factor']:.1f}")
     if stats.get("win_rate", 0) > 0.65:
-        strengths.append(f"승률 {stats['win_rate']:.0%}")
+        strengths.append(f"Win rate {stats['win_rate']:.0%}")
     if m_score > 70:
-        strengths.append("꾸준한 모멘텀")
+        strengths.append("Consistent momentum")
     if r_score > 80:
-        strengths.append("리스크 안정")
+        strengths.append("Stable risk")
     if cons >= 4:
-        strengths.append(f"일관성 {cons}/5")
+        strengths.append(f"Consistency {cons}/5")
 
     result.strengths = strengths
     result.warnings  = all_warn

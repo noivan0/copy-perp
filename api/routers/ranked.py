@@ -38,7 +38,7 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
             "disq_reason": f"계산 오류: {e}",
             "recommended_copy_ratio": 0.0,
             "copy_ratio_pct": 0.0,
-            "tier_label": "❌ 제외",
+            "tier_label": "❌ Disqualified",
             "warnings": [str(e)],
         }
 

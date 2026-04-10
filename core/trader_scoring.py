@@ -145,11 +145,11 @@ def score_profitability(m: TraderMetrics) -> tuple[float, list, list]:
     score = roi_score * 0.40 + pf_score * 0.40 + wl_score * 0.20
 
     if m.roi_30d > 20:
-        strengths.append(f"30일 ROI {m.roi_30d:.1f}% 우수")
+        strengths.append(f"30d ROI {m.roi_30d:.1f}% — strong")
     if m.profit_factor > 100:
         warnings.append(f"Profit Factor {m.profit_factor:.0f} — 이상치 의심 (데이터 검증 필요)")
     elif m.profit_factor > 2.0:
-        strengths.append(f"Profit Factor {m.profit_factor:.1f} (손익비 우수)")
+        strengths.append(f"Profit Factor {m.profit_factor:.1f} — excellent risk/reward")
     if m.roi_30d < 0:
         warnings.append(f"30일 수익률 마이너스 ({m.roi_30d:.1f}%)")
     if m.profit_factor < 1.2:
@@ -178,7 +178,7 @@ def score_risk(m: TraderMetrics) -> tuple[float, list, list]:
     score = dd_score * 0.45 + calmar_score * 0.35 + lev_score * 0.20
 
     if m.max_drawdown < 15:
-        strengths.append(f"최대 드로다운 {m.max_drawdown:.1f}% (안정적)")
+        strengths.append(f"Max DD {m.max_drawdown:.1f}% — stable")
     elif m.max_drawdown > 35:
         warnings.append(f"최대 드로다운 {m.max_drawdown:.1f}% (위험)")
     if m.avg_leverage > 10:
@@ -216,7 +216,7 @@ def score_consistency(m: TraderMetrics) -> tuple[float, list, list]:
     score = wr_score * 0.35 + monthly_score * 0.30 + streak_score * 0.20 + activity_score * 0.15
 
     if m.win_rate > 65:
-        strengths.append(f"승률 {m.win_rate:.1f}% 우수")
+        strengths.append(f"Win rate {m.win_rate:.1f}% — strong")
     if m.max_consecutive_loss > 5:
         warnings.append(f"최대 연속 손실 {m.max_consecutive_loss}건")
     if m.trade_count_30d < 5:
@@ -251,7 +251,7 @@ def score_execution(m: TraderMetrics) -> tuple[float, list, list]:
     if m.avg_hold_time_min < 5:
         warnings.append(f"평균 보유 {m.avg_hold_time_min:.1f}분 (복사 불가 위험)")
     elif m.avg_hold_time_min >= 60:
-        strengths.append(f"평균 보유 {m.avg_hold_time_min:.0f}분 (복사 용이)")
+        strengths.append(f"Avg hold {m.avg_hold_time_min:.0f}min — easy to copy")
     if m.avg_position_usdc > 5000:
         warnings.append(f"평균 포지션 ${m.avg_position_usdc:.0f} (슬리피지 위험)")
 
@@ -271,7 +271,7 @@ def score_track_record(m: TraderMetrics) -> tuple[float, list, list]:
     score = days_score * 0.60 + pnl_sign_score * 0.40
 
     if m.trading_days > 90:
-        strengths.append(f"{m.trading_days}일 이력 (신뢰성 높음)")
+        strengths.append(f"{m.trading_days}d history — reliable")
     elif m.trading_days < 14:
         warnings.append(f"이력 {m.trading_days}일 미만 (검증 부족)")
     if m.pnl_all_time < 0:
