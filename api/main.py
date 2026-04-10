@@ -185,6 +185,8 @@ _DEFAULT_ORIGINS = [
     "http://localhost:8001",
     "http://localhost:3000",
     "https://copy-perp.vercel.app",
+    "https://copy-perp-frontend.vercel.app",  # Vercel 프론트엔드
+    "https://copy-perp.onrender.com",          # Render 백엔드 자체
 ]
 _env_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 _ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))
