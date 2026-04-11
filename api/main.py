@@ -20,7 +20,7 @@ import asyncio
 import json
 import logging
 import os
-APP_VERSION = "1.3.4"  # 단일 버전 상수
+APP_VERSION = "1.3.5"  # 단일 버전 상수
 
 # ── 통계 캐시 (30초 TTL) ──
 _STATS_CACHE: dict = {"ts": 0.0, "data": None}
@@ -1022,6 +1022,8 @@ async def healthz() -> dict:
         "last_leaderboard_sync_ts": _last_synced_ts,   # traders.last_synced 최댓값 (Unix 초)
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
         "active_monitors": len(_monitors),
+        "db_path": _db_path_hz,
+        "db_writable": os.access(os.path.dirname(os.path.abspath(_db_path_hz)) or ".", os.W_OK),
     }
 
     if not _db_ok:
