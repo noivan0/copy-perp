@@ -43,6 +43,10 @@ PRESETS = {
         "risk_level":        1,
         "expected_roi_30d_pct": 4.7,
         "expected_roi_7d_pct":  2.2,
+        # ── 손절/익절 (소수 기준: 0.08 = 8%) ──
+        "stop_loss_pct":   0.08,   # -8% 손절
+        "take_profit_pct": 0.15,   # +15% 익절
+        "trailing_stop_pct": 0.0,  # 트레일링 없음
     },
     "conservative": {
         "key":         "conservative",
@@ -57,6 +61,10 @@ PRESETS = {
         "risk_level":        2,
         "expected_roi_30d_pct": 5.3,
         "expected_roi_7d_pct":  1.4,
+        # ── 손절/익절 ──
+        "stop_loss_pct":   0.10,   # -10% 손절
+        "take_profit_pct": 0.22,   # +22% 익절
+        "trailing_stop_pct": 0.0,
     },
     "balanced": {
         "key":         "balanced",
@@ -71,6 +79,10 @@ PRESETS = {
         "risk_level":        3,
         "expected_roi_30d_pct": 5.8,
         "expected_roi_7d_pct":  2.6,
+        # ── 손절/익절 ──
+        "stop_loss_pct":   0.12,   # -12% 손절
+        "take_profit_pct": 0.28,   # +28% 익절
+        "trailing_stop_pct": 0.0,
     },
     "aggressive": {
         "key":         "aggressive",
@@ -85,6 +97,10 @@ PRESETS = {
         "risk_level":        4,
         "expected_roi_30d_pct": 4.6,
         "expected_roi_7d_pct":  5.2,        # 7일이 핵심
+        # ── 손절/익절 + 트레일링 ──
+        "stop_loss_pct":   0.15,   # -15% 손절
+        "take_profit_pct": 0.35,   # +35% 익절
+        "trailing_stop_pct": 0.10, # 고점 대비 -10% 트레일링
     },
 }
 
