@@ -1254,11 +1254,12 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
 
     try:
         db = await get_db()
-        await db.execute(
+        cur = await db.execute(
             "UPDATE followers SET active=0 WHERE address=? AND trader_address=?",
             (_follower_addr, trader_address)
         )
         await db.commit()
+        rows_affected = cur.rowcount
     except Exception as e:
         logger.error(f"[{req_id}] unfollow DB 오류: {e}", exc_info=True)
         raise HTTPException(
@@ -1274,7 +1275,11 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
     except Exception as e:
         logger.warning(f"[{req_id}] 모니터 중지 실패 (무시): {e}")
 
-    return {"status": "ok", "unfollowed": trader_address}
+    return {
+        "status": "ok",
+        "unfollowed": trader_address,
+        "was_active": rows_affected > 0,  # 실제로 비활성화된 row 있었는지 (idempotent 디버그용)
+    }
 
 
 # ── 거래 내역 ─────────────────────────────────────────
