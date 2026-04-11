@@ -2029,6 +2029,37 @@ async def health_detailed(request: Request) -> dict:
 
 
 # ── 클라이언트 설정 제공 ──────────────────────────────
+@app.post("/admin/reset-followers")
+async def admin_reset_followers(request: Request) -> dict:
+    """
+    팔로워 테이블 초기화 (admin 전용).
+    기존 팔로워/copy_trades 전부 삭제 — 재bind 유도.
+    curl -X POST https://copy-perp.onrender.com/admin/reset-followers \
+         -H "X-Admin-Key: $ADMIN_API_KEY"
+    """
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key:
+        raise HTTPException(403, detail={"error": "Admin endpoint disabled", "code": "NOT_CONFIGURED"})
+    req_key = request.headers.get("X-Admin-Key", "")
+    if req_key != admin_key:
+        raise HTTPException(403, detail={"error": "Invalid admin key", "code": "FORBIDDEN"})
+
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
+    if not _db:
+        raise HTTPException(503, detail={"error": "DB not initialized"})
+
+    try:
+        await _db.execute("DELETE FROM copy_trades")
+        await _db.execute("DELETE FROM followers")
+        await _db.commit()
+        logger.info("[ADMIN] followers + copy_trades 전체 초기화 완료")
+        return {"success": True, "message": "followers and copy_trades cleared"}
+    except Exception as e:
+        logger.error(f"[ADMIN] reset-followers 오류: {e}")
+        raise HTTPException(500, detail={"error": str(e)})
+
+
 @app.post("/admin/sync")
 async def admin_sync_leaderboard(request: Request) -> dict:
     """P2 Fix (Round 6): 수동 leaderboard 재동기화 트리거 (API Key 인증)
