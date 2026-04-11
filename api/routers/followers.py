@@ -962,17 +962,41 @@ async def get_follower_pnl(follower_address: str) -> dict:
     }
 
 
-@router.delete("/{follower_address}")
-async def remove_follower(follower_address: str) -> dict:
-    """팔로워 해지 (soft delete)"""
+@router.delete("/{trader_address}")
+async def remove_follower(
+    trader_address: str,
+    follower_address: Optional[str] = Query(default=None, description="팔로워 지갑 주소"),
+    request: Request = None,
+) -> dict:
+    """
+    팔로우 해지 (soft delete)
+
+    호출 방식:
+      DELETE /followers/{trader_address}?follower_address={follower_wallet}
+
+    follower_address 제공 시: 해당 팔로워-트레이더 쌍만 해지
+    미제공 시: trader_address를 follower로 간주 (backward compat)
+    """
     from api.main import _db
     if not _db:
         raise HTTPException(503, "DB 미초기화")
-    await _db.execute(
-        "UPDATE followers SET active=0 WHERE address=?", (follower_address,)
-    )
+
+    if follower_address:
+        # 주소 검증
+        if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
+            raise HTTPException(422, {"error": "Invalid follower_address", "code": "INVALID_ADDRESS"})
+        # 팔로워 + 트레이더 쌍 해지
+        await _db.execute(
+            "UPDATE followers SET active=0 WHERE address=? AND trader_address=?",
+            (follower_address, trader_address)
+        )
+    else:
+        # backward compat: path param이 follower address인 경우
+        await _db.execute(
+            "UPDATE followers SET active=0 WHERE address=?", (trader_address,)
+        )
     await _db.commit()
-    return {"ok": True, "follower": follower_address, "status": "removed"}
+    return {"ok": True, "follower": trader_address, "status": "removed"}
 
 
 @router.get("/presets")
