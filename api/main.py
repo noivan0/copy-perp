@@ -144,7 +144,7 @@ async def lifespan(app_):
     asyncio.create_task(_winrate_refresh_loop())
 
     get_alert_manager().server_started(_network, 0)
-    logger.info("✅ Copy Perp 서버 시작 완료")
+    logger.info("✅ Copy Perp server started")
 
     yield  # ← 서버 실행 구간
 
@@ -627,7 +627,7 @@ async def _winrate_refresh_loop():
         except Exception as e:
             logger.warning(f"[WinRate] 갱신 루프 오류: {e}")
 
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(1 * 3600)  # 1시간마다 갱신 (프로덕트 기준)
 
 
 @app.on_event("startup")
@@ -780,10 +780,15 @@ async def leaderboard_alias(limit: int = 20) -> dict:
 
 
 _STARTUP_AT = int(__import__("time").time())
+try:
+    import subprocess as _sp
+    _GIT_REV = _sp.getoutput("git rev-parse --short HEAD 2>/dev/null").strip() or "unknown"
+except Exception:
+    _GIT_REV = "unknown"
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok", "startup_at": _STARTUP_AT, "version": APP_VERSION}
+    return {"status": "ok", "startup_at": _STARTUP_AT, "revision": _GIT_REV}
 
 @app.get("/health")
 def health(request: Request) -> dict:

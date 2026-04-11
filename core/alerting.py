@@ -109,8 +109,8 @@ class AlertManager:
         logger.info(msg)
 
     def server_started(self, network: str, monitors: int):
-        """서버 시작 알림"""
-        msg = f"🚀 Copy Perp 서버 시작 | NETWORK={network} | monitors={monitors}"
+        """Server startup notification"""
+        msg = f"🚀 Copy Perp server started | NETWORK={network} | monitors={monitors}"
         self._log_event("info", "server", msg)
         logger.info(msg)
         if ALERT_BOT_TOKEN:
