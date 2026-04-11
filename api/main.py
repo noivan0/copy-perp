@@ -1128,7 +1128,7 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
         # volume 필드명 대응: volume_24h 우선, volume, 없으면 None (0으로 처리)
         vol_raw = m.get("volume_24h") or m.get("volume")
         volume = float(vol_raw) if vol_raw is not None else 0.0
-        return funding_abs > 0.035 and volume == 0  # 3.5% 초과 + volume 없음
+        return funding_abs > 0.030 and volume == 0  # 3.0% 초과 + volume 없음 (리서치팀 권고)
 
     all_sorted = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
     excluded_risk = [m for m in all_sorted if _is_risky_market(m)]
