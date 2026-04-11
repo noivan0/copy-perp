@@ -167,6 +167,15 @@ async def lifespan(app_):
     asyncio.create_task(_auto_monitor_top_traders())
     asyncio.create_task(_winrate_refresh_loop())
 
+    # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
+    try:
+        from core.stop_loss_monitor import StopLossMonitor
+        _sl_monitor = StopLossMonitor(_db, _engine)
+        asyncio.create_task(_sl_monitor.start())
+        logger.info("✅ StopLossMonitor 시작 (30초 주기 스캔)")
+    except Exception as _e:
+        logger.warning(f"⚠️ StopLossMonitor 시작 실패 (무시): {_e}")
+
     get_alert_manager().server_started(_network, 0)
     logger.info("✅ Copy Perp server started")
 
