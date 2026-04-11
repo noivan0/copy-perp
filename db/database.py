@@ -208,8 +208,8 @@ async def init_db(db_path: str = DB_PATH):
         # followers 컬럼
         "ALTER TABLE followers ADD COLUMN builder_code_approved INTEGER DEFAULT 0",
         "ALTER TABLE followers ADD COLUMN privy_user_id TEXT",
-        "ALTER TABLE followers ADD COLUMN stop_loss_pct REAL DEFAULT NULL",
-        "ALTER TABLE followers ADD COLUMN take_profit_pct REAL DEFAULT NULL",
+        "ALTER TABLE followers ADD COLUMN stop_loss_pct REAL DEFAULT 8.0",
+        "ALTER TABLE followers ADD COLUMN take_profit_pct REAL DEFAULT 15.0",
         # copy_trades 컬럼
         "ALTER TABLE copy_trades ADD COLUMN error_msg TEXT",
         "ALTER TABLE copy_trades ADD COLUMN entry_price REAL",
