@@ -765,12 +765,21 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
         f"Builder Code '{BUILDER_CODE}' {'Approved' if result['builder_code_approved'] else 'Not approved (orders work, fee collection disabled)'}"
     )
     # 적용된 전략 정보 응답에 포함
+    # effective_copy_ratio: copy_engine이 실제 적용할 값 (프리셋 상한선 적용)
+    # copy_engine.py Round 6 수정: min(user_ratio, preset_ratio) 적용
+    _preset_cap_ratio = STRATEGY_PRESETS.get(body.strategy or "safe", {}).get("copy_ratio")
+    effective_ratio = (
+        min(resolved_copy_ratio, _preset_cap_ratio)
+        if _preset_cap_ratio is not None and resolved_copy_ratio > _preset_cap_ratio
+        else resolved_copy_ratio
+    )
     result["strategy"] = {
-        "key":             body.strategy or "safe",
-        "label":          resolved_strategy_label,
-        "copy_ratio":     resolved_copy_ratio,
-        "max_position_usdc": resolved_max_pos_usdc,
-        "desc":           preset.get("desc", ""),
+        "key":                  body.strategy or "safe",
+        "label":                resolved_strategy_label,
+        "copy_ratio":           resolved_copy_ratio,      # 유저 입력값 (저장값)
+        "effective_copy_ratio": effective_ratio,          # 실제 실행 시 적용값
+        "max_position_usdc":    resolved_max_pos_usdc,
+        "desc":                 preset.get("desc", ""),
     }
     if privy_user_id:
         result["privy_user_id"] = privy_user_id
