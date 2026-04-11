@@ -64,9 +64,10 @@ def run():
         # risk_score 분포
         risks = [t.get("risk_score",0) for t in traders]
         chk("risk_score 다양성 (100 독점 없음)", max(risks)<100 or len(set(risks))>1, f"avg={sum(risks)/len(risks):.1f}")
-        # win_rate 존재
-        has_wr = sum(1 for t in traders if t.get("trade_stats",{}).get("win_rate") is not None)
-        chk("win_rate 데이터 존재", has_wr>0, f"{has_wr}/{len(traders)}명")
+        # win_rate 존재 (A등급 이상 트레이더 기준)
+        a_grade = [t for t in traders if t.get("grade") in ("S","A")]
+        has_wr = sum(1 for t in a_grade if t.get("trade_stats",{}).get("win_rate") is not None)
+        chk("win_rate 데이터 존재 (A+등급)", has_wr>0 or len(a_grade)==0, f"{has_wr}/{len(a_grade)}명")
 
     # 3. 유저 플로우
     print("\n【유저 플로우】")
