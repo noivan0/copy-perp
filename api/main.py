@@ -1991,6 +1991,7 @@ async def health_detailed(request: Request) -> dict:
             "size_bytes": db_size,
             "traders": trader_count,
             "followers": follower_count,
+            "active_followers": follower_count,  # alias (auto_qa/모니터링 호환)
             "filled_trades": filled_count,
             "total_pnl_usdc": round(total_pnl, 4),
         },
