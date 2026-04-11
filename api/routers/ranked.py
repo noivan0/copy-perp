@@ -73,7 +73,7 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
                 except (ZeroDivisionError, TypeError):
                     win_rate_val = None
             d["trade_stats"] = {
-                "win_rate":          round(float(win_rate_val), 1) if win_rate_val is not None else None,
+                "win_rate":          round(float(win_rate_val) * (100 if float(win_rate_val) <= 1.0 else 1), 1) if win_rate_val is not None else None,
                 "trade_count":       int(total_trades) if total_trades is not None else None,
                 "win_count":         int(win_count) if win_count is not None else None,
                 "lose_count":        int(lose_count) if lose_count is not None else None,

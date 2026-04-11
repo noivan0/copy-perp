@@ -820,8 +820,8 @@ async def _winrate_refresh_loop():
                     )
 
                     await db.execute(
-                        "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
-                        (wr, wins, losses, addr)
+                        "UPDATE traders SET win_rate=?, win_count=?, lose_count=?, total_trades=? WHERE address=?",
+                        (wr, wins, losses, wins + losses, addr)
                     )
                     updated += 1
 
@@ -1274,6 +1274,22 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
         mark = float(m.get("mark", 0))
         m["divergence_pct"] = round((mark - oracle) / oracle * 100, 4) if oracle else 0.0
     divergence_top = sorted(raw_div, key=lambda x: abs(x.get("divergence_pct", 0)), reverse=True)[:top_n]
+
+    def _norm(m: dict) -> dict:
+        """숫자 필드 float 변환 (API 스펙 일관성)"""
+        num_fields = ("funding", "mark", "oracle", "open_interest", "volume_24h",
+                      "mid", "lot_size", "min_order_size", "divergence_pct")
+        out = dict(m)
+        for k in num_fields:
+            if k in out and out[k] is not None:
+                try:
+                    out[k] = round(float(out[k]), 8)
+                except (ValueError, TypeError):
+                    pass
+        return out
+
+    funding_top = [_norm(m) for m in funding_top]
+    divergence_top = [_norm(m) for m in divergence_top]
 
     result: dict = {
         "ok": True,

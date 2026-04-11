@@ -20,6 +20,9 @@ def chk(name, ok, detail="", critical=False):
         FAILS.append({"name": name, "status": status, "detail": detail})
 
 def api(path, method="GET", body=None, timeout=15):
+    """(status_code, body_dict, elapsed_ms) 반환.
+    헤더 정보도 필요하면 api_with_headers() 사용.
+    """
     url = f"{API}{path}"
     data = json.dumps(body).encode() if body else None
     h = {"Content-Type": "application/json"} if body else {}
@@ -35,6 +38,24 @@ def api(path, method="GET", body=None, timeout=15):
         return e.code, bd, 0
     except Exception as e:
         return 0, {"error": str(e)[:60]}, 0
+
+
+def api_with_headers(path, method="GET", body=None, timeout=15):
+    """(status_code, body_dict, headers_dict) 반환 (보안 헤더 검증용)"""
+    url = f"{API}{path}"
+    data = json.dumps(body).encode() if body else None
+    h = {"Content-Type": "application/json"} if body else {}
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            hdrs = dict(r.headers)
+            return r.status, json.loads(r.read()), hdrs
+    except urllib.error.HTTPError as e:
+        try: bd = json.loads(e.read())
+        except: bd = {}
+        return e.code, bd, {}
+    except Exception as e:
+        return 0, {"error": str(e)[:60]}, {}
 
 def run():
     print(f"\n{'='*60}")
@@ -93,12 +114,12 @@ def run():
 
     # 5. 보안
     print("\n【보안】")
-    s, d, hdrs = api("/healthz")
-    if isinstance(hdrs, dict):
-        hdrs_l = {k.lower():v for k,v in hdrs.items()}
-        chk("X-Frame-Options", "x-frame-options" in hdrs_l, hdrs_l.get("x-frame-options","없음"))
-        chk("X-Content-Type-Options", "x-content-type-options" in hdrs_l)
-        chk("X-Request-ID", "x-request-id" in hdrs_l)
+    # api_with_headers 사용 — 응답 헤더 포함 반환
+    s, d, hdrs = api_with_headers("/healthz")
+    hdrs_l = {k.lower():v for k,v in (hdrs or {}).items()}
+    chk("X-Frame-Options", "x-frame-options" in hdrs_l, hdrs_l.get("x-frame-options","없음"))
+    chk("X-Content-Type-Options", "x-content-type-options" in hdrs_l)
+    chk("X-Request-ID", "x-request-id" in hdrs_l)
 
     s, d, _ = api("/admin/sync", "POST")
     chk("admin/sync 인증 없이 차단", s in [401,403,503], f"HTTP {s}")

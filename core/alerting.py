@@ -131,6 +131,48 @@ class AlertManager:
             "alert_telegram": bool(ALERT_BOT_TOKEN),
         }
 
+    # ── R11: 주요 지표 임계값 체크 ──────────────────────────────
+
+    def check_monitors_critical(self, active_count: int) -> None:
+        """active_monitors가 0이 되면 CRITICAL 로그 + 텔레그램 알림"""
+        if active_count == 0:
+            msg = "🚨 CRITICAL: active_monitors=0 — 모든 트레이더 포지션 모니터가 중단됨!"
+            self._log_event("critical", "monitor", msg)
+            logger.critical(msg)
+            if ALERT_BOT_TOKEN and not _is_duplicate(msg):
+                _send_telegram(
+                    "<b>🚨 Copy Perp CRITICAL</b>\n"
+                    "active_monitors=0\n"
+                    "모든 트레이더 포지션 모니터가 중단됨!\n"
+                    "서버 상태를 즉시 확인하세요."
+                )
+                _recent_alerts.append((time.time(), msg))
+
+    def check_copy_engine_queue_stall(self, last_processed_ts: float) -> None:
+        """copy_engine queue 10분 이상 처리 안 되면 WARNING 알림
+        
+        last_processed_ts: 마지막으로 이벤트를 처리한 시간 (time.time())
+        """
+        stall_threshold_sec = 10 * 60  # 10분
+        if last_processed_ts <= 0:
+            return  # 아직 처리된 이벤트 없음 (서버 초기 기동 중)
+        elapsed = time.time() - last_processed_ts
+        if elapsed > stall_threshold_sec:
+            msg = (
+                f"⚠️ CopyEngine queue {int(elapsed//60)}분 동안 처리 없음 — "
+                f"이벤트 수신 중단 가능성"
+            )
+            self._log_event("warning", "queue", msg)
+            if not _is_duplicate(msg):
+                logger.warning(msg)
+                _recent_alerts.append((time.time(), msg))
+                if ALERT_BOT_TOKEN:
+                    _send_telegram(
+                        f"<b>⚠️ Copy Perp Queue 경고</b>\n"
+                        f"CopyEngine: {int(elapsed//60)}분간 이벤트 처리 없음\n"
+                        f"포지션 모니터 연결 상태를 확인하세요."
+                    )
+
 
 # 글로벌 싱글턴
 _alert_manager: Optional[AlertManager] = None

@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS copy_trades (
     amount              TEXT,
     price               TEXT,
     client_order_id     TEXT UNIQUE,
-    status              TEXT DEFAULT 'pending',  -- pending/filled/failed
+    status              TEXT DEFAULT 'pending',  -- pending/filled/failed/skipped_insufficient
     pnl                 REAL,
     entry_price         REAL,   -- 진입가 (청산 PnL 계산용)
     exec_price          REAL,   -- 체결가 (실제 주문 체결 가격)
