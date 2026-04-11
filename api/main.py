@@ -983,19 +983,40 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
     # top_n 범위 방어 (음수 or 과도한 값)
     top_n = max(1, min(top_n, 50))
     items = list(_get_pc().values())
-    funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
-    raw_div = [m for m in items if float(m.get("oracle", 0)) > 0]
+
+    # 위험 마켓 필터: funding 극단 + volume=0 동시 충족 마켓 제외
+    # (리서치팀 발견: PIPPIN funding +4% + volume=0 + 괴리 1208% → 유동성 이상)
+    def _is_risky_market(m: dict) -> bool:
+        funding_abs = abs(float(m.get("funding", 0)))
+        volume = float(m.get("volume", 1))
+        return funding_abs > 0.035 and volume == 0  # 3.5% 초과 + volume 없음
+
+    all_sorted = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
+    excluded_risk = [m for m in all_sorted if _is_risky_market(m)]
+    funding_candidates = [m for m in all_sorted if not _is_risky_market(m)]
+    funding_top = funding_candidates[:top_n]
+
+    raw_div = [m for m in items if float(m.get("oracle", 0)) > 0 and not _is_risky_market(m)]
     for m in raw_div:
         oracle = float(m.get("oracle", 1))
         mark = float(m.get("mark", 0))
         m["divergence_pct"] = round((mark - oracle) / oracle * 100, 4) if oracle else 0.0
     divergence_top = sorted(raw_div, key=lambda x: abs(x.get("divergence_pct", 0)), reverse=True)[:top_n]
-    return {
+
+    result: dict = {
         "ok": True,
         "funding_extremes": funding_top,
         "oracle_mark_divergence": divergence_top,
         "source": "live" if _get_pc() else "empty",
     }
+    # 제외된 위험 마켓 별도 노출 (완전 숨김 아님 — 투명성)
+    if excluded_risk:
+        result["excluded_risk_markets"] = [
+            {**m, "exclusion_reason": "high_funding_no_volume"}
+            for m in excluded_risk[:5]
+        ]
+        result["risk_market_count"] = len(excluded_risk)
+    return result
 
 
 # ── 팔로우 ────────────────────────────────────────────

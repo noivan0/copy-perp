@@ -315,8 +315,8 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[f
     if cons <= 1:
         warnings.append("Very low consistency (irregular trading)")
 
-    # 거래 빈도 (있으면)
-    tc = stats.get("trade_count", 0)
+    # 거래 빈도 (있으면) — None 방어
+    tc = stats.get("trade_count") or 0
     if tc > 0:
         if 10 <= tc <= 200:
             freq_score = 100.0
@@ -449,8 +449,11 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     p1    = _safe(raw.get("pnl_1d"))
     p_at  = _safe(raw.get("pnl_all_time"))
     roi30 = _safe(raw.get("roi_30d"))
-    eq    = _safe(raw.get("equity", 100000))
-    oi    = _safe(raw.get("oi"))
+    # equity: equity_current(최신) > equity 순으로 우선 사용
+    eq    = _safe(raw.get("equity_current") or raw.get("equity") or 100000)
+    # oi: oi_current(최신) > oi 순으로 우선 사용
+    # DB에 구버전 oi 컬럼과 oi_current 컬럼이 공존 — 항상 최신값 우선
+    oi    = _safe(raw.get("oi_current") or raw.get("oi"))
     # P0 Fix (Round 4): consistency 기본값 3 고착 문제
     # Pacifica API가 consistency 필드를 제공하지 않으면 leaderboard 데이터로 추정
     _raw_cons = raw.get("consistency")
@@ -518,6 +521,32 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     stats: dict = {}
     if trades:
         stats = calc_trade_stats(trades)
+        result.trade_stats = stats
+    else:
+        # trades/history API 없을 때: DB 컬럼 기반 간이 stats 구성
+        # win_rate, total_trades 컬럼이 DB에 존재하면 활용
+        _db_wr = raw.get("win_rate")  # DB traders.win_rate (0~1 or 0~100)
+        _db_tt = raw.get("total_trades", 0)
+        if _db_wr is not None and float(_db_wr) > 0:
+            # DB win_rate가 0~100 스케일이면 0~1로 정규화
+            wr_norm = float(_db_wr) / 100.0 if float(_db_wr) > 1 else float(_db_wr)
+            stats = {
+                "win_rate": round(wr_norm, 4),
+                "trade_count": int(_db_tt),
+                "win_rate_source": "db_column",
+            }
+        elif roi30 > 0 and cons >= 2:
+            # 완전 데이터 없을 때: roi+consistency 기반 추정 win_rate
+            # 보수적으로 추정 (50% 기준 ± 조정)
+            estimated_wr = 0.50
+            estimated_wr += max(-0.15, min(0.15, roi30 / 1000))  # ROI 기여 최대 ±15%
+            estimated_wr += (cons - 3) * 0.04                     # consistency 기여 ±8%
+            estimated_wr = round(max(0.30, min(0.80, estimated_wr)), 4)
+            stats = {
+                "win_rate": estimated_wr,
+                "trade_count": None,
+                "win_rate_source": "estimated",  # 추정값 명시
+            }
         result.trade_stats = stats
 
     # ── 5차원 점수 ─────────────────────────────────
