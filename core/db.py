@@ -143,8 +143,18 @@ class TursoDb:
         self.rowcount: int = 0
         self.lastrowid: Optional[int] = None
 
-    async def execute(self, sql: str, params=None) -> "_TursoCursor":
-        """aiosqlite.execute() 호환 — ResultSet → TursoCursor 반환"""
+    def execute(self, sql: str, params=None) -> "_ExecuteAwaitable":
+        """
+        aiosqlite.execute() 호환.
+
+        두 가지 패턴 모두 지원:
+          cur = await db.execute(sql)         → _TursoCursor 반환
+          async with db.execute(sql) as cur:  → _TursoCursor 반환 (context manager)
+        """
+        return _ExecuteAwaitable(self._execute_inner(sql, params))
+
+    async def _execute_inner(self, sql: str, params=None) -> "_TursoCursor":
+        """실제 Turso 실행 coroutine"""
         norm = _normalize_params(params)
         try:
             if norm is not None:
@@ -152,12 +162,14 @@ class TursoDb:
             else:
                 rs = await self._client.execute(sql)
             rows = _result_set_to_dicts(rs)
-            self.rowcount = rs.rows_affected if rs else 0
-            self.lastrowid = rs.last_insert_rowid if rs else None
+            # rs is not None 으로 체크: rs가 빈 ResultSet이어도 bool(rs)==False 이므로 is None 비교 필수
+            cols = list(rs.columns) if rs is not None else []
+            self.rowcount = rs.rows_affected if rs is not None else 0
+            self.lastrowid = rs.last_insert_rowid if rs is not None else None
         except Exception as e:
             logger.error(f"[TursoDb] execute error: {e} | sql={sql[:100]!r}")
             raise
-        return _TursoCursor(rows, rowcount=self.rowcount)
+        return _TursoCursor(rows, rowcount=self.rowcount, columns=cols)
 
     async def executemany(self, sql: str, params_list) -> None:
         """libsql_client에는 executemany 없음 → loop로 대체"""
@@ -203,12 +215,12 @@ class TursoDb:
 
     async def fetchall(self, sql: str, params=None) -> List[DbRow]:
         """헬퍼: execute + fetchall 한 번에"""
-        cur = await self.execute(sql, params)
+        cur = await self._execute_inner(sql, params)
         return await cur.fetchall()
 
     async def fetchone(self, sql: str, params=None) -> Optional[DbRow]:
         """헬퍼: execute + fetchone 한 번에"""
-        cur = await self.execute(sql, params)
+        cur = await self._execute_inner(sql, params)
         return await cur.fetchone()
 
     async def __aenter__(self):
@@ -221,9 +233,12 @@ class TursoDb:
 class _TursoCursor:
     """aiosqlite 커서 인터페이스 호환"""
 
-    def __init__(self, rows: List[DbRow], rowcount: int = 0):
+    def __init__(self, rows: List[DbRow], rowcount: int = 0, columns: List[str] = None):
         self._rows = rows
         self.rowcount = rowcount
+        # aiosqlite 호환 description: [(col_name, None, None, None, None, None, None), ...]
+        _cols = columns or (list(rows[0].keys()) if rows else [])
+        self.description = [(c, None, None, None, None, None, None) for c in _cols]
 
     async def fetchall(self) -> List[DbRow]:
         return self._rows
@@ -233,6 +248,33 @@ class _TursoCursor:
 
     async def __aenter__(self):
         return self
+
+    async def __aexit__(self, *_):
+        pass
+
+
+class _ExecuteAwaitable:
+    """
+    TursoDb.execute()의 반환값.
+
+    두 가지 패턴 모두 지원:
+      1. cur = await db.execute(sql)         → await 시 _TursoCursor 반환
+      2. async with db.execute(sql) as cur:  → context manager 진입 시 _TursoCursor 반환
+
+    aiosqlite는 execute()가 async context manager를 반환하는 반면,
+    TursoDb는 execute()가 coroutine이므로 이 래퍼 클래스가 필요.
+    """
+
+    def __init__(self, coro):
+        self._coro = coro
+        self._cursor: Optional[_TursoCursor] = None
+
+    def __await__(self):
+        return self._coro.__await__()
+
+    async def __aenter__(self) -> "_TursoCursor":
+        self._cursor = await self._coro
+        return self._cursor
 
     async def __aexit__(self, *_):
         pass

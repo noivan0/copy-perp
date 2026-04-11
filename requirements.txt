@@ -13,5 +13,5 @@ PyJWT==2.11.0
 cryptography==46.0.5
 psutil==6.1.1
 
-libsql-experimental
-libsql-client
+libsql-experimental==0.0.55
+libsql-client==0.3.1
