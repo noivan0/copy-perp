@@ -18,6 +18,8 @@ services:
         value: noivan
       - key: BUILDER_FEE_RATE
         value: "0.001"
+      - key: APP_BASE_URL
+        value: "https://copy-perp-frontend.vercel.app"
       - key: PRIVY_APP_ID
         value: cmmvoxcix058e0ckv7uhp9ip0
       - key: ACCOUNT_ADDRESS
