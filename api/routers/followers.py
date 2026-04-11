@@ -924,9 +924,13 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
 
 
 @router.get("/{follower_address}/pnl")
-async def get_follower_pnl(follower_address: str) -> dict:
+async def get_follower_pnl(
+    follower_address: str,
+    days: int = Query(default=None, ge=1, le=365, description="기간 필터 (일). 미입력 시 전체 기간"),
+) -> dict:
     """
     팔로워 누적 PnL 집계
+    - days: 최근 N일 필터 (예: ?days=7). 미입력 시 전체 기간.
     - realized_pnl_usdc: SUM(pnl) FROM copy_trades (pnl IS NOT NULL)
     - unrealized_pnl_usdc: follower_positions 기반 (mark_price 없으면 0)
     - win_trades / lose_trades / win_rate
@@ -943,29 +947,42 @@ async def get_follower_pnl(follower_address: str) -> dict:
             detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
         )
 
+    # ── days 필터 조건 ─────────────────────────────────────
+    import time as _time
+    _days_cond = ""
+    _days_param: list = [follower_address]
+    if days is not None:
+        _cutoff_ms = int((_time.time() - days * 86400) * 1000)
+        _days_cond = " AND created_at >= ?"
+        _days_param_pnl = [follower_address, _cutoff_ms]
+        _days_param_count = [follower_address, _cutoff_ms]
+    else:
+        _days_param_pnl = [follower_address]
+        _days_param_count = [follower_address]
+
     # ── 실현 PnL ──────────────────────────────────────────
     async with _db.execute(
-        "SELECT COALESCE(SUM(pnl), 0) FROM copy_trades WHERE follower_address=? AND pnl IS NOT NULL",
-        (follower_address,),
+        f"SELECT COALESCE(SUM(pnl), 0) FROM copy_trades WHERE follower_address=? AND pnl IS NOT NULL{_days_cond}",
+        _days_param_pnl,
     ) as cur:
         realized_pnl = float((await cur.fetchone())[0])
 
     # ── 총 거래 수 / 승 / 패 ──────────────────────────────
     async with _db.execute(
-        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=?",
-        (follower_address,),
+        f"SELECT COUNT(*) FROM copy_trades WHERE follower_address=?{_days_cond}",
+        _days_param_count,
     ) as cur:
         total_trades = int((await cur.fetchone())[0])
 
     async with _db.execute(
-        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl > 0",
-        (follower_address,),
+        f"SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl > 0{_days_cond}",
+        _days_param_count,
     ) as cur:
         win_trades = int((await cur.fetchone())[0])
 
     async with _db.execute(
-        "SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl < 0",
-        (follower_address,),
+        f"SELECT COUNT(*) FROM copy_trades WHERE follower_address=? AND pnl < 0{_days_cond}",
+        _days_param_count,
     ) as cur:
         lose_trades = int((await cur.fetchone())[0])
 
