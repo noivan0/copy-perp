@@ -35,8 +35,8 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
                 cost_basis = equity - pnl
                 if cost_basis > 0:
                     r["roi_30d"] = pnl / cost_basis * 100
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug(f"roi_30d calc skipped: {_e}")
         result = compute_crs(r)
         d = result.to_dict()
         # 프론트 편의 필드 추가

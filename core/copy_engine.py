@@ -32,6 +32,10 @@ from db.database import (
 )
 from core.retry import retry_sync, classify_error
 try:
+    from core.data_collector import get_price_cache
+except ImportError:
+    def get_price_cache(): return {}
+try:
     from core.strategy import (
         calc_stop_price, should_stop,
         SUPPORTED_SYMBOLS,
@@ -305,7 +309,6 @@ class CopyEngine:
         # (슬리피지 폭발 위험, 사실상 진입/청산 불가)
         if not self.mock_mode:
             try:
-                from core.data_collector import get_price_cache
                 _mkt = get_price_cache().get(symbol.upper(), {})
                 _vol24 = float(_mkt.get("volume_24h", 0) or _mkt.get("volume", 0) or 0)
                 _funding = float(_mkt.get("funding", 0) or 0)
@@ -360,7 +363,6 @@ class CopyEngine:
         # 2. USDC 기반 클램핑 (WS 캐시에서 심볼별 실제 가격 있을 때만 적용)
         #    DataCollector 캐시에서 현재 마크 가격 우선 사용, 없으면 이벤트 체결가
         try:
-            from core.data_collector import get_price_cache
             cached = get_price_cache().get(symbol, {})
             mark_price = float(cached.get("mark", 0) or 0)
             price_f = mark_price if mark_price > 0 else float(symbol_price if symbol_price > 0 else 0)
@@ -407,7 +409,6 @@ class CopyEngine:
         # 4. lot_size 정렬 (실제 모드에서만 — mock은 API 호출 생략)
         if not self.mock_mode:
             try:
-                from core.data_collector import get_price_cache
                 mkt = get_price_cache().get(symbol.upper(), {})
                 lot = float(mkt.get("lot_size", 0) or 0)
                 if lot <= 0:

@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 DB 초기화 및 CRUD — SQLite + aiosqlite
 
@@ -550,8 +552,8 @@ async def save_crs_snapshot(conn, crs_results: list) -> int:
                 (addr, alias, crs, grade, m_s, p_s, ri_s, c_s, cp_s, today)
             )
             saved += 1
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug(f"crs_snapshot insert skipped: {_e}")
 
     if saved > 0:
         await conn.commit()

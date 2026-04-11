@@ -247,7 +247,7 @@ def approve(
         ts      = payload["timestamp"]
         sig     = sign_payload(payload, keypair)
     else:
-        return {"ok": False, "error": "keypair 또는 (signature + timestamp) 필요"}
+        return {"ok": False, "error": "keypair or (signature + timestamp) required"}
 
     body   = build_request_body(account, sig, ts, builder_code, max_fee_rate, agent_wallet)
     status, resp = _raw_post("account/builder_codes/approve", body)
@@ -287,7 +287,7 @@ def revoke(
         ts  = sign_payload["timestamp"]
         sig = sign_payload_raw(sign_payload, keypair)
     else:
-        return {"ok": False, "error": "keypair 또는 signature+timestamp 필요"}
+        return {"ok": False, "error": "keypair or signature+timestamp required"}
 
     body = {
         "account":       account,

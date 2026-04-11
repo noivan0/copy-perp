@@ -20,7 +20,7 @@ import asyncio
 import json
 import logging
 import os
-APP_VERSION = "1.3.6"  # 단일 버전 상수
+APP_VERSION = "1.3.7"  # 단일 버전 상수
 
 # ── 통계 캐시 (30초 TTL) ──
 _STATS_CACHE: dict = {"ts": 0.0, "data": None}
@@ -806,8 +806,8 @@ async def _winrate_refresh_loop():
                         _crs_r = compute_crs(_rd)
                         if not _crs_r.disqualified and _crs_r.crs > 0:
                             _snap_results.append(_crs_r)
-                    except Exception:
-                        pass
+                    except Exception as _crs_e:
+                        logger.debug(f"CRS snapshot calc skipped: {_crs_e}")
                 if _snap_results:
                     _saved = await save_crs_snapshot(db, _snap_results)
                     if _saved > 0:
