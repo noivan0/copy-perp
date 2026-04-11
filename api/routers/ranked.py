@@ -173,7 +173,6 @@ async def get_ranked_traders(
     grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
     min_grade_upper = min_grade.upper()
     if min_grade_upper not in grade_order:
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=400,
             detail={"error": f"Invalid min_grade '{min_grade}'. Must be one of: S, A, B, C, D", "code": "INVALID_GRADE"}
@@ -258,7 +257,6 @@ async def sync_mainnet_traders(request: Request):
     from api.main import _check_rate_limit
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"sync_mainnet:{client_ip}", max_calls=2, window_sec=60):
-        from fastapi import HTTPException
         raise HTTPException(429, "Too many requests")
     import os
     from pacifica.client import PacificaClient

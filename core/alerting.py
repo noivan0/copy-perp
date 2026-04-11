@@ -1,6 +1,6 @@
 """
-에러 알림 + 모니터링 체계
-실서비스 수준: 주문 실패, 연결 끊김, 서버 오류 시 알림
+Error alerts + monitoring system
+Production level: alerts on order failure, disconnect, server error
 """
 import logging
 import os
@@ -28,7 +28,7 @@ def _is_duplicate(msg: str) -> bool:
 
 
 def _send_telegram(text: str) -> bool:
-    """텔레그램 메시지 발송 (설정 없으면 스킵)"""
+    """Send Telegram message (skip if not configured)"""
     if not ALERT_BOT_TOKEN or not ALERT_CHAT_ID:
         return False
     try:
@@ -42,16 +42,16 @@ def _send_telegram(text: str) -> bool:
         urllib.request.urlopen(req, timeout=5)
         return True
     except Exception as e:
-        logger.debug(f"텔레그램 알림 실패: {e}")
+        logger.debug(f"Telegram alert failed: {e}")
         return False
 
 
 class AlertManager:
     """
-    중앙 알림 관리자
-    - 주문 실패 시 에러 알림
-    - 연결 끊김 시 경고
-    - 서버 재시작 시 INFO
+    Central alert manager
+    - Error alert on order failure
+    - Warning on monitor disconnect
+    - INFO on server restart
     """
 
     def __init__(self):
@@ -69,31 +69,31 @@ class AlertManager:
         })
 
     def order_failed(self, follower: str, symbol: str, side: str, error: str):
-        """주문 실패 알림"""
+        """Order failure notification"""
         key = f"order_fail:{follower[:8]}"
         self._error_count[key] = self._error_count.get(key, 0) + 1
         count = self._error_count[key]
 
-        msg = f"🚨 주문 실패 [{follower[:8]}] {symbol} {side}\n{error}"
+        msg = f"🚨 Order failed [{follower[:8]}] {symbol} {side}\n{error}"
         self._log_event("error", "order", msg)
 
-        # 3회 연속 실패 시 알림
+        # Alert on 3+ consecutive failures
         if count >= 3 and not _is_duplicate(msg):
             logger.error(msg)
             _recent_alerts.append((time.time(), msg))
             if ALERT_BOT_TOKEN:
-                _send_telegram(f"<b>Copy Perp Order Failed</b>\nFollower: {follower[:12]}...\nSymbol: {symbol} {side}\n연속 실패: {count}회\n오류: {error[:100]}")
+                _send_telegram(f"<b>Copy Perp Order Failed</b>\nFollower: {follower[:12]}...\nSymbol: {symbol} {side}\nConsecutive failures: {count}\nError: {error[:100]}")
         else:
             logger.warning(msg)
 
     def order_success(self, follower: str, symbol: str, side: str, amount: str):
-        """주문 성공 — 에러 카운터 초기화"""
+        """Order success — reset error counter"""
         key = f"order_fail:{follower[:8]}"
         self._error_count.pop(key, None)
-        self._log_event("info", "order", f"✅ 주문 성공 [{follower[:8]}] {symbol} {side} {amount}")
+        self._log_event("info", "order", f"✅ Order success [{follower[:8]}] {symbol} {side} {amount}")
 
     def monitor_disconnected(self, trader: str, reason: str):
-        """모니터 연결 끊김 경고"""
+        """Monitor disconnected warning"""
         msg = f"⚠️ Monitor disconnected [{trader[:12]}]: {reason}"
         self._log_event("warning", "monitor", msg)
         if not _is_duplicate(msg):
@@ -103,7 +103,7 @@ class AlertManager:
                 _send_telegram(f"<b>Copy Perp Monitor Disconnected</b>\nTrader: {trader[:16]}...\nReason: {reason[:100]}")
 
     def monitor_restored(self, trader: str):
-        """모니터 복원 알림"""
+        """Monitor restored notification"""
         msg = f"✅ Monitor restored [{trader[:12]}]"
         self._log_event("info", "monitor", msg)
         logger.info(msg)
@@ -117,14 +117,14 @@ class AlertManager:
             _send_telegram(f"<b>Copy Perp Started</b>\nNETWORK: {network}\nMonitors: {monitors}")
 
     def get_recent_events(self, limit: int = 50, level: Optional[str] = None) -> list:
-        """최근 이벤트 조회"""
+        """Get recent events"""
         events = list(self.events)
         if level:
             events = [e for e in events if e["level"] == level]
         return events[-limit:]
 
     def get_error_summary(self) -> dict:
-        """에러 요약"""
+        """Error summary"""
         return {
             "total_error_counts": dict(self._error_count),
             "recent_events": len(self.events),
