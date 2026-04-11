@@ -209,6 +209,23 @@ _ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))
 # ── 보안 헤더 미들웨어 ─────────────────────────────────
 from starlette.middleware.base import BaseHTTPMiddleware
 
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    """읽기 전용 엔드포인트 Cache-Control 헤더 자동 추가"""
+    _READ_PREFIXES = ("/traders", "/signals", "/stats", "/portfolio", "/markets")
+    _SHORT_PREFIXES = ("/healthz", "/health")
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.method == "GET":
+            path = request.url.path
+            if any(path.startswith(p) for p in self._READ_PREFIXES):
+                response.headers.setdefault("Cache-Control", "public, max-age=30, stale-while-revalidate=5")
+                response.headers.setdefault("Vary", "Accept-Encoding")
+            elif any(path.startswith(p) for p in self._SHORT_PREFIXES):
+                response.headers.setdefault("Cache-Control", "public, max-age=10")
+        return response
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -228,6 +245,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
+app.add_middleware(CacheControlMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 # ── 커스텀 CORS 미들웨어 (origin 검증 후 조건부 credentials 헤더) ──────────
@@ -613,8 +631,14 @@ async def _sync_leaderboard_loop():
 
 
 async def _winrate_refresh_loop():
-    """win_rate 자동 갱신 — 6시간마다 Tier1 트레이더 trades/history 재수집
+    """win_rate 자동 갱신 — 1시간마다 Tier1 트레이더 trades/history 재수집
     raw 소켓 파싱 제거 → PacificaClient._cf_request 사용 (chunked 파싱 버그 방지)
+
+    P0 Fix (Round 4):
+    - 'close' side 필터를 pnl IS NOT NULL + cause != 'funding' 로 교체
+      (Pacifica API side 필드값: 'open_long'/'close_long'/'open_short'/'close_short' 또는
+       단순 'long'/'short', close trades는 pnl 필드가 채워져 있음)
+    - 로깅 강화: API 응답 구조 + 매번 count 출력
     """
     await asyncio.sleep(60)
     while True:
@@ -628,6 +652,7 @@ async def _winrate_refresh_loop():
             from pacifica.client import _cf_request, get_ratelimit_status
             import re as _re
 
+            updated = 0
             for row in top_traders:
                 addr = row[0]
                 if not addr:
@@ -636,20 +661,47 @@ async def _winrate_refresh_loop():
                     # PacificaClient의 CF 요청 함수 재사용 (chunked 파싱 포함)
                     result = await asyncio.get_event_loop().run_in_executor(
                         None,
-                        lambda a=addr: _cf_request("GET", f"trades/history?account={a}&limit=100")
+                        lambda a=addr: _cf_request("GET", f"trades/history?account={a}&limit=200")
                     )
-                    trades = result.get('data', []) if isinstance(result, dict) else []
-                    # 'close' side 포함한 거래만 (청산 이벤트)
-                    closes = [t for t in trades if 'close' in str(t.get('side', '')).lower()]
-                    wins   = sum(1 for t in closes if float(t.get('pnl', 0) or 0) > 0)
-                    losses = len(closes) - wins
+                    if not isinstance(result, dict):
+                        logger.warning(f"[WinRate] {addr[:12]} API 응답 타입 이상: {type(result)}")
+                        continue
+                    trades = result.get('data', []) or []
+                    if not trades:
+                        logger.info(f"[WinRate] {addr[:12]} 거래 내역 없음 (data=[]) — 스킵")
+                        continue
+
+                    # P0 Fix: pnl 필드가 존재하는 거래 = 청산된(closed) 거래
+                    # Pacifica API는 closing trade에만 pnl을 채움
+                    # cause='funding' 은 펀딩비 정산이므로 제외
+                    closes = [
+                        t for t in trades
+                        if t.get('pnl') is not None                              # pnl이 채워진 거래
+                        and str(t.get('cause', '')).lower() != 'funding'         # 펀딩비 제외
+                        and str(t.get('cause', '')).lower() != 'liquidation'     # 청산 제외 (win/loss 통계 왜곡)
+                    ]
+                    # fallback: pnl 없지만 side에 'close' 포함 (일부 API 버전 대응)
+                    if not closes:
+                        closes = [
+                            t for t in trades
+                            if 'close' in str(t.get('side', '')).lower()
+                        ]
+
+                    wins   = sum(1 for t in closes if float(t.get('pnl') or 0) > 0)
+                    losses = sum(1 for t in closes if float(t.get('pnl') or 0) < 0)
                     total  = wins + losses
                     wr     = wins / total if total > 0 else 0.0
+
+                    logger.info(
+                        f"[WinRate] {addr[:12]} | raw={len(trades)} trades, "
+                        f"closes={len(closes)}, W={wins} L={losses} → wr={wr:.2%}"
+                    )
 
                     await db.execute(
                         "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
                         (wr, wins, losses, addr)
                     )
+                    updated += 1
 
                     # Rate limit 기반 동적 대기
                     rl = get_ratelimit_status()
@@ -668,10 +720,10 @@ async def _winrate_refresh_loop():
                         logger.warning(f"[WinRate] 429 → {wait}초 대기")
                         await asyncio.sleep(wait)
                     else:
-                        logger.debug(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
+                        logger.warning(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
 
             await db.commit()
-            logger.info(f"[WinRate] {len(top_traders)}명 갱신 완료")
+            logger.info(f"[WinRate] 갱신 완료: {updated}/{len(top_traders)}명 업데이트")
         except Exception as e:
             logger.warning(f"[WinRate] 갱신 루프 오류: {e}")
 
@@ -1186,6 +1238,15 @@ async def get_stats(request: Request) -> dict:
     client_ip = _get_client_ip(request)
     _require_rate_limit(f"stats:{client_ip}", request=request)
 
+    # 30초 캐시 사용
+    import time as _t
+    _now = _t.time()
+    if _STATS_CACHE["data"] and (_now - _STATS_CACHE["ts"]) < _STATS_CACHE_TTL:
+        cached = dict(_STATS_CACHE["data"])
+        cached["cached"] = True
+        cached["cache_age_sec"] = round(_now - _STATS_CACHE["ts"], 1)
+        return cached
+
     try:
         db = await get_db()
         stats = await get_platform_stats(db)
@@ -1233,6 +1294,9 @@ async def get_stats(request: Request) -> dict:
     stats["ok"] = True
     stats["version"] = APP_VERSION
     stats["network"] = os.getenv("NETWORK", "testnet")
+    stats["cached"] = False
+    _STATS_CACHE["ts"] = _t.time()
+    _STATS_CACHE["data"] = dict(stats)
     return stats
 
 
