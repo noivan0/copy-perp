@@ -373,15 +373,33 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict,
         freq_score = 50.0
 
     # 평균 보유 시간 (복사 가능성)
-    hold = stats.get("avg_hold_min", 60)
+    # R10: hold_min이 stats에 명시적으로 있는지 확인 (추정값 vs 실제값)
+    hold = stats.get("avg_hold_min", None)
+    _hold_is_estimated = hold is None  # stats에 없으면 추정값 사용
+    if hold is None:
+        hold = 60.0  # 기본값 (데이터 없음)
+
     if hold < 3:
         hold_score = 0.0
         warnings.append(f"Avg hold {hold:.1f}min — uncopyable")
     elif hold < 10:
         hold_score = 40.0
         warnings.append(f"Avg hold {hold:.1f}min — slippage risk")
+    elif hold < 60:
+        # 10~60분: 복사 가능하지만 슬리피지 주의
+        hold_score = _norm(hold, 10, 60) * 0.6 + 40.0  # 40~64점
+        hold_score = min(64.0, hold_score)
+    elif hold <= 480:
+        # 60~480분(1~8시간): 이상적 범위 → 64~100점
+        hold_score = _norm(hold, 60, 480) * 0.36 + 64.0
+        hold_score = min(100.0, hold_score)
     else:
-        hold_score = min(100.0, _norm(hold, 10, 480))
+        # 480분 초과: 장기 보유 (스윙) → 복사는 가능하지만 드물게 거래
+        hold_score = 90.0
+
+    # stats에서 직접 나온 hold_min이면 반영, 추정값이면 가중치 감소
+    if _hold_is_estimated:
+        hold_score = hold_score * 0.5 + 50.0 * 0.5  # 중립 쪽으로 당김
 
     # R8 추가: 최대 연속 손실 기반 안정성
     max_streak = stats.get("max_consecutive_loss", 0)
@@ -666,26 +684,108 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
         # win_rate, total_trades 컬럼이 DB에 존재하면 활용
         _db_wr = raw.get("win_rate")  # DB traders.win_rate (0~1 or 0~100)
         _db_tt = raw.get("total_trades", 0)
+        _db_wc = raw.get("win_count", 0)
+        _db_lc = raw.get("lose_count", 0)
+        _vol30 = _safe(raw.get("volume_30d"))  # 30일 거래량 (USD)
+
+        # R10: volume_30d + win/lose count 기반 avg_position_usdc 추정
+        _est_trade_count = None
+        _est_avg_pos = 0.0
+        _est_hold_min = None  # None=추정 불가
+
+        # total_trades가 실제로 채워진 경우
+        _tt_val = int(_db_tt or 0)
+        _wc_val = int(_db_wc or 0)
+        _lc_val = int(_db_lc or 0)
+        _total_from_wl = _wc_val + _lc_val
+
+        if _total_from_wl > 0:
+            _est_trade_count = _total_from_wl
+        elif _tt_val > 0:
+            _est_trade_count = _tt_val
+
+        # avg_position_usdc 추정: volume_30d / trade_count
+        if _vol30 > 0 and _est_trade_count and _est_trade_count > 0:
+            _raw_pos = _vol30 / _est_trade_count
+            # 포지션이 equity 대비 극단적이면 보정 (최대 equity의 50%)
+            _est_avg_pos = min(_raw_pos, eq * 0.50) if eq > 0 else _raw_pos
+        elif _vol30 > 0 and eq > 0:
+            # trade_count 없을 때: equity 기반 보수적 추정
+            # volume_30d > equity*10 인 경우 고레버리지 → 포지션 추정 어려움
+            _vol_ratio = _vol30 / eq
+            if _vol_ratio > 10:
+                # 고레버리지 트레이더: equity의 20% 추정 (슬리피지 위험 반영)
+                _est_avg_pos = min(eq * 0.20, 10000.0)
+            else:
+                # 일반 케이스: equity의 10~30% 추정
+                _est_avg_pos = min(eq * min(0.30, _vol_ratio / 30 + 0.05), 5000.0)
+        elif eq > 0:
+            # 완전 데이터 없을 때: equity의 10% 를 기본 포지션으로
+            _est_avg_pos = min(eq * 0.10, 5000.0)
+
+        # R10: OI + volume_7d 기반 avg_hold_min 추정 (더 보수적)
+        # volume_7d 우선 사용 (더 최신), 없으면 volume_30d/4
+        _vol7 = _safe(raw.get("volume_7d"))
+        _vol_recent = _vol7 if _vol7 > 0 else (_vol30 / 4 if _vol30 > 0 else 0)
+
+        if oi > 0 and _vol_recent > 0:
+            # OI/vol_7d ≈ 현재 포지션 / 최근 1주일 거래량
+            # hold_min ≈ (OI/vol_7d) * 7일 * 24h * 60min
+            # 단, oi는 current 가격이라 변동 크므로 min(oi, eq*2)로 캡핑
+            _oi_capped = min(oi, eq * 2.0) if eq > 0 else oi
+            _hold_est = (_oi_capped / _vol_recent) * 7 * 24 * 60
+            _est_hold_min = round(min(max(5.0, _hold_est), 2880.0), 1)  # 5분~2일
+        elif oi > 0 and eq > 0:
+            # volume 없으면: OI/equity 비율로 추정
+            _oi_ratio = min(oi, eq * 3) / eq
+            if _oi_ratio > 1.0:
+                _est_hold_min = 60.0   # 고레버리지 → 빠른 회전 예상
+            elif _oi_ratio > 0.3:
+                _est_hold_min = 240.0  # 중간
+            else:
+                _est_hold_min = 720.0  # 소규모 포지션 → 스윙
+        elif oi == 0 and _vol30 > 0 and eq > 0:
+            # OI=0(포지션 없음)이지만 거래는 있음
+            _vol_eq = _vol30 / eq if eq > 0 else 0
+            if _vol_eq > 100:
+                _est_hold_min = 15.0   # 고빈도 스캘핑
+            elif _vol_eq > 10:
+                _est_hold_min = 60.0   # 중빈도
+            else:
+                _est_hold_min = 240.0  # 저빈도 스윙
+
         if _db_wr is not None and float(_db_wr) > 0:
             # DB win_rate가 0~100 스케일이면 0~1로 정규화
             wr_norm = float(_db_wr) / 100.0 if float(_db_wr) > 1 else float(_db_wr)
             stats = {
                 "win_rate": round(wr_norm, 4),
-                "trade_count": int(_db_tt),
+                "trade_count": _est_trade_count or int(_db_tt or 0),
+                "win_count": _wc_val if _wc_val > 0 else None,
+                "lose_count": _lc_val if _lc_val > 0 else None,
+                "avg_position_usdc": round(_est_avg_pos, 2),
                 "win_rate_source": "db_column",
             }
+            if _est_hold_min is not None:
+                stats["avg_hold_min"] = _est_hold_min
         elif roi30 > 0 and cons >= 2:
             # 완전 데이터 없을 때: roi+consistency 기반 추정 win_rate
             # 보수적으로 추정 (50% 기준 ± 조정)
             estimated_wr = 0.50
             estimated_wr += max(-0.15, min(0.15, roi30 / 1000))  # ROI 기여 최대 ±15%
             estimated_wr += (cons - 3) * 0.04                     # consistency 기여 ±8%
+            # R10: momentum 기반 추정 win_rate 보정
+            if p30 > 0 and p7 > 0:
+                _m_ratio = p7 / p30
+                estimated_wr += max(-0.05, min(0.05, (_m_ratio - 0.25) * 0.2))
             estimated_wr = round(max(0.30, min(0.80, estimated_wr)), 4)
             stats = {
                 "win_rate": estimated_wr,
-                "trade_count": None,
+                "trade_count": _est_trade_count,
+                "avg_position_usdc": round(_est_avg_pos, 2),
                 "win_rate_source": "estimated",  # 추정값 명시
             }
+            if _est_hold_min is not None:
+                stats["avg_hold_min"] = _est_hold_min
         result.trade_stats = stats
 
     # ── 5차원 점수 ─────────────────────────────────
