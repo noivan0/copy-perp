@@ -23,7 +23,7 @@ router = APIRouter(prefix="/traders/ranked", tags=["ranked"])
 
 # ── 60초 인메모리 캐시 ────────────────────────────────────────────────────────
 _ranked_cache: dict = {}  # key: (limit, min_grade, exclude_disqualified) → (ts, payload)
-_RANKED_CACHE_TTL = 60    # 초
+_RANKED_CACHE_TTL = 120    # 초
 
 
 def _leaderboard_row_to_crs(row: dict) -> dict:
@@ -172,8 +172,12 @@ async def get_ranked_traders(
     _cache_key = (limit, min_grade.upper(), exclude_disqualified)
     _cached = _ranked_cache.get(_cache_key)
     if _cached and (_time_mod.time() - _cached[0]) < _RANKED_CACHE_TTL:
-        logger.debug(f"[ranked] 캐시 히트 (TTL {_RANKED_CACHE_TTL}s)")
-        return {**_cached[1], "cached": True, "cache_age_sec": round(_time_mod.time() - _cached[0], 1)}
+        _cache_age = round(_time_mod.time() - _cached[0], 1)
+        logger.debug(
+            f"[ranked] 캐시 HIT — key={_cache_key} age={_cache_age}s "
+            f"(TTL={_RANKED_CACHE_TTL}s) count={_cached[1].get('count', '?')}"
+        )
+        return {**_cached[1], "cached": True, "cache_age_sec": _cache_age}
 
     # DB 우선, 없으면 API
     rows = await _fetch_rows_from_db(200)
@@ -216,6 +220,10 @@ async def get_ranked_traders(
 
     # 캐시 저장
     _ranked_cache[_cache_key] = (_time_mod.time(), result)
+    logger.debug(
+        f"[ranked] 캐시 MISS — key={_cache_key} source={source} "
+        f"total={len(ranked)} filtered={len(filtered)}"
+    )
 
     return result
 

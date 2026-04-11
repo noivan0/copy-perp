@@ -789,7 +789,7 @@ async def _winrate_refresh_loop():
                     if _use_direct:
                         import requests as _req2
                         _dr = _req2.get(
-                            f"https://test-api.pacifica.fi/api/v1/{_path_wr}",
+                            f"{os.getenv('PACIFICA_REST_URL', 'https://api.pacifica.fi/api/v1')}/{_path_wr}",
                             headers={"User-Agent":"CopyPerp/1.0"}, timeout=15
                         )
                         result = _dr.json()

@@ -19,6 +19,9 @@ from pacifica.client import PacificaClient
 logger = logging.getLogger(__name__)
 _pacifica = PacificaClient()
 
+_TRADERS_CACHE: dict = {}   # {key: (ts, payload)}
+_TRADERS_CACHE_TTL = 120     # 초
+
 router = APIRouter(prefix="/traders", tags=["traders"])
 
 
@@ -51,6 +54,13 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
             detail={"error": "limit must be between 1 and 100", "code": "INVALID_LIMIT"}
         )
 
+    # 인메모리 캐시 (TTL 120초)
+    import time as _time_mod
+    _cache_key = (limit, offset)
+    _cached = _TRADERS_CACHE.get(_cache_key)
+    if _cached and (_time_mod.time() - _cached[0]) < _TRADERS_CACHE_TTL:
+        return {**_cached[1], "_cached": True}
+
     if mock:
         sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
         return {"data": sorted_traders[:limit], "source": "mock", "count": len(sorted_traders[:limit])}
@@ -76,7 +86,9 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
                         "composite_score": composite,
                         "roi": round(roi, 4),
                         "total_trades": total_trades}
-            return {"data": [_enrich(dict(r)) for r in leaders], "source": "db", "count": len(leaders)}
+            _result = {"data": [_enrich(dict(r)) for r in leaders], "source": "db", "count": len(leaders)}
+            _TRADERS_CACHE[_cache_key] = (_time_mod.time(), _result)
+            return _result
     except Exception as e:
         logger.warning(f"[{req_id}] 트레이더 DB 조회 실패: {e}")
 
