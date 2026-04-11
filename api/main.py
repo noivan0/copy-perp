@@ -1221,6 +1221,7 @@ async def healthz() -> dict:
         "db_path": (os.getenv("TURSO_URL") or os.getenv("DB_PATH", "copy_perp.db")),
         "db_writable": os.access(os.path.dirname(os.path.abspath(_db_path_hz)) or ".", os.W_OK),
         "db_mode": "turso" if os.getenv("TURSO_URL") else "sqlite",
+        "network": os.getenv("NETWORK", "testnet"),  # BUG 28 fix: /healthz에 network 추가
     }
 
     if not _db_ok:
