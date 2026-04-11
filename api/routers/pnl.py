@@ -23,13 +23,11 @@ router = APIRouter(prefix="/pnl", tags=["pnl"])
 
 def _get_db():
     """api.main 에서 _db 가져오기. 없으면 503."""
-    try:
-        from api.main import _db
-        if _db is None:
-            raise HTTPException(status_code=503, detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"})
-        return _db
-    except ImportError:
-        raise HTTPException(status_code=503, detail={"error": "DB module load failed", "code": "SERVICE_UNAVAILABLE"})
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
+    if _db is None:
+        raise HTTPException(status_code=503, detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"})
+    return _db
 
 
 @router.get("/{follower_address}/summary")

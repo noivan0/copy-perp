@@ -57,8 +57,9 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
         return {"data": sorted_traders[:limit], "source": "mock", "count": len(sorted_traders[:limit])}
 
     try:
-        from api.main import _db
-        leaders = await get_leaderboard(_db, limit)
+        from api.deps import _get_db_direct
+        _db = _get_db_direct()
+        leaders = await get_leaderboard(_db, limit) if _db else []
         if leaders:
             def _enrich(r: dict) -> dict:
                 """composite_score 등 파생 필드 추가"""
@@ -95,7 +96,11 @@ async def list_traders(request: Request, limit: int = 20, mock: bool = False):
 
 @router.post("")
 async def register_trader(body: TraderRegister, background_tasks: BackgroundTasks, request: Request):
-    from api.main import _db, _engine, _monitors, _is_valid_solana_address
+    from api.deps import _get_db_direct, _get_engine_direct, _get_monitors_direct
+    from api.main import _is_valid_solana_address
+    _db = _get_db_direct()
+    _engine = _get_engine_direct()
+    _monitors = _get_monitors_direct()
     from core.position_monitor import RestPositionMonitor
 
     req_id = getattr(request.state, "request_id", "??")
@@ -130,7 +135,9 @@ async def register_trader(body: TraderRegister, background_tasks: BackgroundTask
 @router.get("/{address}")
 async def get_trader(address: str, request: Request):
     """트레이더 상세 + 성과 통계 — DB 우선, Mock 폴백"""
-    from api.main import _db, _is_valid_solana_address
+    from api.deps import _get_db_direct
+    from api.main import _is_valid_solana_address
+    _db = _get_db_direct()
     import asyncio
 
     req_id = getattr(request.state, "request_id", "??")
@@ -175,7 +182,8 @@ async def get_trader(address: str, request: Request):
 
 @router.get("/{address}/trades")
 async def get_trader_trades(address: str, limit: int = 50, request: Request = None):
-    from api.main import _db
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
     req_id = getattr(request.state, "request_id", "??") if request else "??"
 
     if limit < 1 or limit > 500:
@@ -200,10 +208,11 @@ async def get_trader_trades(address: str, limit: int = 50, request: Request = No
 
 @router.get("/{address}/followers")
 async def get_trader_followers(address: str, request: Request = None):
-    from api.main import _db
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
     req_id = getattr(request.state, "request_id", "??") if request else "??"
     try:
-        rows = await get_followers(_db, address)
+        rows = await get_followers(_db, address) if _db else []
         return {"data": [dict(r) for r in rows], "count": len(rows)}
     except Exception as e:
         logger.error(f"[{req_id}] 팔로워 목록 조회 실패: {e}", exc_info=True)

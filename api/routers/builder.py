@@ -109,7 +109,8 @@ async def approve_builder_code(body: ApproveReq, request: Request):
     if result["ok"]:
         # DB 업데이트
         try:
-            from api.main import _db
+            from api.deps import _get_db_direct
+            _db = _get_db_direct()
             if _db:
                 await _db.execute(
                     "UPDATE followers SET builder_code_approved=1, builder_approved=1 WHERE address=?",
@@ -159,7 +160,8 @@ async def revoke_builder_code(body: RevokeReq):
 
     if result["ok"]:
         try:
-            from api.main import _db
+            from api.deps import _get_db_direct
+            _db = _get_db_direct()
             if _db:
                 await _db.execute(
                     "UPDATE followers SET builder_code_approved=0, builder_approved=0 WHERE address=?",

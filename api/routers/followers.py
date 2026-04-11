@@ -514,7 +514,11 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     6. DB 팔로워 등록 (privy_user_id 포함)
     7. Tier1 트레이더 자동 팔로우 + 모니터링 시작
     """
-    from api.main import _db, _engine, _monitors, _check_rate_limit
+    from api.deps import _get_db_direct, _get_engine_direct, _get_monitors_direct
+    from api.main import _check_rate_limit
+    _db = _get_db_direct()
+    _engine = _get_engine_direct()
+    _monitors = _get_monitors_direct()
     from core.position_monitor import RestPositionMonitor
     from db.database import add_follower
     from fuul.referral import FuulReferral
@@ -837,8 +841,8 @@ async def list_strategies() -> dict:
 @router.get("/list")
 async def list_followers(follower_address: Optional[str] = None) -> dict:
     """팔로워 목록 조회 — follower_address로 본인 데이터만 조회"""
-    from api.main import _db
-    if not _db:
+    from api.deps import _get_db_direct as _gdb
+    if not _gdb():
         raise HTTPException(503, "DB 미초기화")
     # 빈 문자열 조기 반환 (DB 전체 쿼리 방지)
     if follower_address is not None and follower_address.strip() == "":
@@ -851,7 +855,7 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
                 detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
             )
         # 본인 주소에 해당하는 팔로워 데이터만 반환
-        async with _db.execute(
+        async with _gdb().execute(
             "SELECT * FROM followers WHERE address=? AND active=1 ORDER BY created_at DESC",
             (follower_address,)
         ) as cur:
@@ -874,9 +878,13 @@ async def get_follower_pnl(follower_address: str) -> dict:
     - open_positions: follower_positions 목록
     - pnl_by_trader: 트레이더별 PnL 집계
     """
-    from api.main import _db
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
     if not _db:
-        raise HTTPException(503, "DB 미초기화")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
+        )
 
     # ── 실현 PnL ──────────────────────────────────────────
     async with _db.execute(
@@ -977,9 +985,13 @@ async def remove_follower(
     follower_address 제공 시: 해당 팔로워-트레이더 쌍만 해지
     미제공 시: trader_address를 follower로 간주 (backward compat)
     """
-    from api.main import _db
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
     if not _db:
-        raise HTTPException(503, "DB 미초기화")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
+        )
 
     if follower_address:
         # 주소 검증
@@ -1180,9 +1192,10 @@ async def get_follower_portfolio(follower_address: str) -> dict:
     - 팔로우 중인 트레이더 목록
     - 거래 통계
     """
-    from api.main import _db
+    from api.deps import _get_db_direct
+    _db = _get_db_direct()
     if not _db:
-        raise HTTPException(503, "DB not initialized")
+        raise HTTPException(status_code=503, detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"})
 
     if not _SOLANA_ADDR_RE.match(follower_address):
         raise HTTPException(422, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})

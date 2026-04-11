@@ -20,7 +20,17 @@
 // ── 설정 ─────────────────────────────────────────
 // PRIVY_APP_ID: config 로드 전일 수 있으므로 getter로 동적 참조
 const PRIVY_CDN_URL     = 'https://cdn.privy.io/sdk/latest/privy.min.js';
-const API_BASE          = window.API_BASE || 'http://localhost:8001';
+// API_BASE: 동적 getter로 변경 — privy.js 로드 시점에 window.API_BASE가 아직 미설정
+// (index.html loadConfig() 비동기 완료 전에 privy.js가 먼저 실행되는 경합 방지)
+function _getApiBase() {
+  // window.API_BASE가 설정됐으면 사용, 없으면 상대경로 '' (Vercel→Render Rewrites 활용)
+  const base = window.API_BASE;
+  if (base === undefined || base === null) {
+    // 로컬 환경 자동 감지
+    return location.hostname === 'localhost' ? 'http://localhost:8001' : '';
+  }
+  return base;
+}
 const BUILDER_CODE      = 'noivan';
 const BUILDER_FEE_RATE  = '0.001';
 // 동적 getter — window.PRIVY_APP_ID는 /config 로드 후 설정됨
@@ -120,7 +130,7 @@ async function _autoOnboard(address) {
 
     // Privy access_token → 서버 JWT 검증용 헤더로 전달
     const _accessToken = _user?.access_token || '';
-    const resp = await fetch(`${API_BASE}/followers/onboard`, {
+    const resp = await fetch(`${_getApiBase()}/followers/onboard`, {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
