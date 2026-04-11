@@ -312,12 +312,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CacheControlMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(BodySizeLimitMiddleware)
-
-# ── 커스텀 CORS 미들웨어 (origin 검증 후 조건부 credentials 헤더) ──────────
-# 이유: FastAPI 기본 CORSMiddleware는 allow_credentials=True 시 비허용 origin에도
-# Access-Control-Allow-Credentials: true를 반환하는 보안 취약점이 있음.
-# 커스텀 미들웨어로 origin 화이트리스트 검증 후 조건부로만 CORS 헤더를 붙임.
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     """요청 body 크기 제한 — 1MB 초과 시 413 반환 (OOM 방어)"""
     MAX_BYTES = int(os.getenv("MAX_BODY_SIZE_BYTES", str(1 * 1024 * 1024)))  # 기본 1MB
@@ -337,6 +331,13 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 pass
         return await call_next(request)
+
+app.add_middleware(BodySizeLimitMiddleware)
+
+# ── 커스텀 CORS 미들웨어 (origin 검증 후 조건부 credentials 헤더) ──────────
+# 이유: FastAPI 기본 CORSMiddleware는 allow_credentials=True 시 비허용 origin에도
+# Access-Control-Allow-Credentials: true를 반환하는 보안 취약점이 있음.
+# 커스텀 미들웨어로 origin 화이트리스트 검증 후 조건부로만 CORS 헤더를 붙임.
 
 
 class CORSMiddlewareCustom(BaseHTTPMiddleware):
