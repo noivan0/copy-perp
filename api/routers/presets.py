@@ -144,6 +144,25 @@ async def apply_preset(
     preset  = PRESETS[name]
     traders = resolve_traders(name, db_path=_DB_PATH)
 
+    # Live DB 기반 traders 재계산 (FALLBACK 주소 대신 실제 DB 트레이더 사용)
+    try:
+        from api.deps import _get_db_direct
+        _db_apply = _get_db_direct()
+        if _db_apply:
+            grade_filter = preset.get("grade_filter", ["S","A"])
+            n_traders = preset.get("n_traders", 2)
+            placeholders = ",".join("?" * len(grade_filter))
+            async with _db_apply.execute(
+                f"SELECT address FROM traders WHERE active=1 AND grade IN ({placeholders}) ORDER BY pnl_30d DESC NULLS LAST LIMIT ?",
+                (*grade_filter, n_traders),
+            ) as cur:
+                rows = await cur.fetchall()
+            live_addrs = [row["address"] for row in rows]
+            if live_addrs:
+                traders = live_addrs
+    except Exception as _e:
+        logger.warning(f"apply/{name} live traders 재계산 실패 (FALLBACK 유지): {_e}")
+
     if not traders:
         raise HTTPException(status_code=503, detail={"error": "Trader selection failed. Please try again."})
 
@@ -161,7 +180,13 @@ async def apply_preset(
             request=request,
             body=onboard_body,
             background_tasks=background_tasks,
+            # 명시적으로 auth 헤더 None 전달 (직접 호출 시 Header() 파싱 미작동 방지)
+            x_privy_token=None,
+            authorization=None,
         )
+    except HTTPException as e:
+        # HTTPException(401/429 등)은 그대로 re-raise (500 래핑 금지)
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"error": f"Onboarding failed: {str(e)}"})
 
