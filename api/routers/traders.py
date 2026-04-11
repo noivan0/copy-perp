@@ -37,8 +37,8 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
 
     # Rate limit: IP당 분당 60회
     from api.main import _check_rate_limit
-    client_ip = request.client.host if request.client else "unknown"
-    from api.main import RATE_LIMIT_POLICY
+    client_ip = _get_client_ip(request)
+    from api.main import RATE_LIMIT_POLICY, _get_client_ip
     if not _check_rate_limit(f"traders:{client_ip}", *RATE_LIMIT_POLICY["traders"]):
         raise HTTPException(
             status_code=429,

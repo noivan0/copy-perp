@@ -92,8 +92,8 @@ async def approve_builder_code(body: ApproveReq, request: Request):
     Rate limit: IP당 분당 3회
     """
     from api.main import _check_rate_limit
-    client_ip = request.client.host if request.client else "unknown"
-    from api.main import RATE_LIMIT_POLICY
+    client_ip = _get_client_ip(request)
+    from api.main import RATE_LIMIT_POLICY, _get_client_ip
     if not _check_rate_limit(f"builder_approve:{client_ip}", *RATE_LIMIT_POLICY["builder_approve"]):
         raise HTTPException(429, "Too many requests")
 

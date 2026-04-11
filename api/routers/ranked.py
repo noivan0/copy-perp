@@ -107,7 +107,7 @@ def _tier_label(grade: str) -> str:
 async def _fetch_rows_from_db(limit: int = 200) -> list:
     """DB에서 active 트레이더 rows 가져오기"""
     try:
-        from api.main import get_db
+        from api.main import get_db, _get_client_ip
         db = await get_db()
         async with db.execute(
             "SELECT * FROM traders WHERE active=1 ORDER BY pnl_30d DESC LIMIT ?", (limit,)
@@ -146,7 +146,7 @@ async def get_ranked_traders(
     - Rate limit: IP당 분당 30회
     """
     from api.main import _check_rate_limit, RATE_LIMIT_POLICY
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     if not _check_rate_limit(f"ranked:{client_ip}", *RATE_LIMIT_POLICY["ranked"]):
         raise HTTPException(429, {"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"})
 
@@ -255,7 +255,7 @@ async def get_ranked_summary():
 async def sync_mainnet_traders(request: Request):
     """Mainnet 리더보드를 DB에 동기화 (IP당 분당 2회)"""
     from api.main import _check_rate_limit
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     if not _check_rate_limit(f"sync_mainnet:{client_ip}", max_calls=2, window_sec=60):
         raise HTTPException(429, "Too many requests")
     import os
