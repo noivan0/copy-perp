@@ -1052,7 +1052,9 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
     # (리서치팀 발견: PIPPIN funding +4% + volume=0 + 괴리 1208% → 유동성 이상)
     def _is_risky_market(m: dict) -> bool:
         funding_abs = abs(float(m.get("funding", 0)))
-        volume = float(m.get("volume", 1))
+        # volume 필드명 대응: volume_24h 우선, volume, 없으면 None (0으로 처리)
+        vol_raw = m.get("volume_24h") or m.get("volume")
+        volume = float(vol_raw) if vol_raw is not None else 0.0
         return funding_abs > 0.035 and volume == 0  # 3.5% 초과 + volume 없음
 
     all_sorted = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
