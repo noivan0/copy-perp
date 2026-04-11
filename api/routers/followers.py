@@ -1618,7 +1618,12 @@ async def submit_bind(body: dict):
         except Exception:
             result = {}
         if not resp.ok and not result:
-            raise Exception(f"Pacifica returned HTTP {resp.status_code}: {resp.text[:120]}")
+            # BUG 30 fix: Pacifica 4xx는 클라이언트 오류 → 400으로 반환 (500 아님)
+            status_out = 400 if resp.status_code < 500 else 502
+            raise HTTPException(status_out, {
+                "error": f"Pacifica bind 실패: HTTP {resp.status_code}",
+                "code": "BIND_REJECTED",
+            })
 
         if resp.ok:
             # Pacifica bind 성공: HTTP 200이면 bind 완료 (응답 body 무관)
@@ -1638,11 +1643,15 @@ async def submit_bind(body: dict):
         else:
             err_msg = result.get("error") or result.get("message") or f"HTTP {resp.status_code}"
             logger.warning(f"[{follower_address[:8]}] Bind 실패: {result}")
-            return {"success": False, "error": err_msg}
+            # BUG 30 fix: Pacifica 4xx는 400, 5xx는 502
+            status_out = 400 if resp.status_code < 500 else 502
+            raise HTTPException(status_out, {"error": err_msg, "code": "BIND_REJECTED"})
 
     except _req_lib.exceptions.Timeout:
         logger.error(f"[{follower_address[:8]}] Bind 요청 타임아웃")
         raise HTTPException(504, {"error": "Pacifica API 타임아웃", "code": "TIMEOUT"})
+    except HTTPException:
+        raise  # 이미 처리된 HTTPException 그대로 전파
     except Exception as e:
         logger.error(f"[{follower_address[:8]}] Bind 요청 실패: {e}")
         raise HTTPException(500, {"error": str(e), "code": "BIND_ERROR"})
