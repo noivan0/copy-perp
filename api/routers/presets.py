@@ -45,12 +45,25 @@ async def list_presets(capital: float = Query(default=1000.0, ge=1.0, le=100000.
             except Exception:
                 pass
 
+        # grade 우선순위 (S → A → B → C 순으로 fallback)
+        _grade_fallback = ["S", "A", "B", "C"]
         for preset in presets:
             grade_filter = PRESETS.get(preset.get("key",""), {}).get("grade_filter", ["S","A"])
             n = preset.get("n_traders", 2)
             live_addrs = []
             for g in grade_filter:
                 live_addrs.extend(live_by_grade.get(g, []))
+            # 지정 grade 부족 시 하위 grade로 보완 (S 없으면 A, A 없으면 B)
+            if len(live_addrs) < n:
+                for fallback_g in _grade_fallback:
+                    if fallback_g not in grade_filter:
+                        for addr in live_by_grade.get(fallback_g, []):
+                            if addr not in live_addrs:
+                                live_addrs.append(addr)
+                            if len(live_addrs) >= n:
+                                break
+                    if len(live_addrs) >= n:
+                        break
             if live_addrs:
                 preset["traders"] = live_addrs[:n]
     except Exception as _e:
@@ -140,25 +153,38 @@ async def apply_preset(
     preset  = PRESETS[name]
     traders = resolve_traders(name, db_path=_DB_PATH)
 
-    # CRS 실시간 계산 기반 traders 재계산 (DB grade 컬럼 없음)
+    # CRS 실시간 계산 기반 traders 재계산 (DB grade 컬럼 없음, grade fallback 포함)
     try:
         from api.routers.ranked import _fetch_rows_from_db, _leaderboard_row_to_crs
         grade_filter = preset.get("grade_filter", ["S","A"])
         n_traders = preset.get("n_traders", 2)
         _rows = await _fetch_rows_from_db(200)
-        live_addrs = []
+        # CRS 계산 후 grade별 분류
+        _by_grade: dict = {}
         for row in _rows:
             try:
                 crs_data = _leaderboard_row_to_crs(row)
                 g = crs_data.get("grade", "D")
-                if g in grade_filter and not crs_data.get("disqualified", False):
-                    live_addrs.append(crs_data.get("address"))
-                    if len(live_addrs) >= n_traders:
-                        break
+                if g not in ("D",) and not crs_data.get("disqualified", False):
+                    _by_grade.setdefault(g, []).append(crs_data.get("address"))
             except Exception:
                 pass
+        # grade_filter 우선, 부족 시 S→A→B→C 순 fallback
+        live_addrs = []
+        for g in grade_filter:
+            live_addrs.extend(_by_grade.get(g, []))
+        if len(live_addrs) < n_traders:
+            for fb_g in ["S","A","B","C"]:
+                if fb_g not in grade_filter:
+                    for addr in _by_grade.get(fb_g, []):
+                        if addr not in live_addrs:
+                            live_addrs.append(addr)
+                        if len(live_addrs) >= n_traders:
+                            break
+                if len(live_addrs) >= n_traders:
+                    break
         if live_addrs:
-            traders = live_addrs
+            traders = live_addrs[:n_traders]
     except Exception as _e:
         logger.warning(f"apply/{name} live traders 재계산 실패 (FALLBACK 유지): {_e}")
 
