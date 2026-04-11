@@ -38,9 +38,9 @@ async def get_pnl_summary(
     days: int = Query(default=30, ge=1, le=365),
 ) -> dict:
     """팔로워 PnL 요약 (최근 N일)"""
-    if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
+    if follower_address.startswith("did:") or not _SOLANA_ADDR_RE.match(follower_address):
         from fastapi import HTTPException
-        raise HTTPException(422, {"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
+        raise HTTPException(status_code=422, detail={"error": "Invalid Solana address. Must be a 32-44 char base58 string.", "code": "INVALID_ADDRESS"})
     db = _get_db()
     try:
         import aiosqlite
@@ -97,6 +97,9 @@ async def get_pnl_history(
     days: int = Query(default=30, ge=1, le=365),
 ) -> dict:
     """일별 PnL 이력 반환"""
+    # Solana 주소 검증
+    if follower_address.startswith("did:") or not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(status_code=422, detail={"error": "Invalid Solana address. Must be a 32-44 char base58 string.", "code": "INVALID_ADDRESS"})
     db = _get_db()
     try:
         from datetime import datetime, timezone, timedelta
@@ -154,6 +157,9 @@ async def get_pnl_history(
 @router.get("/{follower_address}/by-trader")
 async def get_pnl_by_trader(follower_address: str) -> dict:
     """트레이더별 PnL 집계"""
+    # Solana 주소 검증
+    if follower_address.startswith("did:") or not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(status_code=422, detail={"error": "Invalid Solana address. Must be a 32-44 char base58 string.", "code": "INVALID_ADDRESS"})
     db = _get_db()
     try:
         async with db.execute("""
@@ -197,6 +203,9 @@ async def get_pnl_trades(
     status: Optional[str] = Query(default=None),
 ) -> dict:
     """팔로워 복사 거래 내역 (페이지네이션)"""
+    # Solana 주소 검증
+    if follower_address.startswith("did:") or not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(status_code=422, detail={"error": "Invalid Solana address. Must be a 32-44 char base58 string.", "code": "INVALID_ADDRESS"})
     if status and status not in ("filled", "pending", "failed"):
         raise HTTPException(
             status_code=400,
