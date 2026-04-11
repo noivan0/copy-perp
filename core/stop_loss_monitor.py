@@ -75,7 +75,20 @@ class StopLossMonitor:
         - CopyEngine stores in follower_positions (primary)
         - pnl_tracker uses positions table (secondary)
         - UNION both tables for complete coverage
+        R13 P2: 포지션 없을 때 가격 조회 및 DB 쿼리 스킵 (early exit)
         """
+        # ── R13 P2: 활성 팔로워 없으면 즉시 종료 (불필요한 DB 쿼리 방지) ──
+        try:
+            async with self.db.execute(
+                "SELECT COUNT(*) FROM followers WHERE active != 0"
+            ) as _cnt_cur:
+                _active_followers = (await _cnt_cur.fetchone())[0] or 0
+            if _active_followers == 0:
+                logger.debug("[StopLoss] 활성 팔로워 없음 — 스캔 스킵")
+                return
+        except Exception as _ef:
+            logger.debug(f"[StopLoss] 팔로워 카운트 오류 (무시): {_ef}")
+
         # 현재가 조회
         prices = _get_mark_prices()
         if not prices:
