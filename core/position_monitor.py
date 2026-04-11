@@ -163,13 +163,21 @@ class PositionMonitor:
 
     async def _handle_positions(self, positions: list):
         """포지션 변화 감지 (스냅샷 비교)"""
-        curr = {p.get("symbol"): p for p in positions if p.get("symbol")}
+        # amount=0 포지션 제외 → close 감지 정확도 향상
+        # Pacifica API가 size=0인 closed 포지션을 반환하는 경우 방어
+        def _pos_amt(p: dict) -> float:
+            return float(p.get("amount", p.get("szi", p.get("size", 0))) or 0)
+        curr = {
+            p.get("symbol"): p
+            for p in positions
+            if p.get("symbol") and _pos_amt(p) > 1e-10
+        }
 
         for symbol, pos in curr.items():
             prev = self._prev_positions.get(symbol)
             # Pacifica API: amount = 절댓값, side = bid(롱)/ask(숏)
             # 부호 포함 크기: bid → +amount, ask → -amount
-            _amt = float(pos.get("amount", pos.get("szi", pos.get("size", 0))) or 0)
+            _amt = _pos_amt(pos)  # 위에서 정의된 헬퍼 재사용
             _side_raw = pos.get("side", "bid")
             curr_size = _amt if _side_raw == "bid" else -_amt
 
