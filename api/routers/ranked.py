@@ -49,6 +49,9 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
         d["pnl_30d"] = result.raw.get("pnl_30d")
         d["pnl_7d"]  = result.raw.get("pnl_7d")
         d["roi_30d"] = result.raw.get("roi_30d")
+        # equity, oi: row 우선 (DB 최신값), raw 폴백
+        d["equity"]  = float(row.get("equity") or result.raw.get("equity") or 0)
+        d["oi"]      = float(row.get("oi_current") or result.raw.get("oi") or 0)
         # trade_stats: trades/history 없을 때 raw 기반 간이 통계로 채움
         # (N+1 API 호출 없이 목록에서 기본 필드 제공)
         # trade_stats: DB row 직접 필드 우선, 없으면 raw 기반 간이 통계

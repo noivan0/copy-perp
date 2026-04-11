@@ -699,7 +699,7 @@ async def _sync_leaderboard_loop():
 
 
 async def _winrate_refresh_loop():
-    """win_rate 자동 갱신 — 1시간마다 Tier1 트레이더 trades/history 재수집
+    """win_rate 자동 갱신 — Tier1 트레이더 trades/history 재수집 (첫 실행 90초 후, 이후 30분마다)
     raw 소켓 파싱 제거 → PacificaClient._cf_request 사용 (chunked 파싱 버그 방지)
 
     P0 Fix (Round 4):
@@ -708,12 +708,12 @@ async def _winrate_refresh_loop():
        단순 'long'/'short', close trades는 pnl 필드가 채워져 있음)
     - 로깅 강화: API 응답 구조 + 매번 count 출력
     """
-    await asyncio.sleep(60)
+    await asyncio.sleep(90)  # leaderboard sync 완료 후 첫 갱신
     while True:
         try:
             db = await get_db()
             async with db.execute(
-                "SELECT address, alias FROM traders WHERE active=1 ORDER BY pnl_all_time DESC LIMIT 12"
+                "SELECT address, alias FROM traders WHERE active=1 ORDER BY pnl_all_time DESC LIMIT 20"
             ) as cur:
                 top_traders = await cur.fetchall()
 
@@ -826,7 +826,7 @@ async def _winrate_refresh_loop():
             await asyncio.sleep(300)
             continue
 
-        await asyncio.sleep(1 * 3600)  # 1시간마다 갱신 (프로덕트 기준)
+    await asyncio.sleep(30 * 60)  # 30분마다 갱신 (프로덕션 기준)
 
 
 @app.on_event("startup")
