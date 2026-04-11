@@ -1509,6 +1509,7 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
 async def list_trades(
     request: Request,
     limit: int = 50,
+    offset: int = 0,
     follower: Optional[str] = None,
     trader:   Optional[str] = None,
     status:   Optional[str] = None,
@@ -1526,6 +1527,11 @@ async def list_trades(
             status_code=400,
             detail={"error": "limit must be between 1 and 500", "code": "INVALID_LIMIT"}
         )
+    if offset < 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "offset must be >= 0", "code": "INVALID_OFFSET"}
+        )
     if status and status not in ("filled", "pending", "failed"):
         raise HTTPException(
             status_code=400,
@@ -1542,9 +1548,9 @@ async def list_trades(
         if status:
             conditions.append("status=?");           params.append(status)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        params.append(limit)
+        params.extend([limit, offset])
         async with db.execute(
-            f"SELECT * FROM copy_trades {where} ORDER BY created_at DESC LIMIT ?", params
+            f"SELECT * FROM copy_trades {where} ORDER BY created_at DESC LIMIT ? OFFSET ?", params
         ) as cur:
             rows = await cur.fetchall()
     except Exception as e:
