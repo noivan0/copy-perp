@@ -303,6 +303,8 @@ class OnboardRequest(BaseModel):
     @field_validator("traders")
     @classmethod
     def validate_traders_count(cls, v):
+        if v is not None and len(v) == 0:
+            raise ValueError("traders list must not be empty")
         if v is not None and len(v) > 20:
             raise ValueError(f"traders list exceeds maximum of 20 (got {len(v)})")
         return v
@@ -1519,7 +1521,7 @@ async def get_bind_request(follower_address: str = Query(...)):
 
     agent_wallet = os.getenv("AGENT_WALLET", "")
     if not agent_wallet:
-        raise HTTPException(500, "AGENT_WALLET 미설정 — 서버 환경변수를 확인하세요")
+        raise HTTPException(500, {"error": "AGENT_WALLET not configured — contact server admin", "code": "CONFIG_ERROR"})
 
     # follower_address 기본 검증
     if follower_address:
@@ -1582,7 +1584,7 @@ async def submit_bind(body: dict):
     agent_wallet = os.getenv("AGENT_WALLET", "")
 
     if not all([follower_address, signature, timestamp, agent_wallet]):
-        raise HTTPException(400, {"error": "필수 파라미터 누락: follower_address, signature, timestamp, AGENT_WALLET", "code": "MISSING_PARAMS"})
+        raise HTTPException(400, {"error": "Missing required fields: follower_address, signature, timestamp, agent_wallet", "code": "MISSING_PARAMS"})
 
     # follower_address 검증
     if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
