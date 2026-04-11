@@ -109,7 +109,7 @@ async def get_ranked_traders(
     from api.main import _check_rate_limit, RATE_LIMIT_POLICY
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"ranked:{client_ip}", *RATE_LIMIT_POLICY["ranked"]):
-        raise HTTPException(429, {"error": "요청 한도를 초과했습니다", "code": "RATE_LIMIT_EXCEEDED"})
+        raise HTTPException(429, {"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"})
     # DB 우선, 없으면 API
     rows = await _fetch_rows_from_db(200)
     source = "db"
@@ -118,7 +118,7 @@ async def get_ranked_traders(
         source = "api"
 
     if not rows:
-        return {"data": [], "count": 0, "source": "empty", "message": "트레이더 데이터 없음"}
+        return {"data": [], "count": 0, "source": "empty", "message": "No trader data available"}
 
     ranked = [_leaderboard_row_to_crs(r) for r in rows]
 
@@ -221,7 +221,7 @@ async def sync_mainnet_traders(request: Request):
         os.environ['NETWORK'] = saved_network
 
     if not lb:
-        return {"synced": 0, "error": "mainnet 데이터 없음"}
+        return {"synced": 0, "error": "No mainnet data available"}
 
     from api.main import get_db
     db = await get_db()

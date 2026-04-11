@@ -107,11 +107,11 @@ async def backtest_portfolio(
         qualified.sort(key=lambda x: x["crs"].crs, reverse=True)
         addrs = [x["crs"].address for x in qualified[:5]]
         if not addrs:
-            return {"error": "조건 충족 트레이더 없음. traders 파라미터로 직접 지정하세요."}
+            return {"error": "No traders meet the criteria. Specify traders parameter directly."}
     else:
         addrs = [a.strip() for a in traders.split(",") if a.strip()]
     if not addrs:
-        return {"error": "트레이더 주소를 입력하세요"}
+        return {"error": "Please provide a trader address"}
 
     try:
         from api.main import get_db

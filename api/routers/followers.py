@@ -59,28 +59,28 @@ RISK_PRESETS = {
         "traders": TRADER_S + TRADER_A[:1],          # S 1명 + A ROI 1위
         "copy_ratio": 0.10,
         "max_position_usdc": 300.0,
-        "description": "기본 설정. S등급 1명 + A등급 최상위 1명. 월 예상 +13.4%",
+        "description": "Default: 1 S-grade + top A-grade. Est. +13.4%/mo",
         "expected_monthly_roi_pct": 13.4,
     },
     "conservative": {
         "traders": TRADER_S[:1],                     # S 1명만
         "copy_ratio": 0.10,
         "max_position_usdc": 100.0,
-        "description": "보수적. 가장 신뢰도 높은 트레이더 1명만. 월 예상 +7.8%",
+        "description": "Conservative: top 1 highest-reliability trader. Est. +7.8%/mo",
         "expected_monthly_roi_pct": 7.8,
     },
     "balanced": {
         "traders": TRADER_S + TRADER_A[:3],          # S 1명 + A 상위 3명
         "copy_ratio": 0.07,
         "max_position_usdc": 300.0,
-        "description": "균형. S등급 1명 + A등급 상위 3명. 월 예상 +18.3%",
+        "description": "Balanced: 1 S-grade + top 3 A-grade. Est. +18.3%/mo",
         "expected_monthly_roi_pct": 18.3,
     },
     "aggressive": {
         "traders": TRADER_S + TRADER_A,              # S 1명 + A 전체 8명
         "copy_ratio": 0.07,
         "max_position_usdc": 500.0,
-        "description": "적극적. S+A등급 전체 9명. 월 예상 +33.6%",
+        "description": "Aggressive: all S+A grade (9 traders). Est. +33.6%/mo",
         "expected_monthly_roi_pct": 33.6,
     },
 }

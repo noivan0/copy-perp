@@ -151,7 +151,7 @@ async def get_pnl_history(
         raise
     except Exception as e:
         logger.error(f"[PnL] history 조회 오류: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "PnL 이력 조회 실패", "code": "INTERNAL_SERVER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Failed to retrieve PnL history", "code": "INTERNAL_SERVER_ERROR"})
 
 
 @router.get("/{follower_address}/by-trader")
@@ -192,7 +192,7 @@ async def get_pnl_by_trader(follower_address: str) -> dict:
         raise
     except Exception as e:
         logger.error(f"[PnL] by-trader 조회 오류: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "트레이더별 PnL 조회 실패", "code": "INTERNAL_SERVER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Failed to retrieve PnL by trader", "code": "INTERNAL_SERVER_ERROR"})
 
 
 @router.get("/{follower_address}/trades")
@@ -209,7 +209,7 @@ async def get_pnl_trades(
     if status and status not in ("filled", "pending", "failed"):
         raise HTTPException(
             status_code=400,
-            detail={"error": "status는 filled | pending | failed 중 하나여야 합니다", "code": "INVALID_STATUS"}
+            detail={"error": "status must be one of: filled, pending, failed", "code": "INVALID_STATUS"}
         )
     db = _get_db()
     try:
@@ -248,7 +248,7 @@ async def get_pnl_trades(
         raise
     except Exception as e:
         logger.error(f"[PnL] trades 조회 오류: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "거래 내역 조회 실패", "code": "INTERNAL_SERVER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Failed to retrieve trade history", "code": "INTERNAL_SERVER_ERROR"})
 
 
 @router.post("/{follower_address}/snapshot")
@@ -329,4 +329,4 @@ async def snapshot_pnl(
         raise
     except Exception as e:
         logger.error(f"[PnL] snapshot 오류: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "PnL 스냅샷 저장 실패", "code": "INTERNAL_SERVER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Failed to save PnL snapshot", "code": "INTERNAL_SERVER_ERROR"})

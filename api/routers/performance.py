@@ -277,7 +277,7 @@ async def get_equity_chart(
         if not chart:
             return {
                 "follower_address": follower_address,
-                "message": "스냅샷 없음 — 거래 체결 시 자동 기록됩니다",
+                "message": "No snapshot available — recorded automatically on trade fill",
                 "chart": [],
             }
 
@@ -323,7 +323,7 @@ async def get_daily_stats(
         rows.reverse()  # 오름차순
 
         if not rows:
-            return {"follower_address": follower_address, "message": "일별 집계 없음", "days": []}
+            return {"follower_address": follower_address, "message": "No daily aggregation available", "days": []}
 
         # Sharpe 계산
         rois = [r["daily_roi_pct"] for r in rows]

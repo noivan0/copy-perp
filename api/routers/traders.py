@@ -113,7 +113,7 @@ async def register_trader(body: TraderRegister, background_tasks: BackgroundTask
         logger.error(f"[{req_id}] 트레이더 등록 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "트레이더 등록에 실패했습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Failed to register trader", "code": "INTERNAL_SERVER_ERROR"}
         )
 
     if body.address not in _monitors:
@@ -138,7 +138,7 @@ async def get_trader(address: str, request: Request):
     if not _is_valid_solana_address(address):
         raise HTTPException(
             status_code=400,
-            detail={"error": "유효하지 않은 Solana 주소", "code": "INVALID_ADDRESS"}
+            detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
         )
 
     try:
@@ -149,7 +149,7 @@ async def get_trader(address: str, request: Request):
         logger.error(f"[{req_id}] 트레이더 조회 DB 오류: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "트레이더 정보를 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Failed to load trader info", "code": "INTERNAL_SERVER_ERROR"}
         )
 
     if row:
@@ -169,7 +169,7 @@ async def get_trader(address: str, request: Request):
 
     raise HTTPException(
         status_code=404,
-        detail={"error": "트레이더를 찾을 수 없습니다", "code": "NOT_FOUND"}
+        detail={"error": "Trader not found", "code": "NOT_FOUND"}
     )
 
 
@@ -181,7 +181,7 @@ async def get_trader_trades(address: str, limit: int = 50, request: Request = No
     if limit < 1 or limit > 500:
         raise HTTPException(
             status_code=400,
-            detail={"error": "limit은 1~500 범위여야 합니다", "code": "INVALID_LIMIT"}
+            detail={"error": "limit must be between 1 and 500", "code": "INVALID_LIMIT"}
         )
     try:
         async with _db.execute(
@@ -194,7 +194,7 @@ async def get_trader_trades(address: str, limit: int = 50, request: Request = No
         logger.error(f"[{req_id}] 트레이더 거래 내역 조회 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "거래 내역을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Failed to load trade history", "code": "INTERNAL_SERVER_ERROR"}
         )
 
 
@@ -209,5 +209,5 @@ async def get_trader_followers(address: str, request: Request = None):
         logger.error(f"[{req_id}] 팔로워 목록 조회 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "팔로워 목록을 불러올 수 없습니다", "code": "INTERNAL_SERVER_ERROR"}
+            detail={"error": "Failed to load follower list", "code": "INTERNAL_SERVER_ERROR"}
         )
