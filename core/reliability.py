@@ -754,7 +754,12 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
             else:
                 _est_hold_min = 240.0  # 저빈도 스윙
 
-        if _db_wr is not None and float(_db_wr) > 0:
+        # win_rate=0.0 이어도 win_count+lose_count > 0 이면 실제 데이터 존재
+        _has_real_wr = (
+            _db_wr is not None and
+            (_total_from_wl > 0 or float(_db_wr) > 0)  # 거래 이력 존재
+        )
+        if _has_real_wr:
             # DB win_rate가 0~100 스케일이면 0~1로 정규화
             wr_norm = float(_db_wr) / 100.0 if float(_db_wr) > 1 else float(_db_wr)
             stats = {
