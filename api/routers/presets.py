@@ -86,24 +86,41 @@ async def get_preset_detail(
     sim     = get_preset_sim_pnl(name, capital=capital, db_path=_DB_PATH)
     traders = resolve_traders(name, db_path=_DB_PATH)
 
-    # Live DB 기반 traders 재계산 (FALLBACK 주소 대신 실제 DB 트레이더 사용)
+    # Live ranked 기반 traders 재계산 (CRS grade 사용 — traders 테이블엔 grade 컬럼 없음)
     try:
-        from api.deps import _get_db_direct
-        _db = _get_db_direct()
+        from api.routers.ranked import _leaderboard_row_to_crs, _ranked_cache
+        from api.main import get_db as _get_db
+        _db = await _get_db()
         if _db:
-            grade_filter = preset.get("grade_filter", ["S","A"])
+            from db.database import get_leaderboard as _get_lb
+            grade_filter = preset.get("grade_filter", ["S", "A"])
             n = preset.get("n_traders", 2)
-            placeholders = ",".join("?" * len(grade_filter))
-            async with _db.execute(
-                f"SELECT address FROM traders WHERE active=1 AND grade IN ({placeholders}) ORDER BY pnl_30d DESC NULLS LAST LIMIT ?",
-                (*grade_filter, n),
-            ) as cur:
-                rows = await cur.fetchall()
-            live_addrs = [row["address"] for row in rows]
+            _grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
+            leaders = await _get_lb(_db, 200)
+            ranked = [_leaderboard_row_to_crs(dict(r)) for r in leaders]
+            # grade_filter 우선, 부족 시 S→A→B→C fallback
+            _by_grade: dict = {}
+            for t in ranked:
+                g = t.get("grade", "D")
+                if not t.get("disqualified", False):
+                    _by_grade.setdefault(g, []).append(t["address"])
+            live_addrs: list = []
+            for g in grade_filter:
+                live_addrs.extend(_by_grade.get(g, []))
+            if len(live_addrs) < n:
+                for fb_g in ["S", "A", "B", "C"]:
+                    if fb_g not in grade_filter:
+                        for addr in _by_grade.get(fb_g, []):
+                            if addr not in live_addrs:
+                                live_addrs.append(addr)
+                            if len(live_addrs) >= n:
+                                break
+                    if len(live_addrs) >= n:
+                        break
             if live_addrs:
-                traders = live_addrs
+                traders = live_addrs[:n]
     except Exception as _e:
-        logger.warning(f"preset/{name} live traders 재계산 실패: {_e}")
+        logger.warning(f"preset/{name} live traders 재계산 실패 (FALLBACK 유지): {_e}")
 
     return {**preset, "traders": traders, "sim_pnl": {**sim, "capital": capital}}
 
