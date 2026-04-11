@@ -10,20 +10,34 @@ DB 초기화 및 CRUD — SQLite + aiosqlite
 - fee_records: Builder Code 수수료 기록
 """
 
-import aiosqlite
 import os
 from typing import Optional
 
+# ── DB 백엔드 선택 ──────────────────────────────────────────────────────────
+# TURSO_URL 환경변수 있으면 Turso(libSQL 클라우드), 없으면 로컬 SQLite
+TURSO_URL   = os.getenv("TURSO_URL", "")
+TURSO_TOKEN = os.getenv("TURSO_TOKEN", "")
+_USE_TURSO  = bool(TURSO_URL and TURSO_TOKEN)
+
+if _USE_TURSO:
+    from db.turso_adapter import TursoConnection as _DbConn
+    from db.turso_adapter import TursoConnection
+    logger.info(f"[DB] Turso 모드: {TURSO_URL[:50]}")
+else:
+    import aiosqlite
+    _DbConn = None  # aiosqlite 직접 사용
+    logger.info("[DB] 로컬 SQLite 모드")
+
 DB_PATH = os.getenv("DB_PATH", "copy_perp.db")
 
-# DB 디렉토리 자동 생성 (Render /var/data 등 마운트 경로 대비)
-_db_dir = os.path.dirname(os.path.abspath(DB_PATH))
-if _db_dir and not os.path.exists(_db_dir):
-    try:
-        os.makedirs(_db_dir, exist_ok=True)
-    except OSError:
-        # 쓰기 권한 없으면 /tmp로 fallback
-        DB_PATH = "/tmp/copy_perp.db"
+# DB 디렉토리 자동 생성 (로컬 SQLite 전용)
+if not _USE_TURSO:
+    _db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    if _db_dir and not os.path.exists(_db_dir):
+        try:
+            os.makedirs(_db_dir, exist_ok=True)
+        except OSError:
+            DB_PATH = "/tmp/copy_perp.db"
 
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS traders (
@@ -166,13 +180,18 @@ CREATE INDEX IF NOT EXISTS idx_crs_history_date ON trader_crs_history(computed_a
 """
 
 
-async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
-    conn = await aiosqlite.connect(db_path, timeout=30)  # workers=2 동시 쓰기 시 locked 방지
-    conn.row_factory = aiosqlite.Row
-    # WAL 모드: 동시 읽기/쓰기 성능 개선 (workers=2 필수)
-    await conn.execute("PRAGMA journal_mode=WAL")
-    await conn.execute("PRAGMA synchronous=NORMAL")
-    await conn.execute("PRAGMA busy_timeout=30000")  # 30초 락 대기 (즉시 에러 방지)
+async def init_db(db_path: str = DB_PATH):
+    """DB 초기화 — TURSO_URL 있으면 Turso, 없으면 로컬 SQLite"""
+    if _USE_TURSO:
+        conn = await TursoConnection.connect()
+        # Turso는 PRAGMA 불필요 (클라우드 관리형)
+    else:
+        conn = await aiosqlite.connect(db_path, timeout=30)
+        conn.row_factory = aiosqlite.Row
+        # WAL 모드: 동시 읽기/쓰기 성능 개선
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA busy_timeout=30000")
     await conn.executescript(CREATE_SQL)
     # 마이그레이션: 기존 DB에 누락된 컬럼 추가
     _migrations = [
