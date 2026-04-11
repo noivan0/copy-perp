@@ -36,10 +36,9 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 60회
-    from api.main import _check_rate_limit
-    client_ip = _get_client_ip(request)
-    from api.main import RATE_LIMIT_POLICY, _get_client_ip
-    if not _check_rate_limit(f"traders:{client_ip}", *RATE_LIMIT_POLICY["traders"]):
+    from api.utils import get_client_ip as _gcip, check_rate_limit as _crl
+    client_ip = _gcip(request)
+    if not _crl(f"traders:{client_ip}", 60, 60):
         raise HTTPException(
             status_code=429,
             detail={"error": "Rate limit exceeded", "code": "RATE_LIMIT_EXCEEDED"}

@@ -15,17 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from core.reliability import compute_crs, GRADE, MAX_COPY_RATIO
 
 
-def _get_client_ip(request: Request) -> str:
-    """실제 클라이언트 IP 추출 (ranked 라우터 로컬 정의 — main.py 순환 임포트 방지)"""
-    import os
-    trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
-    client_host = request.client.host if request.client else "unknown"
-    if not trusted_proxy:
-        return client_host
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return client_host
+from api.utils import get_client_ip as _get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +148,9 @@ async def get_ranked_traders(
     - exclude_disqualified: 하드 필터 제외 트레이더 숨김 (기본 true)
     - Rate limit: IP당 분당 30회
     """
-    from api.main import _check_rate_limit, RATE_LIMIT_POLICY
+    from api.utils import check_rate_limit as _crl
     client_ip = _get_client_ip(request)
-    if not _check_rate_limit(f"ranked:{client_ip}", *RATE_LIMIT_POLICY["ranked"]):
+    if not _crl(f"ranked:{client_ip}", 30, 60):
         raise HTTPException(429, {"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"})
 
     # ── 60초 캐시 확인 ───────────────────────────────────
@@ -267,7 +257,7 @@ async def get_ranked_summary():
 @router.post("/sync-mainnet")
 async def sync_mainnet_traders(request: Request):
     """Mainnet 리더보드를 DB에 동기화 (IP당 분당 2회)"""
-    from api.main import _check_rate_limit
+    from api.utils import check_rate_limit as _crl
     client_ip = _get_client_ip(request)
     if not _check_rate_limit(f"sync_mainnet:{client_ip}", max_calls=2, window_sec=60):
         raise HTTPException(429, "Too many requests")

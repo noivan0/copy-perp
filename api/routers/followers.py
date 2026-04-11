@@ -547,9 +547,9 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     req_id = getattr(request.state, "request_id", None) or str(_uuid.uuid4())[:8]
 
     # ── Rate Limit 체크 ─────────────────────────────────
-    from api.main import RATE_LIMIT_POLICY, _require_rate_limit, _get_client_ip
-    client_ip = _get_client_ip(request)
-    _require_rate_limit(f"onboard:{client_ip}", request=request)
+    from api.utils import get_client_ip as _gcip, require_rate_limit as _rrl
+    client_ip = _gcip(request)
+    _rrl(f"onboard:{client_ip}", 10, 60)
 
     # ── risk_mode → RISK_PRESETS 적용 (copy_ratio/traders/max_position 미지정 시) ──
     _risk_preset = RISK_PRESETS.get(body.risk_mode or "default", RISK_PRESETS["default"])

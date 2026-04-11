@@ -91,11 +91,10 @@ async def approve_builder_code(body: ApproveReq, request: Request):
     성공 시 DB builder_code_approved = 1 업데이트.
     Rate limit: IP당 분당 3회
     """
-    from api.main import _check_rate_limit
-    client_ip = _get_client_ip(request)
-    from api.main import RATE_LIMIT_POLICY, _get_client_ip
-    if not _check_rate_limit(f"builder_approve:{client_ip}", *RATE_LIMIT_POLICY["builder_approve"]):
-        raise HTTPException(429, "Too many requests")
+    from api.utils import get_client_ip as _gcip, check_rate_limit as _crl
+    client_ip = _gcip(request)
+    if not _crl(f"builder_approve:{client_ip}", 3, 60):
+        raise HTTPException(429, {"error": "Rate limit exceeded", "code": "RATE_LIMIT_EXCEEDED"})
 
     result = approve(
         account      = body.account,
