@@ -25,7 +25,7 @@ import base58 as _base58
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request, Query
 from pydantic import BaseModel, field_validator
 
-from core.strategies import STRATEGY_PRESETS
+# STRATEGY_PRESETS: 로컬 정의로 대체됨 (line ~91) — core.strategies import 불필요
 
 logger = logging.getLogger(__name__)
 
