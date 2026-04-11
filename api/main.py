@@ -1160,6 +1160,10 @@ async def get_stats(request: Request) -> dict:
         stats["builder_fee_total_usdc"] = 0.0
         stats["builder_fee_count"] = 0
     # 응답 표준화
+    # 편의 alias 추가 (하위호환)
+    stats["total_traders"] = stats.get("active_traders", 0)
+    stats["total_followers"] = stats.get("active_followers", 0)
+    stats["signals_count"] = len(_get_pc())  # 시그널 가능한 심볼 수
     stats["ok"] = True
     stats["version"] = APP_VERSION
     stats["network"] = os.getenv("NETWORK", "testnet")
