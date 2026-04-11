@@ -1529,9 +1529,13 @@ async def get_bind_request(follower_address: str = Query(...)):
     timestamp = int(_time.time() * 1000)
 
     # Pacifica sign_message 방식: sort_json_keys({header, "data": payload}) → compact JSON
+    # expiry_window: 60초 (유저가 팝업 확인 + 서명 클릭까지 충분한 시간)
+    # 5000ms(5초)는 UI 표시 → 유저 서명 완료 전에 만료됨
+    EXPIRY_WINDOW = 60000
+
     header = {
         "timestamp": timestamp,
-        "expiry_window": 5000,
+        "expiry_window": EXPIRY_WINDOW,
         "type": "bind_agent_wallet",
     }
     payload = {"agent_wallet": agent_wallet}
@@ -1551,7 +1555,7 @@ async def get_bind_request(follower_address: str = Query(...)):
         "message": message,            # 하위 호환
         "agent_wallet": agent_wallet,  # 서버 Agent 공개키
         "timestamp": timestamp,
-        "expiry_window": 5000,
+        "expiry_window": EXPIRY_WINDOW,
         "follower_address": follower_address,
     }
 
@@ -1574,7 +1578,7 @@ async def submit_bind(body: dict):
     follower_address = body.get("follower_address", "")
     signature = body.get("signature", "")
     timestamp = body.get("timestamp")
-    expiry_window = body.get("expiry_window", 5000)
+    expiry_window = body.get("expiry_window", 60000)  # 60초 기본값 (유저 서명 대기 시간)
     agent_wallet = os.getenv("AGENT_WALLET", "")
 
     if not all([follower_address, signature, timestamp, agent_wallet]):
