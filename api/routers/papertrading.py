@@ -95,7 +95,7 @@ async def papertrading_detail(strategy: str):
     if strategy not in STRATEGY_NAMES:
         raise HTTPException(
             status_code=404,
-            detail=f"전략 '{strategy}'를 찾을 수 없습니다. 유효값: {STRATEGY_NAMES}"
+            detail={"error": f"Strategy '{strategy}' not found. Valid: {STRATEGY_NAMES}", "code": "NOT_FOUND"}
         )
 
     p = _load_portfolio(strategy)
@@ -129,7 +129,7 @@ async def papertrading_detail(strategy: str):
 async def papertrading_equity_curve(strategy: str):
     """Equity curve 조회 (차트용)"""
     if strategy not in STRATEGY_NAMES:
-        raise HTTPException(status_code=404, detail=f"전략 없음: {strategy}")
+        raise HTTPException(status_code=404, detail={"error": f"Strategy not found: {strategy}", "code": "NOT_FOUND"})
 
     path = os.path.join(_BASE, f"strategy_{strategy}", "portfolio.json")
     if not os.path.exists(path):

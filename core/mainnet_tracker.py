@@ -223,13 +223,13 @@ def collect_once(db_path=DEFAULT_DB_PATH):
 
 def get_accumulated_report(db_path=DEFAULT_DB_PATH, days=30):
     if not os.path.exists(db_path):
-        return {"error": "데이터 없음. collect_once() 먼저 실행하세요."}
+        return {"error": "No data. Run collect_once() first."}
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     r = conn.execute("SELECT MIN(collected_at),MAX(collected_at),COUNT(DISTINCT collected_at) FROM trader_snapshots").fetchone()
     if not r or not r[0]:
         conn.close()
-        return {"error": "데이터 없음"}
+        return {"error": "No data available."}
     first_ts, last_ts, n_col = r[0], r[1], r[2]
     duration_days = (last_ts - first_ts) / 86400 if last_ts > first_ts else 0
 

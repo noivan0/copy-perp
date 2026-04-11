@@ -82,7 +82,7 @@ class AlertManager:
             logger.error(msg)
             _recent_alerts.append((time.time(), msg))
             if ALERT_BOT_TOKEN:
-                _send_telegram(f"<b>Copy Perp 주문 실패</b>\n팔로워: {follower[:12]}...\n심볼: {symbol} {side}\n연속 실패: {count}회\n오류: {error[:100]}")
+                _send_telegram(f"<b>Copy Perp Order Failed</b>\nFollower: {follower[:12]}...\nSymbol: {symbol} {side}\n연속 실패: {count}회\n오류: {error[:100]}")
         else:
             logger.warning(msg)
 
@@ -94,17 +94,17 @@ class AlertManager:
 
     def monitor_disconnected(self, trader: str, reason: str):
         """모니터 연결 끊김 경고"""
-        msg = f"⚠️ 모니터 연결 끊김 [{trader[:12]}]: {reason}"
+        msg = f"⚠️ Monitor disconnected [{trader[:12]}]: {reason}"
         self._log_event("warning", "monitor", msg)
         if not _is_duplicate(msg):
             logger.warning(msg)
             _recent_alerts.append((time.time(), msg))
             if ALERT_BOT_TOKEN:
-                _send_telegram(f"<b>Copy Perp 모니터 연결 끊김</b>\n트레이더: {trader[:16]}...\n원인: {reason[:100]}")
+                _send_telegram(f"<b>Copy Perp Monitor Disconnected</b>\nTrader: {trader[:16]}...\nReason: {reason[:100]}")
 
     def monitor_restored(self, trader: str):
         """모니터 복원 알림"""
-        msg = f"✅ 모니터 복원 [{trader[:12]}]"
+        msg = f"✅ Monitor restored [{trader[:12]}]"
         self._log_event("info", "monitor", msg)
         logger.info(msg)
 
@@ -114,7 +114,7 @@ class AlertManager:
         self._log_event("info", "server", msg)
         logger.info(msg)
         if ALERT_BOT_TOKEN:
-            _send_telegram(f"<b>Copy Perp 시작</b>\nNETWORK: {network}\n모니터: {monitors}개")
+            _send_telegram(f"<b>Copy Perp Started</b>\nNETWORK: {network}\nMonitors: {monitors}")
 
     def get_recent_events(self, limit: int = 50, level: Optional[str] = None) -> list:
         """최근 이벤트 조회"""

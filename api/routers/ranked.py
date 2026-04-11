@@ -314,7 +314,7 @@ async def get_ranked_trader_detail(address: str):
             logger.debug(f"무시된 예외: {e}")
 
     if not row:
-        raise HTTPException(404, f"트레이더를 찾을 수 없습니다: {address[:12]}...")
+        raise HTTPException(404, {"error": f"Trader not found: {address[:12]}...", "code": "NOT_FOUND"})
 
     crs_data = _leaderboard_row_to_crs(row)
 

@@ -620,7 +620,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
 
     result = {
         "follower": follower,
-        "builder_code_approved": True,   # noivan Builder Code 플랫폼 레벨 승인 완료 (2026-03-18)
+        "builder_code_approved": True,   # noivan Builder Code platform-level approval done (2026-03-18)
         "followers_registered": [],
         "monitors_started": [],
         "errors": [],
@@ -828,12 +828,12 @@ async def list_strategies() -> dict:
         "strategies":   strategies_out,
         "default":      "default",
         "strategy_count": len(strategies_out),
-        "data_source":  "Hyperliquid Mainnet 리더보드 (2026-03-19 기준)",
+        "data_source":  "Hyperliquid Mainnet leaderboard (2026-03-19 snapshot)",
         "realism_factor": 0.82,
         "note":         (
-            "expected_monthly_pnl은 mainnet 실데이터 기반 추정값입니다. "
-            "슬리피지(18%) 및 수수료(0.15%/trade)를 반영한 보수적 수치입니다. "
-            "미래 수익을 보장하지 않습니다."
+            "expected_monthly_pnl is estimated from mainnet real data. "
+            "Slippage (18%) and fees (0.15%/trade) are factored in (conservative). "
+            "Past performance does not guarantee future returns."
         ),
     }
 
@@ -843,7 +843,7 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
     """팔로워 목록 조회 — follower_address로 본인 데이터만 조회"""
     from api.deps import _get_db_direct as _gdb
     if not _gdb():
-        raise HTTPException(503, "DB 미초기화")
+        raise HTTPException(503, "DB not initialized")
     # 빈 문자열 조기 반환 (DB 전체 쿼리 방지)
     if follower_address is not None and follower_address.strip() == "":
         return {"data": [], "count": 0}
@@ -1015,10 +1015,10 @@ async def remove_follower(
 async def get_risk_presets():
     """사용 가능한 리스크 프리셋 목록 반환 — 프론트엔드 시나리오 선택 UI용"""
     _labels = {
-        "default":      "기본",
-        "conservative": "보수적",
-        "balanced":     "균형",
-        "aggressive":   "적극적",
+        "default":      "Default",
+        "conservative": "Conservative",
+        "balanced":     "Balanced",
+        "aggressive":   "Aggressive",
     }
     return {
         "presets": [
@@ -1175,10 +1175,10 @@ async def get_paper_trading():
         "total_paper_volume":   round(total_vol, 2),
         "builder_fee_simulated":round(total_vol * 0.001, 4),
         "engine_script":        "scripts/paper_trading_4x.py",
-        "data_source":          "Mainnet 실트레이더 포지션 추적 (codetabs 프록시, 60초 폴링)",
+        "data_source":          "Mainnet trader position tracking (60s polling)",
         "note": (
-            "페이퍼트레이딩: 실제 주문 없이 트레이더 포지션 변화를 감지해 "
-            "가상 진입/청산 시뮬레이션. 슬리피지 0.05% + taker fee 0.06% 반영."
+            "Paper trading: detects position changes without placing real orders. "
+            "Virtual entry/exit simulation with 0.05% slippage + 0.06% taker fee."
         ),
     }
 

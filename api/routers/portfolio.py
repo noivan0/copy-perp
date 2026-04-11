@@ -160,7 +160,7 @@ async def get_follower_performance(
 ):
     """팔로워 PnL 리포트 — Sharpe, MDD, by_trader/symbol, daily equity curve"""
     if not _is_valid_solana_address(address):
-        raise HTTPException(status_code=400, detail="유효하지 않은 Solana 주소입니다")
+        raise HTTPException(status_code=400, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
     try:
         from api.main import get_db
         from core.stats import compute_follower_pnl_report
@@ -180,7 +180,7 @@ async def get_equity_curve(
 ):
     """Equity Curve 조회 — snapshot 우선, 없으면 실시간 계산"""
     if not _is_valid_solana_address(address):
-        raise HTTPException(status_code=400, detail="유효하지 않은 Solana 주소입니다")
+        raise HTTPException(status_code=400, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
     try:
         from api.main import get_db
         from core.stats import compute_follower_pnl_report
