@@ -192,7 +192,7 @@ async def get_trader(address: str, request: Request):
 
 
 @router.get("/{address}/trades")
-async def get_trader_trades(address: str, limit: int = 50, request: Request = None):
+async def get_trader_trades(address: str, limit: int = 50, offset: int = 0, request: Request = None):
     from api.deps import _get_db_direct
     _db = _get_db_direct()
     req_id = getattr(request.state, "request_id", "??") if request else "??"
@@ -202,13 +202,18 @@ async def get_trader_trades(address: str, limit: int = 50, request: Request = No
             status_code=400,
             detail={"error": "limit must be between 1 and 500", "code": "INVALID_LIMIT"}
         )
+    if offset < 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "offset must be >= 0", "code": "INVALID_OFFSET"}
+        )
     try:
         async with _db.execute(
-            "SELECT * FROM copy_trades WHERE trader_address = ? ORDER BY created_at DESC LIMIT ?",
-            (address, limit)
+            "SELECT * FROM copy_trades WHERE trader_address = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (address, limit, offset)
         ) as cur:
             rows = await cur.fetchall()
-        return {"data": [dict(r) for r in rows], "count": len(rows)}
+        return {"data": [dict(r) for r in rows], "count": len(rows), "limit": limit, "offset": offset}
     except Exception as e:
         logger.error(f"[{req_id}] 트레이더 거래 내역 조회 실패: {e}", exc_info=True)
         raise HTTPException(
