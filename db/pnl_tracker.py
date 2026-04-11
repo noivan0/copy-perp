@@ -16,8 +16,11 @@ PnL 계산 방식:
 import aiosqlite
 import time
 import logging
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime, timezone
+
+# DB 타입 alias: aiosqlite.Connection 또는 TursoDb (core.db) — 런타임 호환
+DbConn = Any
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +118,7 @@ MIGRATIONS = [
 ]
 
 
-async def apply_migrations(conn: aiosqlite.Connection):
+async def apply_migrations(conn: DbConn):
     """PnL Tracker 마이그레이션 적용"""
     for sql in MIGRATIONS:
         try:
@@ -129,7 +132,7 @@ async def apply_migrations(conn: aiosqlite.Connection):
 
 # ── 포지션 오픈/업데이트 ────────────────────────────────────
 async def upsert_position(
-    conn: aiosqlite.Connection,
+    conn: DbConn,
     follower: str,
     trader: str,
     symbol: str,
@@ -244,7 +247,7 @@ async def _handle_direction_change(
 
 # ── 포지션 청산 (close_position) ─────────────────────────────
 async def close_position(
-    conn: aiosqlite.Connection,
+    conn: DbConn,
     follower: str,
     trader: str,
     symbol: str,
@@ -329,7 +332,7 @@ async def close_position(
 
 # ── 미실현 PnL 갱신 ─────────────────────────────────────────
 async def update_unrealized(
-    conn: aiosqlite.Connection,
+    conn: DbConn,
     follower: str,
     symbol: str,
     mark_price: float,
@@ -354,7 +357,7 @@ async def update_unrealized(
 
 # ── 자산 스냅샷 ──────────────────────────────────────────────
 async def take_equity_snapshot(
-    conn: aiosqlite.Connection,
+    conn: DbConn,
     follower: str,
     equity_usdc: float,
 ):
@@ -400,7 +403,7 @@ async def take_equity_snapshot(
 
 
 # ── 일별 집계 ────────────────────────────────────────────────
-async def aggregate_daily(conn: aiosqlite.Connection, follower: str):
+async def aggregate_daily(conn: DbConn, follower: str):
     """오늘 KST 기준 daily_stats 집계"""
     from datetime import date
     today_kst = date.today().isoformat()  # KST (서버 TZ=Asia/Seoul)
@@ -459,7 +462,7 @@ async def aggregate_daily(conn: aiosqlite.Connection, follower: str):
 
 
 # ── 성과 조회 ────────────────────────────────────────────────
-async def get_performance_summary(conn: aiosqlite.Connection, follower: str) -> dict:
+async def get_performance_summary(conn: DbConn, follower: str) -> dict:
     """팔로워 전체 성과 요약"""
 
     # 누적 실현 PnL
@@ -510,7 +513,7 @@ async def get_performance_summary(conn: aiosqlite.Connection, follower: str) -> 
     }
 
 
-async def get_pnl_history(conn: aiosqlite.Connection, follower: str, limit: int = 50) -> list:
+async def get_pnl_history(conn: DbConn, follower: str, limit: int = 50) -> list:
     """최근 실현 PnL 이력"""
     async with conn.execute(
         """SELECT symbol, direction, size, entry_price, exit_price,
@@ -529,7 +532,7 @@ async def get_pnl_history(conn: aiosqlite.Connection, follower: str, limit: int 
     return result
 
 
-async def get_equity_chart(conn: aiosqlite.Connection, follower: str, days: int = 7) -> list:
+async def get_equity_chart(conn: DbConn, follower: str, days: int = 7) -> list:
     """자산 추이 차트 데이터"""
     since_ms = int(time.time() * 1000) - days * 86400 * 1000
     async with conn.execute(
