@@ -1744,7 +1744,7 @@ async def health_detailed(request: Request) -> dict:
     except Exception:
         db_size = None
 
-    last_poll = _dc_mod._last_poll_ts
+    last_poll = getattr(_dc_mod, "_last_updated", None) or getattr(_dc_mod, "_last_poll_ts", None) or None
 
     return {
         "status": "ok",
