@@ -162,6 +162,10 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE traders ADD COLUMN last_synced INTEGER DEFAULT 0",
         "ALTER TABLE traders ADD COLUMN tier TEXT DEFAULT 'C'",
         "ALTER TABLE traders ADD COLUMN sharpe REAL DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN roi_30d REAL DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN roi_7d REAL DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN profit_factor REAL DEFAULT 0",
+        "ALTER TABLE traders ADD COLUMN total_trades INTEGER DEFAULT 0",
         # followers 컬럼
         "ALTER TABLE followers ADD COLUMN builder_code_approved INTEGER DEFAULT 0",
         "ALTER TABLE followers ADD COLUMN privy_user_id TEXT",

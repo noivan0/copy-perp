@@ -48,18 +48,33 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
         d["roi_30d"] = result.raw.get("roi_30d")
         # trade_stats: trades/history 없을 때 raw 기반 간이 통계로 채움
         # (N+1 API 호출 없이 목록에서 기본 필드 제공)
+        # trade_stats: DB row 직접 필드 우선, 없으면 raw 기반 간이 통계
         if not d.get("trade_stats"):
-            raw_data = result.raw or {}
-            cons = int(raw_data.get("consistency", 0))
-            roi = float(raw_data.get("roi_30d") or 0)
-            # consistency 1~5 스케일 → 간이 win_rate 추정 (데이터 없을 때 표시용)
-            # 실제 trade_stats는 개별 트레이더 상세 조회 (/traders/ranked/{address})에서 제공
+            raw_data  = result.raw or {}
+            # DB row에서 직접 읽기 (leaderboard sync 시 저장된 값)
+            win_rate_val  = row.get("win_rate")   # DB에서 직접
+            win_count     = row.get("win_count")
+            lose_count    = row.get("lose_count")
+            total_trades  = row.get("total_trades") or (
+                (int(win_count or 0) + int(lose_count or 0)) if win_count is not None else None
+            )
+            profit_factor = row.get("profit_factor")
+            roi_val       = row.get("roi_30d") or raw_data.get("roi_30d")
+            # win_rate: DB값 우선, 없으면 win/lose count로 계산
+            if win_rate_val is None and win_count is not None and total_trades:
+                try:
+                    win_rate_val = round(int(win_count) / int(total_trades) * 100, 1)
+                except (ZeroDivisionError, TypeError):
+                    win_rate_val = None
             d["trade_stats"] = {
-                "win_rate": None,        # 실거래 데이터 필요 — 상세 API에서 확인
-                "trade_count": None,     # 실거래 데이터 필요
-                "roi_30d": round(roi, 4) if roi else None,
-                "consistency_score": cons,
-                "data_source": "summary",  # 'summary'=raw기반, 'trades'=실거래기반
+                "win_rate":          round(float(win_rate_val), 1) if win_rate_val is not None else None,
+                "trade_count":       int(total_trades) if total_trades is not None else None,
+                "win_count":         int(win_count) if win_count is not None else None,
+                "lose_count":        int(lose_count) if lose_count is not None else None,
+                "profit_factor":     round(float(profit_factor), 2) if profit_factor else None,
+                "roi_30d":           round(float(roi_val), 2) if roi_val else None,
+                "consistency_score": int(raw_data.get("consistency", 0)),
+                "data_source":       "db" if win_rate_val is not None else "summary",
             }
         return d
     except Exception as e:

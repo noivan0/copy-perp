@@ -572,8 +572,10 @@ async def _sync_leaderboard_loop():
                     """INSERT INTO traders
                        (address, alias, total_pnl, followers,
                         pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
-                        volume_7d, volume_30d, oi_current, active, tier, sharpe, last_synced)
-                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,?,?,strftime('%s','now'))
+                        volume_7d, volume_30d, oi_current, active, tier, sharpe,
+                        win_rate, roi_30d, last_synced)
+                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,?,?,
+                               ?,?,strftime('%s','now'))
                        ON CONFLICT(address) DO UPDATE SET
                            alias         = COALESCE(excluded.alias, alias),
                            total_pnl     = excluded.total_pnl,
@@ -588,6 +590,8 @@ async def _sync_leaderboard_loop():
                            active        = 1,
                            tier          = excluded.tier,
                            sharpe        = COALESCE(NULLIF(sharpe, 0), excluded.sharpe),
+                           win_rate      = CASE WHEN excluded.win_rate > 0 THEN excluded.win_rate ELSE win_rate END,
+                           roi_30d       = excluded.roi_30d,
                            last_synced   = strftime('%s','now')""",
                     (
                         addr,
@@ -598,6 +602,8 @@ async def _sync_leaderboard_loop():
                         float(t.get("volume_30d", 0) or 0),
                         float(t.get("oi_current", 0) or 0),
                         _tier, _sharpe,
+                        float(t.get("win_rate", 0) or 0),
+                        float(equity and pnl_30d / equity * 100 if equity else 0),
                     )
                 )
             await _db.commit()
