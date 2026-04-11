@@ -263,6 +263,7 @@ class CopyEngine:
 
         # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
         # R10: per-follower+symbol lock (기존 per-follower는 다른 심볼도 블록하는 과도한 직렬화)
+        # R10b: lock 해제 후 삭제 — 메모리 누수 방지 (팔로워×심볼 조합 무한 증가)
         lock_key = f"{follower_addr}:{symbol}"
         if lock_key not in self._follower_locks:
             self._follower_locks[lock_key] = asyncio.Lock()
@@ -275,6 +276,12 @@ class CopyEngine:
                 follower, follower_addr, copy_ratio, max_pos,
                 symbol, side, trader_amount, trader_address, symbol_price
             )
+        # lock 완전 해제 후 cleanup (메모리 누수 방지)
+        # dict 크기가 500 초과하면 비사용 lock 정리
+        if len(self._follower_locks) > 500:
+            to_del = [k for k, v in list(self._follower_locks.items()) if not v.locked()]
+            for k in to_del:
+                self._follower_locks.pop(k, None)
 
     async def _execute_copy(
         self,
