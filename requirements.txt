@@ -11,4 +11,4 @@ anyio==4.12.1
 websockets==15.0.1
 PyJWT==2.11.0
 cryptography==46.0.5
-slowapi>=0.1.9
+psutil==6.1.1

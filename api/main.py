@@ -161,17 +161,19 @@ async def lifespan(app_):
     else:
         logger.info("🧪 TESTNET MODE: CloudFront SNI 우회")
 
-    asyncio.create_task(_dc_start(interval=30))
-    asyncio.create_task(_sync_leaderboard_loop())
-    asyncio.create_task(_restore_monitors_from_db())
-    asyncio.create_task(_auto_monitor_top_traders())
-    asyncio.create_task(_winrate_refresh_loop())
+    # ── background 태스크 추적 (graceful shutdown에서 취소) ────────
+    _bg_tasks: list[asyncio.Task] = []
+    _bg_tasks.append(asyncio.create_task(_dc_start(interval=30), name="dc_start"))
+    _bg_tasks.append(asyncio.create_task(_sync_leaderboard_loop(), name="sync_leaderboard"))
+    _bg_tasks.append(asyncio.create_task(_restore_monitors_from_db(), name="restore_monitors"))
+    _bg_tasks.append(asyncio.create_task(_auto_monitor_top_traders(), name="auto_monitor"))
+    _bg_tasks.append(asyncio.create_task(_winrate_refresh_loop(), name="winrate_refresh"))
 
     # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
     try:
         from core.stop_loss_monitor import StopLossMonitor
         _sl_monitor = StopLossMonitor(_db, _engine)
-        asyncio.create_task(_sl_monitor.start())
+        _bg_tasks.append(asyncio.create_task(_sl_monitor.start(), name="stop_loss_monitor"))
         logger.info("✅ StopLossMonitor 시작 (30초 주기 스캔)")
     except Exception as _e:
         logger.warning(f"⚠️ StopLossMonitor 시작 실패 (무시): {_e}")
@@ -183,6 +185,17 @@ async def lifespan(app_):
 
     # ── Shutdown ─────────────────────────────────
     logger.info("🛑 Graceful shutdown 시작...")
+
+    # background 태스크 취소 (asyncio 태스크 누수 방지)
+    for _task in _bg_tasks:
+        if not _task.done():
+            _task.cancel()
+            logger.debug(f"  태스크 취소: {_task.get_name()}")
+    # 취소 완료 대기 (최대 5초)
+    if _bg_tasks:
+        await asyncio.wait(_bg_tasks, timeout=5.0)
+        logger.info(f"  {len(_bg_tasks)}개 백그라운드 태스크 취소 완료")
+
     for addr, monitor in list(_monitors.items()):
         try:
             monitor._running = False
@@ -1510,6 +1523,29 @@ async def get_metrics():
     except Exception as _me:
         logger.debug(f"[metrics] DB 집계 오류 (무시): {_me}")
 
+    # ── 메모리 사용량 수집 (P1 R9) ──────────────────────────────
+    _mem_rss_bytes = 0
+    _mem_vms_bytes = 0
+    _rate_limit_keys = len(_rate_limit_store)
+    _price_cache_keys = len(_get_pc())
+    _monitor_count = len(_monitors)
+    try:
+        import resource as _resource
+        # getrusage: ru_maxrss는 Linux에서 KB 단위
+        _ru = _resource.getrusage(_resource.RUSAGE_SELF)
+        _mem_rss_bytes = _ru.ru_maxrss * 1024  # KB → bytes
+    except Exception:
+        pass
+    # psutil 있으면 더 정확한 값 사용
+    try:
+        import psutil as _psutil
+        _proc = _psutil.Process()
+        _mem_info = _proc.memory_info()
+        _mem_rss_bytes = _mem_info.rss
+        _mem_vms_bytes = _mem_info.vms
+    except Exception:
+        pass
+
     lines = [
         f"# HELP copy_perp_active_traders Number of active traders being monitored",
         f"# TYPE copy_perp_active_traders gauge",
@@ -1535,12 +1571,20 @@ async def get_metrics():
         f"copy_perp_realized_pnl_today_usdc {round(_today_pnl, 4)}",
         f"# HELP copy_perp_monitors_active Active position monitors",
         f"# TYPE copy_perp_monitors_active gauge",
-        f"copy_perp_monitors_active {len(_monitors)}",
+        f"copy_perp_monitors_active {_monitor_count}",
         f"copy_perp_btc_price {float(btc.get('mark', 0))}",
         f"copy_perp_btc_funding {float(btc.get('funding', 0))}",
-        f"copy_perp_symbols_cached {len(_get_pc())}",
+        f"copy_perp_symbols_cached {_price_cache_keys}",
         f"copy_perp_uptime_seconds {round(_time_module.time() - _start_time, 1)}",
         f'copy_perp_network{{network="{os.getenv("NETWORK","testnet")}"}} 1',
+        f"# HELP copy_perp_memory_rss_bytes Process RSS memory usage in bytes (R9)",
+        f"# TYPE copy_perp_memory_rss_bytes gauge",
+        f"copy_perp_memory_rss_bytes {_mem_rss_bytes}",
+        f"copy_perp_memory_vms_bytes {_mem_vms_bytes}",
+        f"# HELP copy_perp_rate_limit_keys In-memory rate limit store key count (R9)",
+        f"# TYPE copy_perp_rate_limit_keys gauge",
+        f"copy_perp_rate_limit_keys {_rate_limit_keys}",
+        f"copy_perp_price_cache_symbols {_price_cache_keys}",
     ]
     am = get_alert_manager()
     summary = am.get_error_summary()
