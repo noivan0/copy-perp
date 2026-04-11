@@ -26,6 +26,40 @@ async def list_presets(capital: float = Query(default=1000.0, ge=1.0, le=100000.
     """4개 프리셋 목록 + 시뮬 PnL"""
     from core.strategy_presets import list_presets_with_sim
     presets = list_presets_with_sim(capital=capital, db_path=_DB_PATH)
+
+    # ── Live DB 기반 traders 재계산 (FALLBACK 주소 대신 실제 DB 트레이더 사용) ──
+    # strategy_presets.resolve_traders()가 로컬 mainnet_tracker.db를 참조해
+    # testnet 환경에서 FALLBACK 주소(메인넷 전용)를 반환하는 문제를 해결.
+    try:
+        from api.deps import _get_db_direct
+        from core.strategy_presets import PRESETS
+        _db = _get_db_direct()
+        if _db:
+            # grade별 트레이더 캐시 구성 (단일 쿼리)
+            async with _db.execute(
+                """SELECT address, grade, roi_30d, pnl_30d
+                   FROM traders
+                   WHERE active=1 AND grade IS NOT NULL AND grade NOT IN ('D','')
+                   ORDER BY pnl_30d DESC NULLS LAST"""
+            ) as cur:
+                rows = await cur.fetchall()
+            live_by_grade: dict = {}
+            for row in rows:
+                g = row["grade"]
+                live_by_grade.setdefault(g, []).append(row["address"])
+
+            # 각 프리셋의 traders 필드를 live DB 기반으로 교체
+            for preset in presets:
+                grade_filter = PRESETS.get(preset.get("key",""), {}).get("grade_filter", ["S","A"])
+                n = preset.get("n_traders", 2)
+                live_addrs = []
+                for g in grade_filter:
+                    live_addrs.extend(live_by_grade.get(g, []))
+                if live_addrs:
+                    preset["traders"] = live_addrs[:n]
+    except Exception as _e:
+        logger.warning(f"presets live traders 재계산 실패 (FALLBACK 유지): {_e}")
+
     return {"presets": presets, "capital_used": capital}
 
 
@@ -42,6 +76,26 @@ async def get_preset_detail(
     preset  = PRESETS[name]
     sim     = get_preset_sim_pnl(name, capital=capital, db_path=_DB_PATH)
     traders = resolve_traders(name, db_path=_DB_PATH)
+
+    # Live DB 기반 traders 재계산 (FALLBACK 주소 대신 실제 DB 트레이더 사용)
+    try:
+        from api.deps import _get_db_direct
+        _db = _get_db_direct()
+        if _db:
+            grade_filter = preset.get("grade_filter", ["S","A"])
+            n = preset.get("n_traders", 2)
+            placeholders = ",".join("?" * len(grade_filter))
+            async with _db.execute(
+                f"SELECT address FROM traders WHERE active=1 AND grade IN ({placeholders}) ORDER BY pnl_30d DESC NULLS LAST LIMIT ?",
+                (*grade_filter, n),
+            ) as cur:
+                rows = await cur.fetchall()
+            live_addrs = [row["address"] for row in rows]
+            if live_addrs:
+                traders = live_addrs
+    except Exception as _e:
+        logger.warning(f"preset/{name} live traders 재계산 실패: {_e}")
+
     return {**preset, "traders": traders, "sim_pnl": {**sim, "capital": capital}}
 
 
