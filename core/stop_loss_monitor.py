@@ -11,38 +11,38 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-import urllib.parse
-import urllib3
 
 import aiosqlite
-import requests
 
 from core.strategy import _should_stop_from_preset, STRATEGY_PASSIVE
 from core.strategy_presets import get_preset
 
-urllib3.disable_warnings()
 logger = logging.getLogger(__name__)
 
-PROXY = "https://api.codetabs.com/v1/proxy/?quest="
-BASE  = "https://api.pacifica.fi/api/v1"
 SCAN_INTERVAL = 30   # scan every 30 seconds
 
 
 def _get_mark_prices() -> dict[str, float]:
-    """Batch fetch current mark prices (codetabs proxy → /info/prices)"""
-    url = BASE + "/info/prices"
+    """R10: DataCollector price_cache 재사용 (외부 HTTP 제거)
+    - 외부 codetabs proxy 의존성 제거 → 신뢰도/latency 개선
+    - data_collector.get_mark_price() 는 per-symbol TTL 체크 포함
+    - fallback: price_cache 전체 스캔
+    """
     try:
-        r = requests.get(PROXY + urllib.parse.quote(url), timeout=15)
-        if r.ok:
-            raw = r.json()
-            # /info/prices 응답: list 또는 {data: list}
-            data = raw if isinstance(raw, list) else (raw.get("data", []) or [])
-            return {
-                m.get("symbol", "").upper(): float(m.get("mark_price", m.get("mark", 0)) or 0)
-                for m in data
-            }
+        from core.data_collector import get_price_cache
+        cache = get_price_cache()
+        result: dict[str, float] = {}
+        for sym, entry in cache.items():
+            try:
+                mark = float(entry.get("mark", 0) or 0)
+                if mark > 0:
+                    result[sym.upper()] = mark
+            except (TypeError, ValueError):
+                pass
+        if result:
+            return result
     except Exception as e:
-        logger.warning(f"Mark price fetch error: {e}")
+        logger.debug(f"[StopLoss] price_cache 조회 오류: {e}")
     return {}
 
 
@@ -106,15 +106,16 @@ class StopLossMonitor:
             logger.debug(f"[StopLoss] positions table query error (ignored): {_e}")
 
         # 2차: follower_positions 테이블 (CopyEngine 관리) — positions에 없는 항목만 추가
+        # R10: stop_loss_price/take_profit_price/high_price/strategy 실제 값 사용
         try:
             existing_keys = {(r["follower_address"], r["symbol"]) for r in rows}
             async with self.db.execute("""
                 SELECT fp.follower_address, fp.symbol, fp.side,
                        fp.entry_price AS avg_entry_price, fp.size,
-                       0 AS stop_loss_price,
-                       0 AS take_profit_price,
-                       fp.entry_price AS high_price,
-                       COALESCE(f.strategy, 'passive') AS strategy,
+                       COALESCE(fp.stop_loss_price, 0) AS stop_loss_price,
+                       COALESCE(fp.take_profit_price, 0) AS take_profit_price,
+                       COALESCE(fp.high_price, fp.entry_price) AS high_price,
+                       COALESCE(fp.strategy, f.strategy, 'passive') AS strategy,
                        COALESCE(f.strategy, 'passive') AS follower_strategy,
                        COALESCE(f.trader_address, '') AS trader_address
                 FROM follower_positions fp

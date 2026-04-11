@@ -200,6 +200,11 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         # follower_positions 컬럼 (Round 6: mark_price, unrealized_pnl 추가)
         "ALTER TABLE follower_positions ADD COLUMN mark_price REAL DEFAULT 0",
         "ALTER TABLE follower_positions ADD COLUMN unrealized_pnl REAL DEFAULT 0",
+        # follower_positions 컬럼 (R10: SL/TP 가격 저장 — StopLossMonitor 2차 스캔 정확도)
+        "ALTER TABLE follower_positions ADD COLUMN stop_loss_price REAL DEFAULT 0",
+        "ALTER TABLE follower_positions ADD COLUMN take_profit_price REAL DEFAULT 0",
+        "ALTER TABLE follower_positions ADD COLUMN high_price REAL DEFAULT 0",
+        "ALTER TABLE follower_positions ADD COLUMN strategy TEXT DEFAULT 'passive'",
         # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
         # fee_records는 CREATE_SQL에 이미 포함되어 있음
         # Round 8: trader_crs_history 테이블 (기존 DB 마이그레이션용)
@@ -448,20 +453,35 @@ async def upsert_follower_position(
     side: str,
     entry_price: float,
     size: float,
+    stop_loss_price: float = 0.0,
+    take_profit_price: float = 0.0,
+    high_price: float = 0.0,
+    strategy: str = "passive",
 ) -> None:
-    """팔로워 포지션 진입/업서트 (DB 영속화)"""
+    """팔로워 포지션 진입/업서트 (DB 영속화)
+    R10: stop_loss_price/take_profit_price/high_price/strategy 저장 추가
+    → StopLossMonitor 2차 스캔(follower_positions) 시 SL/TP 정확도 확보
+    """
     import time as _t
     now = int(_t.time() * 1000)
+    hp = high_price if high_price > 0 else entry_price
     await conn.execute(
         """INSERT INTO follower_positions
-               (follower_address, symbol, side, entry_price, size, opened_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+               (follower_address, symbol, side, entry_price, size,
+                stop_loss_price, take_profit_price, high_price, strategy,
+                opened_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(follower_address, symbol) DO UPDATE SET
                side=excluded.side,
                entry_price=excluded.entry_price,
                size=excluded.size,
+               stop_loss_price=excluded.stop_loss_price,
+               take_profit_price=excluded.take_profit_price,
+               high_price=excluded.high_price,
+               strategy=excluded.strategy,
                updated_at=excluded.updated_at""",
-        (follower_address, symbol, side, entry_price, size, now, now),
+        (follower_address, symbol, side, entry_price, size,
+         stop_loss_price, take_profit_price, hp, strategy, now, now),
     )
     await conn.commit()
 

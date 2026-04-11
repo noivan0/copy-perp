@@ -262,11 +262,13 @@ class CopyEngine:
             max_pos = 100.0
 
         # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
-        if follower_addr not in self._follower_locks:
-            self._follower_locks[follower_addr] = asyncio.Lock()
-        lock = self._follower_locks[follower_addr]
+        # R10: per-follower+symbol lock (기존 per-follower는 다른 심볼도 블록하는 과도한 직렬화)
+        lock_key = f"{follower_addr}:{symbol}"
+        if lock_key not in self._follower_locks:
+            self._follower_locks[lock_key] = asyncio.Lock()
+        lock = self._follower_locks[lock_key]
         if lock.locked():
-            logger.warning(f"[{follower_addr[:8]}] 이전 주문 처리 중 — 중복 주문 스킵")
+            logger.warning(f"[{follower_addr[:8]}] {symbol} 이전 주문 처리 중 — 중복 주문 스킵")
             return
         async with lock:
             await self._execute_copy(
@@ -628,7 +630,11 @@ class CopyEngine:
                     }
                     try:
                         await upsert_follower_position(
-                            self.db, follower_addr, pos_key, "bid", exec_price, float(copy_amount)
+                            self.db, follower_addr, pos_key, "bid", exec_price, float(copy_amount),
+                            stop_loss_price=sl_price or 0,
+                            take_profit_price=tp_price or 0,
+                            high_price=exec_price,
+                            strategy=strategy_id,
                         )
                         await self.db.execute(
                             "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
@@ -688,7 +694,11 @@ class CopyEngine:
                     }
                     try:
                         await upsert_follower_position(
-                            self.db, follower_addr, pos_key, "ask", exec_price, float(copy_amount)
+                            self.db, follower_addr, pos_key, "ask", exec_price, float(copy_amount),
+                            stop_loss_price=sl_price or 0,
+                            take_profit_price=tp_price or 0,
+                            high_price=exec_price,
+                            strategy=strategy_id,
                         )
                         await self.db.execute(
                             "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
