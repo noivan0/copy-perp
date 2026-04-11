@@ -145,6 +145,22 @@ CREATE TABLE IF NOT EXISTS follower_trader_stats (
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(follower_address, trader_address)
 );
+
+CREATE TABLE IF NOT EXISTS trader_crs_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    address         TEXT NOT NULL,
+    alias           TEXT DEFAULT '',
+    crs             REAL NOT NULL,
+    grade           TEXT NOT NULL,
+    momentum_score  REAL DEFAULT 0,
+    profitability_score REAL DEFAULT 0,
+    risk_score      REAL DEFAULT 0,
+    consistency_score REAL DEFAULT 0,
+    copyability_score REAL DEFAULT 0,
+    computed_at     TEXT NOT NULL DEFAULT (date('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_crs_history_address ON trader_crs_history(address, computed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crs_history_date ON trader_crs_history(computed_at DESC);
 """
 
 
@@ -184,6 +200,11 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE follower_positions ADD COLUMN unrealized_pnl REAL DEFAULT 0",
         # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
         # fee_records는 CREATE_SQL에 이미 포함되어 있음
+        # Round 8: trader_crs_history 테이블 (기존 DB 마이그레이션용)
+        # CREATE_SQL에 이미 포함되어 있으므로 실제 마이그레이션은 executescript가 처리
+        # 인덱스만 별도 추가 시도 (이미 있으면 무시됨)
+        "CREATE INDEX IF NOT EXISTS idx_crs_history_address ON trader_crs_history(address, computed_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_crs_history_date ON trader_crs_history(computed_at DESC)",
     ]
     import logging as _db_log
     _db_logger = _db_log.getLogger(__name__)
@@ -467,6 +488,86 @@ async def get_all_follower_positions(conn, follower_address: str) -> "list[dict]
     async with conn.execute(
         "SELECT * FROM follower_positions WHERE follower_address=?",
         (follower_address,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── trader_crs_history CRUD (R8) ─────────────────────────────────────────────
+
+async def save_crs_snapshot(conn, crs_results: list) -> int:
+    """
+    CRS 점수 스냅샷 저장 (하루 1회 — 이미 오늘 데이터 있으면 스킵)
+
+    crs_results: CRSResult 객체 또는 dict 리스트
+    반환: 저장된 행 수
+    """
+    import time as _t
+    today = __import__("datetime").date.today().isoformat()  # YYYY-MM-DD
+
+    # 오늘 이미 저장됐는지 확인
+    async with conn.execute(
+        "SELECT COUNT(*) FROM trader_crs_history WHERE computed_at=?", (today,)
+    ) as cur:
+        row = await cur.fetchone()
+    existing = row[0] if row else 0
+    if existing > 0:
+        return 0  # 이미 오늘 스냅샷 존재 → 스킵
+
+    saved = 0
+    for r in crs_results:
+        # CRSResult 객체 또는 dict 모두 지원
+        if hasattr(r, "address"):
+            addr   = r.address
+            alias  = r.alias
+            crs    = r.crs
+            grade  = r.grade
+            m_s    = r.momentum_score
+            p_s    = r.profitability_score
+            ri_s   = r.risk_score
+            c_s    = r.consistency_score
+            cp_s   = r.copyability_score
+        else:
+            addr   = r.get("address", "")
+            alias  = r.get("alias", "")
+            crs    = r.get("crs", 0)
+            grade  = r.get("grade", "D")
+            m_s    = r.get("momentum_score", 0)
+            p_s    = r.get("profitability_score", 0)
+            ri_s   = r.get("risk_score", 0)
+            c_s    = r.get("consistency_score", 0)
+            cp_s   = r.get("copyability_score", 0)
+
+        if not addr or crs <= 0:
+            continue
+
+        try:
+            await conn.execute(
+                """INSERT OR IGNORE INTO trader_crs_history
+                   (address, alias, crs, grade, momentum_score, profitability_score,
+                    risk_score, consistency_score, copyability_score, computed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (addr, alias, crs, grade, m_s, p_s, ri_s, c_s, cp_s, today)
+            )
+            saved += 1
+        except Exception:
+            pass
+
+    if saved > 0:
+        await conn.commit()
+    return saved
+
+
+async def get_crs_history(conn, address: str, days: int = 30) -> list:
+    """특정 트레이더의 CRS 점수 변동 이력 조회"""
+    async with conn.execute(
+        """SELECT address, alias, crs, grade, momentum_score, profitability_score,
+                  risk_score, consistency_score, copyability_score, computed_at
+           FROM trader_crs_history
+           WHERE address=?
+           ORDER BY computed_at DESC
+           LIMIT ?""",
+        (address, days)
     ) as cur:
         rows = await cur.fetchall()
     return [dict(r) for r in rows]

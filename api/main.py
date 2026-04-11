@@ -777,6 +777,33 @@ async def _winrate_refresh_loop():
 
             await db.commit()
             logger.info(f"[WinRate] 갱신 완료: {updated}/{len(top_traders)}명 업데이트")
+
+            # R8: CRS 스냅샷 — win_rate 갱신 후 하루 1회 저장 시도
+            try:
+                from core.reliability import compute_crs
+                from db.database import save_crs_snapshot
+                async with db.execute(
+                    "SELECT * FROM traders WHERE active=1 ORDER BY pnl_30d DESC LIMIT 100"
+                ) as _snap_cur:
+                    _snap_rows = await _snap_cur.fetchall()
+                _snap_results = []
+                for _snap_row in _snap_rows:
+                    _rd = dict(_snap_row)
+                    try:
+                        _crs_r = compute_crs(_rd)
+                        if not _crs_r.disqualified and _crs_r.crs > 0:
+                            _snap_results.append(_crs_r)
+                    except Exception:
+                        pass
+                if _snap_results:
+                    _saved = await save_crs_snapshot(db, _snap_results)
+                    if _saved > 0:
+                        logger.info(f"[CRS Snapshot] {_saved}명 스냅샷 저장 (오늘 날짜)")
+                    else:
+                        logger.debug("[CRS Snapshot] 오늘 이미 저장됨 — 스킵")
+            except Exception as _snap_e:
+                logger.warning(f"[CRS Snapshot] 스냅샷 저장 실패 (무시): {_snap_e}")
+
         except Exception as e:
             # P1 Fix (Round 7): 루프 자체가 죽지 않도록 모든 예외 포괄 캐치
             # 네트워크 오류 등 일시적 장애 → 5분 후 재시도 (1시간 대기 없이)

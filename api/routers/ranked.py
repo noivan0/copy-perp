@@ -315,6 +315,38 @@ async def sync_mainnet_traders(request: Request):
     return {"synced": synced, "top5": [{"alias": t.get("alias"), "crs": t.get("crs"), "grade": t.get("grade")} for t in top5]}
 
 
+@router.get("/{address}/crs-history")
+async def get_crs_history(address: str, days: int = Query(30, ge=1, le=365)):
+    """
+    개별 트레이더 CRS 점수 변동 이력 조회 (R8 신규)
+    하루 1회 저장되는 스냅샷 기반
+    """
+    try:
+        from api.main import get_db
+        from db.database import get_crs_history as _get_history
+        db = await get_db()
+        history = await _get_history(db, address, days)
+    except Exception as e:
+        raise HTTPException(500, {"error": f"History query failed: {e}"})
+
+    if not history:
+        return {
+            "address": address,
+            "history": [],
+            "count": 0,
+            "message": "No CRS history found (snapshots save daily after win_rate refresh)"
+        }
+
+    return {
+        "address": address,
+        "history": history,
+        "count": len(history),
+        "oldest": history[-1]["computed_at"] if history else None,
+        "latest": history[0]["computed_at"] if history else None,
+        "crs_delta": round(history[0]["crs"] - history[-1]["crs"], 1) if len(history) > 1 else 0,
+    }
+
+
 @router.get("/{address}")
 async def get_ranked_trader_detail(address: str):
     """개별 트레이더 CRS 상세 분석"""

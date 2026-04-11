@@ -16,8 +16,35 @@ core/reliability.py
 """
 from __future__ import annotations
 import math
+import re as _re
 from dataclasses import dataclass, field, asdict
 from typing import Optional
+
+
+# ────────────────────────────────────────────
+# alias 정규화 유틸
+# ────────────────────────────────────────────
+def _normalize_alias(alias: str, address: str = "") -> str:
+    """
+    트레이더 alias 정규화 (R8)
+    - 특수문자 strip: "---- Donk ----" → "Donk"
+    - 길이 제한: 최대 20자
+    - 빈 결과 → address[:8] fallback
+    """
+    if not alias:
+        return address[:8] if address else "Unknown"
+    # 선행/후행 특수문자(대시, 점, 공백, 별표 등) 제거
+    cleaned = _re.sub(r'^[\s\-_\*\.~=|]+|[\s\-_\*\.~=|]+$', '', alias)
+    # 내부 연속 공백 → 단일 공백
+    cleaned = _re.sub(r'\s{2,}', ' ', cleaned)
+    # 제어 문자 제거
+    cleaned = _re.sub(r'[\x00-\x1f\x7f]', '', cleaned)
+    # 최대 20자 제한
+    cleaned = cleaned[:20].strip()
+    # 빈 문자열이면 address fallback
+    if not cleaned:
+        return address[:8] if address else "Unknown"
+    return cleaned
 
 
 # ────────────────────────────────────────────
@@ -202,14 +229,25 @@ def _score_profitability(p30: float, roi30: float, p7: float,
     """
     warnings = []
 
-    # ROI 점수: 5%~100% → 정상 범위, 100% 초과는 의심
-    if roi30 > 200:
-        roi_score = 40.0  # 고ROI는 오히려 감점 (단발 투기 의심)
-        warnings.append(f"ROI {roi30:.0f}% — spike suspected")
+    # R8: ROI 점수 개선 — 고ROI 트레이더 역상관 문제 수정
+    # 기존: ROI>200% → 40점 고착 (단발 투기 의심 패널티 과도)
+    # 수정: ROI 범위를 더 세밀하게 분리, 하드필터(300%)와 중복 패널티 제거
+    if roi30 > 300:
+        # 하드필터에서 이미 걸러지므로 여기 도달하면 예외적 케이스만
+        roi_score = 50.0
+        warnings.append(f"ROI {roi30:.0f}% — extreme (passed hard filter)")
+    elif roi30 > 150:
+        roi_score = 75.0   # 150~300%: 훌륭하지만 재현성 의문
+        warnings.append(f"ROI {roi30:.0f}% — very high, verify consistency")
+    elif roi30 > 100:
+        roi_score = 85.0   # 100~150%: 우수
     elif roi30 > 50:
-        roi_score = 85.0
+        roi_score = 90.0   # 50~100%: 최적 범위
+    elif roi30 >= 20:
+        roi_score = _norm(roi30, 20, 50)
+        roi_score = max(70.0, roi_score)
     elif roi30 >= 5:
-        roi_score = _norm(roi30, 5, 50)
+        roi_score = _norm(roi30, 5, 20)
     elif roi30 >= 0:
         roi_score = _norm(roi30, 0, 5)
     else:
@@ -303,14 +341,20 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     return round(score, 1), warnings
 
 
-def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[float, list]:
+def _score_consistency(cons: int, p30: float, p7: float, stats: dict,
+                        raw: dict | None = None) -> tuple[float, list]:
     """
     일관성 신뢰성 (15%)
     활동의 규칙성 — 꾸준히 매매하는가
+
+    R8 Fix: 3개 고유값 고착 문제 해결
+    - equity 변동성(pnl 분포), 최대 낙폭, 연속손실 추가 지표 활용
+    - pnl_7d/pnl_30d 비율 외에 pnl_1d / pnl_30d 단기 일관성 추가
+    - 0~100 full range 활용하도록 세분화
     """
     warnings = []
 
-    # API의 consistency 필드 (1~5 스케일 추정)
+    # API의 consistency 필드 (1~5 스케일 추정) — 기본 기여
     cons_score = _norm(cons, 1, 5)
     if cons <= 1:
         warnings.append("Very low consistency (irregular trading)")
@@ -339,10 +383,62 @@ def _score_consistency(cons: int, p30: float, p7: float, stats: dict) -> tuple[f
     else:
         hold_score = min(100.0, _norm(hold, 10, 480))
 
-    if stats:
-        score = cons_score * 0.30 + freq_score * 0.35 + hold_score * 0.35
+    # R8 추가: 최대 연속 손실 기반 안정성
+    max_streak = stats.get("max_consecutive_loss", 0)
+    if max_streak == 0:
+        streak_bonus = 15.0   # 연속손실 0 → 보너스
+    elif max_streak <= 2:
+        streak_bonus = 10.0
+    elif max_streak <= 5:
+        streak_bonus = 0.0
     else:
-        score = cons_score
+        streak_bonus = -15.0  # 연속손실 많으면 패널티
+        warnings.append(f"Max streak {max_streak} losses — volatile")
+
+    # R8 추가: 단기/중기 수익 일관성 (pnl_1d 활용)
+    # pnl_1d > 0이면 최근에도 수익 → 추가 포인트
+    p1 = _safe((raw or {}).get("pnl_1d")) if raw else 0.0
+    if p30 > 0:
+        daily_ratio = p1 / p30
+        if 0.01 <= daily_ratio <= 0.15:   # 오늘이 30일의 1~15% 기여 (이상적)
+            daily_bonus = 10.0
+        elif daily_ratio > 0:
+            daily_bonus = 5.0
+        elif daily_ratio < -0.10:          # 오늘 크게 손실
+            daily_bonus = -10.0
+            warnings.append(f"Today loss impact {daily_ratio:.0%}")
+        else:
+            daily_bonus = 0.0
+    else:
+        daily_bonus = 0.0
+
+    # R8 추가: 7d/30d PnL 비율로 지속성 평가 (더 세밀하게)
+    if p30 > 0 and p7 >= 0:
+        ratio_7_30 = p7 / p30
+        if 0.10 <= ratio_7_30 <= 0.50:   # 7일이 30일의 10~50% 기여
+            ratio_bonus = 15.0
+        elif ratio_7_30 > 0.50:
+            ratio_bonus = 5.0             # 집중도 높음
+        elif ratio_7_30 > 0:
+            ratio_bonus = 8.0
+        else:
+            ratio_bonus = -5.0
+    elif p30 > 0 and p7 < 0:
+        ratio_bonus = -10.0
+        warnings.append("7d PnL negative vs 30d")
+    else:
+        ratio_bonus = 0.0
+
+    if stats:
+        base = cons_score * 0.25 + freq_score * 0.30 + hold_score * 0.30
+        # 보너스/패널티 합산 후 0~100 클램핑 (최대 15점 추가 가능)
+        bonus = streak_bonus * 0.25 + daily_bonus * 0.25 + ratio_bonus * 0.20
+        score = max(0.0, min(100.0, base + bonus))
+    else:
+        # stats 없으면 cons_score + ratio/daily 보너스만
+        base = cons_score
+        bonus = (streak_bonus + daily_bonus + ratio_bonus) * 0.15
+        score = max(0.0, min(100.0, base + bonus))
     return round(score, 1), warnings
 
 
@@ -350,14 +446,23 @@ def _score_copyability(stats: dict, p30: float) -> tuple[float, list]:
     """
     복사 가능성 (5%)
     팔로워가 실제로 이 트레이더를 따라갈 수 있는가
-    (포지션 크기, 보유시간, 슬리피지 추정)
+    (포지션 크기, 보유시간, 승률, 거래 빈도 기반)
+
+    R8 Fix: win_rate / trade_count 기반 실계산 추가
+    - stats 없으면 50.0 중립 반환 (60.0 고착 제거)
+    - win_rate가 있으면 복사 신뢰성 점수에 반영
+    - trade_count가 높을수록 복사 용이(충분한 샘플)
     """
     warnings = []
+
+    # stats 없으면 중립값 반환 (60.0 고착 → 50.0으로 수정)
     if not stats:
-        return 60.0, []
+        return 50.0, ["No trade data — neutral copyability"]
 
     avg_pos = stats.get("avg_position_usdc", 0)
     hold    = stats.get("avg_hold_min", 60)
+    win_rate = stats.get("win_rate", None)   # 0~1 스케일
+    trade_count = stats.get("trade_count") or 0
 
     # 포지션 크기: $50~$5000이 이상적
     if 50 <= avg_pos <= 5000:
@@ -373,13 +478,46 @@ def _score_copyability(stats: dict, p30: float) -> tuple[float, list]:
 
     # 보유시간 기반 복사 가능성
     if hold < 3:
-        copy_score = 0.0
+        hold_score = 0.0
     elif hold < 15:
-        copy_score = 50.0
+        hold_score = 50.0
     else:
-        copy_score = 100.0
+        hold_score = 100.0
 
-    score = pos_score * 0.50 + copy_score * 0.50
+    # win_rate 기반 복사 신뢰성 (0~1 스케일)
+    if win_rate is not None and win_rate > 0:
+        # 승률 45%~75% → 30~100점 (너무 높으면 이상치 의심)
+        if win_rate > 0.90:
+            wr_score = 60.0   # 극단적 승률은 의심
+            warnings.append(f"Win rate {win_rate:.0%} — suspiciously high")
+        elif win_rate >= 0.55:
+            wr_score = _norm(win_rate, 0.55, 0.80)
+            wr_score = max(70.0, wr_score)
+        elif win_rate >= 0.40:
+            wr_score = _norm(win_rate, 0.40, 0.55)
+        else:
+            wr_score = max(0.0, win_rate * 100)
+            warnings.append(f"Win rate {win_rate:.0%} — low copyability")
+    else:
+        wr_score = 50.0   # 데이터 없으면 중립
+
+    # 거래 빈도 (샘플 충분성): 거래가 많을수록 복사 용이
+    if trade_count >= 30:
+        tc_score = 100.0
+    elif trade_count >= 10:
+        tc_score = _norm(trade_count, 10, 30)
+        tc_score = max(60.0, tc_score)
+    elif trade_count >= 3:
+        tc_score = _norm(trade_count, 3, 10)
+        tc_score = max(30.0, tc_score)
+    elif trade_count > 0:
+        tc_score = 20.0
+        warnings.append(f"{trade_count} trades — small sample")
+    else:
+        tc_score = 50.0   # 중립
+
+    # 가중 합산: 포지션크기 30% + 보유시간 25% + 승률 30% + 거래빈도 15%
+    score = pos_score * 0.30 + hold_score * 0.25 + wr_score * 0.30 + tc_score * 0.15
     return round(score, 1), warnings
 
 
@@ -442,7 +580,8 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     trades: trades/history API 배열 (선택 — 있으면 정밀도 대폭 향상)
     """
     addr  = raw.get("address", "")
-    alias = raw.get("alias", "") or raw.get("address", "")[:8]
+    # R8: alias 정규화 — "---- Donk ----" 같은 이상한 형태 정리
+    alias = _normalize_alias(raw.get("alias", "") or "", addr)
 
     p30   = _safe(raw.get("pnl_30d"))
     p7    = _safe(raw.get("pnl_7d"))
@@ -553,7 +692,8 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     m_score, m_warn = _score_momentum(p30, p7, p1, roi30)
     p_score, p_warn = _score_profitability(p30, roi30, p7, stats)
     r_score, r_warn = _score_risk(eq, oi, roi30, stats)
-    c_score, c_warn = _score_consistency(cons, p30, p7, stats)
+    # R8: raw 전달 → pnl_1d 등 추가 지표 활용
+    c_score, c_warn = _score_consistency(cons, p30, p7, stats, raw)
     cp_score, cp_warn = _score_copyability(stats, p30)
 
     result.momentum_score      = m_score
@@ -562,13 +702,16 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     result.consistency_score   = c_score
     result.copyability_score   = cp_score
 
-    # 가중 합산
+    # R8: 가중치 재조정
+    # 기존: momentum 25% / profitability 30% / risk 25% / consistency 15% / copyability 5%
+    # 변경: momentum 20% / profitability 30% / risk 25% / consistency 17% / copyability 8%
+    # 근거: momentum_score 과지배 방지, copyability/consistency 실데이터 기반 강화
     crs = (
-        m_score  * 0.25 +
+        m_score  * 0.20 +
         p_score  * 0.30 +
         r_score  * 0.25 +
-        c_score  * 0.15 +
-        cp_score * 0.05
+        c_score  * 0.17 +
+        cp_score * 0.08
     )
     result.crs = round(crs, 1)
 
