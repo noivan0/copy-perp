@@ -21,6 +21,11 @@ import json
 import logging
 import os
 APP_VERSION = "1.3.2"  # 단일 버전 상수
+
+# ── 통계 캐시 (30초 TTL) ──
+_STATS_CACHE: dict = {"ts": 0.0, "data": None}
+_STATS_CACHE_TTL: int = 30
+
 import sys
 import time as _time_module
 import uuid
