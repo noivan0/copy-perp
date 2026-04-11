@@ -1408,11 +1408,10 @@ async def get_follower_portfolio(follower_address: str) -> dict:
     ) as cur:
         total_volume = (await cur.fetchone())[0] or 0.0
 
-    # 팔로우 중인 트레이더 목록 (SL/TP 포함)
+    # 팔로우 중인 트레이더 목록
     async with _db.execute(
         """SELECT f.trader_address, f.copy_ratio, f.max_position_usdc, f.created_at,
-                  t.win_rate, t.pnl_30d, t.roi_30d,
-                  f.stop_loss_pct, f.take_profit_pct
+                  t.win_rate, t.pnl_30d, t.roi_30d
            FROM followers f
            LEFT JOIN traders t ON f.trader_address = t.address
            WHERE f.address=? AND f.active=1""",
@@ -1430,8 +1429,6 @@ async def get_follower_portfolio(follower_address: str) -> dict:
             "trader_win_rate": r[4],
             "trader_pnl_30d": r[5],
             "trader_roi_30d": r[6],
-            "stop_loss_pct": r[7],
-            "take_profit_pct": r[8],
         })
 
     # 최근 거래 5건
