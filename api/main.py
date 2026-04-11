@@ -172,6 +172,7 @@ async def lifespan(app_):
     # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
     try:
         from core.stop_loss_monitor import StopLossMonitor
+        global _sl_monitor
         _sl_monitor = StopLossMonitor(_db, _engine)
         _bg_tasks.append(asyncio.create_task(_sl_monitor.start(), name="stop_loss_monitor"))
         logger.info("✅ StopLossMonitor 시작 (30초 주기 스캔)")
@@ -582,6 +583,7 @@ def _require_valid_solana_address(addr: str, field: str = "address") -> None:  #
 # ── 전역 상태 ─────────────────────────────────────────
 _db = None
 _engine = None
+_sl_monitor = None   # StopLossMonitor 전역 참조 (가시성)
 _monitors: dict[str, PositionMonitor] = {}
 _start_time: float = _time_module.time()
 from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_connected, start_polling as _dc_start
@@ -1766,10 +1768,15 @@ async def health_detailed(request: Request) -> dict:
             "count": len(_monitors),
             "detail": monitors_detail,
         },
+        "stop_loss_monitor": {
+            "running": _sl_monitor is not None and getattr(_sl_monitor, "_running", False),
+            "initialized": _sl_monitor is not None,
+        },
         "environment": {
             "builder_code": BUILDER_CODE,
             "network": os.getenv("NETWORK", "testnet"),
             "rest_url": os.getenv("PACIFICA_REST_URL", "auto"),
+            "db_path": os.getenv("DB_PATH", "./copy_perp.db"),
         }
     }
 
