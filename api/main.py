@@ -1371,7 +1371,7 @@ async def health_detailed(request: Request) -> dict:
         db = await get_db()
         async with db.execute("SELECT COUNT(*) FROM traders WHERE active=1") as c:
             trader_count = (await c.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM followers WHERE active=1") as c:
+        async with db.execute("SELECT COUNT(DISTINCT address) FROM followers WHERE active=1") as c:
             follower_count = (await c.fetchone())[0]
         async with db.execute("SELECT COUNT(*) FROM copy_trades WHERE status='filled'") as c:
             filled_count = (await c.fetchone())[0]
