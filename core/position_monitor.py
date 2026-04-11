@@ -204,17 +204,30 @@ class PositionMonitor:
                 _p_side = prev.get("side", "bid")
                 prev_size = _p_amt if _p_side == "bid" else -_p_amt
                 side = "close_long" if prev_size > 0 else "close_short"
+
+                # P0 Fix (Round 5): 포지션 종료 시 마크 가격 캐시에서 현재가 조회
+                # price="0"이면 copy_engine이 "마크 가격 미수신" 처리 → 주문 보류 문제 발생
+                _close_price = "0"
+                try:
+                    from core.data_collector import get_price_cache
+                    _mkt_cache = get_price_cache().get(symbol.upper(), {})
+                    _mark = float(_mkt_cache.get("mark", 0) or 0)
+                    if _mark > 0:
+                        _close_price = str(_mark)
+                except Exception:
+                    pass
+
                 fill_event = {
                     "account": self.trader,
                     "symbol": symbol,
                     "event_type": "position_closed",
                     "side": side,
                     "amount": str(abs(prev_size)),
-                    "price": "0",
+                    "price": _close_price,   # 마크 가격 사용 (캐시 없으면 "0")
                     "cause": "normal",
                     "created_at": int(time.time() * 1000),
                 }
-                logger.info(f"포지션 청산 감지: {symbol} {side}")
+                logger.info(f"포지션 청산 감지: {symbol} {side} price={_close_price}")
                 await self._emit_fill(fill_event)
 
         self._prev_positions = curr

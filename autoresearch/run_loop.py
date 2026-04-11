@@ -280,20 +280,50 @@ def main():
         ideas = collect_research_ideas()
         print(f"   {len(ideas)}개 아이디어 수집")
 
-        # 2. scorer.py 수정
+        # 2. scorer.py 수정 (수정 전 백업 — 크래시 안전성 보장)
         print("✏️  scorer.py 수정...")
+        _scorer_backup = None
+        try:
+            with open(SCORER_F) as _bf:
+                _scorer_backup = _bf.read()
+        except Exception as _bke:
+            print(f"   [경고] scorer.py 백업 실패: {_bke}")
         change_desc = mutate_scorer(ideas, exp_n)
         print(f"   변경: {change_desc}")
 
         # 3. evaluate 실행
-        result = subprocess.run(
-            [sys.executable, "autoresearch/evaluate.py",
-             "--duration", str(args.eval_duration),
-             "--label", f"exp_{exp_n+1}_{change_desc[:30]}"],
-            cwd=BASE_DIR,
-            capture_output=True, text=True
-        )
-        print(result.stdout[-800:] if result.stdout else "출력 없음")
+        eval_crashed = False
+        try:
+            result = subprocess.run(
+                [sys.executable, "autoresearch/evaluate.py",
+                 "--duration", str(args.eval_duration),
+                 "--label", f"exp_{exp_n+1}_{change_desc[:30]}"],
+                cwd=BASE_DIR,
+                capture_output=True, text=True,
+                timeout=300,  # 5분 타임아웃 (무한 대기 방지)
+            )
+            print(result.stdout[-800:] if result.stdout else "출력 없음")
+        except subprocess.TimeoutExpired:
+            print(f"[경고] evaluate.py 타임아웃 → scorer.py 원본 복원")
+            eval_crashed = True
+        except Exception as _eval_e:
+            print(f"[경고] evaluate.py 실행 오류: {_eval_e} → scorer.py 원본 복원")
+            eval_crashed = True
+
+        # 크래시 시 원본 복원 (P1 Fix Round 5: rollback 보장)
+        if eval_crashed:
+            if _scorer_backup is not None:
+                try:
+                    with open(SCORER_F, "w") as _rf:
+                        _rf.write(_scorer_backup)
+                    print("   ✅ scorer.py 메모리 백업에서 복원 완료")
+                except Exception as _re:
+                    print(f"   ⚠️  메모리 복원 실패, git checkout 시도: {_re}")
+                    git_revert_scorer()
+            else:
+                git_revert_scorer()
+            no_improve += 1
+            continue
 
         # 결과 파싱
         try:
@@ -315,7 +345,16 @@ def main():
 
         except Exception as e:
             print(f"결과 파싱 실패: {e}")
-            git_revert_scorer()
+            # P1 Fix (Round 5): 결과 파싱 실패도 메모리 백업 우선 복원
+            if _scorer_backup is not None:
+                try:
+                    with open(SCORER_F, "w") as _rf2:
+                        _rf2.write(_scorer_backup)
+                    print("   scorer.py 메모리 백업 복원 완료")
+                except Exception:
+                    git_revert_scorer()
+            else:
+                git_revert_scorer()
 
         # 3회 연속 미개선 → 더 공격적인 탐색
         if no_improve >= 3:

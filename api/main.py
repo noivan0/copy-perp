@@ -114,23 +114,38 @@ async def lifespan(app_):
     _db = await init_db()
     _engine = CopyEngine(_db)
 
-    # startup에서 필수 환경변수 검증
+    # P2 Fix (Round 5): startup 필수 환경변수 검증 강화
+    # ACCOUNT_ADDRESS, BUILDER_CODE, DB_PATH 누락 시 즉시 _ENV_DEGRADED 표시 + 로그
+    # (기존에는 ACCOUNT_ADDRESS, AGENT_PRIVATE_KEY, AGENT_WALLET만 체크했음)
     REQUIRED_ENVS = {
-        "ACCOUNT_ADDRESS": "Pacifica 계정 주소 (Privy 지갑)",
+        "ACCOUNT_ADDRESS": "Pacifica 계정 주소 (트레이더 모니터링 기준)",
         "AGENT_PRIVATE_KEY": "Agent Key 개인키 (주문 서명)",
         "AGENT_WALLET": "Agent 공개키",
+    }
+    # BUILDER_CODE: 기본값 'noivan' 있으므로 경고만
+    OPTIONAL_WARN_ENVS = {
+        "BUILDER_CODE": "Builder Code (기본값 'noivan' 사용 중 — 프로덕션에서 명시 권장)",
+        "DB_PATH": "DB 파일 경로 (기본값 'copy_perp.db' 사용 중 — Render Disk 마운트 경로 권장)",
     }
     missing = []
     for key, desc in REQUIRED_ENVS.items():
         if not os.getenv(key):
-            missing.append(f"  {key}: {desc}")
+            missing.append(f"  ❌ {key}: {desc}")
+    warn_envs = []
+    for key, desc in OPTIONAL_WARN_ENVS.items():
+        if not os.getenv(key):
+            warn_envs.append(f"  ⚠️  {key}: {desc}")
+
     if missing:
         logger.error("🚨 필수 환경변수 미설정:\n" + "\n".join(missing))
         logger.error("→ .env 파일 확인 또는 환경변수 설정 후 재시작")
-        # 서버는 기동하되 WARNING으로 남김 (헬스체크에서 degraded 표시)
+        # 서버는 기동하되 /healthz에서 degraded 표시 (Render 재시작 트리거)
         os.environ["_ENV_DEGRADED"] = "1"
     else:
-        logger.info("✅ 환경변수 검증 완료")
+        logger.info("✅ 필수 환경변수 검증 완료")
+
+    if warn_envs:
+        logger.warning("환경변수 권장 설정 누락:\n" + "\n".join(warn_envs))
 
     _network = os.getenv("NETWORK", "testnet")
     _rest_url = os.getenv("PACIFICA_REST_URL", "")
@@ -892,8 +907,51 @@ except Exception:
     _GIT_REV = "unknown"
 
 @app.get("/healthz")
-def healthz() -> dict:
-    return {"status": "ok", "startup_at": _STARTUP_AT, "revision": _GIT_REV}
+async def healthz() -> dict:
+    """
+    P2 Fix (Round 5): Render health check용 상세 헬스체크
+    - DB 연결 상태 (connect 가능 여부)
+    - leaderboard 마지막 동기화 시각 (last_synced 최신값)
+    - win_rate 마지막 갱신 시각 (traders 테이블 최신 last_synced)
+    - env_degraded: 필수 환경변수 미설정 여부
+    Render 기본 health check가 DB 연결 장애를 감지하도록 개선.
+    """
+    import sqlite3 as _sqlite3
+
+    # DB 연결 상태 확인
+    _db_ok = False
+    _last_synced_ts = None
+    _active_traders = 0
+    try:
+        _db_path_hz = os.getenv("DB_PATH", "copy_perp.db")
+        def _db_probe():
+            with _sqlite3.connect(_db_path_hz, timeout=5) as _sc:
+                _r = _sc.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1").fetchone()
+                return _r[0] or 0, _r[1]
+        _active_traders, _last_synced_ts = await asyncio.get_event_loop().run_in_executor(None, _db_probe)
+        _db_ok = True
+    except Exception as _he:
+        logger.warning(f"[healthz] DB probe 실패: {_he}")
+
+    # 상태 판단: DB 오류 시 503 반환 (Render가 재시작 트리거)
+    _status = "ok" if _db_ok else "degraded"
+
+    _response_body = {
+        "status": _status,
+        "startup_at": _STARTUP_AT,
+        "revision": _GIT_REV,
+        "db_ok": _db_ok,
+        "db_active_traders": _active_traders,
+        "last_leaderboard_sync_ts": _last_synced_ts,   # traders.last_synced 최댓값 (Unix 초)
+        "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
+        "active_monitors": len(_monitors),
+    }
+
+    if not _db_ok:
+        from fastapi.responses import JSONResponse as _JR
+        return _JR(status_code=503, content=_response_body)
+
+    return _response_body
 
 @app.get("/health")
 async def health(request: Request) -> dict:

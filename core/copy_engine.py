@@ -236,6 +236,13 @@ class CopyEngine:
         trader_address: str,
         symbol_price: float = 0.0,
     ) -> None:
+        # P1 Fix (Round 5): aiosqlite.Row는 .get()을 지원하지 않음 → dict 변환
+        # (이후 _execute_copy에서 follower.get() 호출 안전 보장)
+        if not isinstance(follower, dict):
+            try:
+                follower = dict(follower)
+            except Exception:
+                follower = {k: follower[k] for k in follower.keys()} if hasattr(follower, 'keys') else {}
         follower_addr = follower["address"]
         try:
             copy_ratio = float(follower["copy_ratio"])
@@ -318,6 +325,23 @@ class CopyEngine:
         # 1. 비율 적용
         raw_amount = float(trader_amount) * copy_ratio
         clamped_amount = raw_amount
+
+        # ── P1 Fix (Round 5): MAX_LEVERAGE 클램핑 ─────────────────────────
+        # Pacifica는 margin 계정이므로 MAX_LEVERAGE × 마진 = 최대 포지션
+        # max_position_usdc를 MAX_LEVERAGE × 단일 포지션 마진 기준으로 간접 제한
+        # (실제 leverage 파라미터는 market_order에 없음 — amount × price 상한으로 제어)
+        # max_position_usdc가 이미 설정되어 있으므로, 추가로 per-position cap 강제:
+        #   effective_max_pos = min(max_pos, MAX_LEVERAGE × min_margin_usdc)
+        # Round 5: max_pos 자체를 MAX_LEVERAGE 기반 상한으로 재클램핑
+        _leverage_cap_usdc = MAX_LEVERAGE * max_pos  # 보수적: max_pos를 마진 기준으로 재해석
+        # 더 정확한 방식: max_pos = 마진 × leverage → max_pos는 이미 포지션 크기
+        # 즉 max_position_usdc = 전체 포지션 USDC, leverage cap = MAX_ORDER_USDC × MAX_LEVERAGE
+        # → MAX_ORDER_USDC(5000) × MAX_LEVERAGE(5) = 25000이므로 max_pos가 이미 낮음
+        # 실질적 클램핑: max_pos를 MAX_LEVERAGE × 합리적 마진($200) = $1000으로 추가 제한
+        _per_position_leverage_cap = MAX_LEVERAGE * 200.0  # $200 마진 × 5x = $1000 최대 포지션
+        if max_pos > _per_position_leverage_cap:
+            max_pos = _per_position_leverage_cap
+            logger.debug(f"[{follower_addr[:8]}] MAX_LEVERAGE({MAX_LEVERAGE}x) 적용: max_pos 클램핑 → ${max_pos:.0f}")
 
         # 2. USDC 기반 클램핑 (WS 캐시에서 심볼별 실제 가격 있을 때만 적용)
         #    DataCollector 캐시에서 현재 마크 가격 우선 사용, 없으면 이벤트 체결가
@@ -689,12 +713,46 @@ class CopyEngine:
         else:
             status = "filled"
 
+        # ── P0 Fix (Round 5): force_close PnL 계산 ──────────────────────────
+        # 포지션 진입가에서 현재가 기준으로 realized PnL 계산
+        _force_realized_pnl = None
+        _force_entry_price = None
+        follower_positions = self._positions.get(follower_addr, {})
+        if symbol in follower_positions:
+            _fp = follower_positions[symbol]
+            _force_entry_price = _fp.get("entry_price")
+            if _force_entry_price and current_price > 0:
+                _fp_side = _fp.get("side", "bid")
+                if _fp_side == "bid":
+                    # 롱 포지션 청산: (청산가 - 진입가) × size
+                    _force_realized_pnl = round((current_price - _force_entry_price) * float(copy_amount), 6)
+                else:
+                    # 숏 포지션 청산: (진입가 - 청산가) × size
+                    _force_realized_pnl = round((_force_entry_price - current_price) * float(copy_amount), 6)
+                logger.info(
+                    f"[FORCE_CLOSE][PnL] {follower_addr[:8]} {symbol} "
+                    f"entry={_force_entry_price:.4f} close={current_price:.4f} "
+                    f"pnl={_force_realized_pnl:+.6f}"
+                )
+        else:
+            # DB에서 포지션 조회 시도
+            try:
+                _db_pos = await get_follower_position(self.db, follower_addr, symbol)
+                if _db_pos and _db_pos.get("entry_price") and current_price > 0:
+                    _force_entry_price = _db_pos["entry_price"]
+                    _db_side = _db_pos.get("side", "bid")
+                    if _db_side == "bid":
+                        _force_realized_pnl = round((current_price - _force_entry_price) * float(copy_amount), 6)
+                    else:
+                        _force_realized_pnl = round((_force_entry_price - current_price) * float(copy_amount), 6)
+            except Exception as _ep:
+                logger.debug(f"[FORCE_CLOSE] PnL DB 조회 오류 (무시): {_ep}")
+
         # 포지션 삭제
         try:
             await delete_follower_position(self.db, follower_addr, symbol)
         except Exception:
             pass
-        follower_positions = self._positions.get(follower_addr, {})
         follower_positions.pop(symbol, None)
 
         # 기록
@@ -709,8 +767,8 @@ class CopyEngine:
             "price": str(current_price),
             "client_order_id": client_order_id,
             "status": status,
-            "pnl": None,
-            "entry_price": None,
+            "pnl": _force_realized_pnl,
+            "entry_price": _force_entry_price,
             "exec_price": current_price,
             "created_at": _now_ms,
             "error_msg": reason if status == "failed" else None,

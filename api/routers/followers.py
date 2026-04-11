@@ -959,8 +959,35 @@ async def get_follower_pnl(follower_address: str) -> dict:
     # ── 열린 포지션 목록 ─────────────────────────────────
     from db.database import get_all_follower_positions
     open_positions = await get_all_follower_positions(_db, follower_address)
-    # 미실현 PnL: mark_price 없으면 0
+
+    # P0 Fix (Round 5): unrealized PnL — DataCollector 마크 가격 캐시 활용
+    # mark_price 없으면 0 처리 (기존 동작 유지)
     unrealized_pnl = 0.0
+    try:
+        from core.data_collector import get_price_cache
+        _price_cache = get_price_cache()
+        for _pos in open_positions:
+            _sym = _pos.get("symbol", "").upper()
+            _entry = float(_pos.get("entry_price", 0) or 0)
+            _size = float(_pos.get("size", 0) or 0)
+            _side = _pos.get("side", "bid")
+            _mkt = _price_cache.get(_sym, {})
+            _mark = float(_mkt.get("mark", 0) or 0)
+            if _mark > 0 and _entry > 0 and _size > 0:
+                if _side == "bid":
+                    _upnl = (_mark - _entry) * _size
+                else:  # ask (숏)
+                    _upnl = (_entry - _mark) * _size
+                unrealized_pnl += _upnl
+                _pos["mark_price"] = _mark        # 응답에 마크 가격 포함
+                _pos["unrealized_pnl"] = round(_upnl, 6)
+            else:
+                _pos["mark_price"] = None
+                _pos["unrealized_pnl"] = 0.0
+        unrealized_pnl = round(unrealized_pnl, 4)
+    except Exception as _upnl_e:
+        logger.debug(f"[PnL] unrealized PnL 계산 오류 (무시): {_upnl_e}")
+        unrealized_pnl = 0.0
 
     # ── 트레이더별 PnL ────────────────────────────────────
     async with _db.execute(
