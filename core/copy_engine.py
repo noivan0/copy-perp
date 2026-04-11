@@ -182,12 +182,16 @@ class CopyEngine:
             pass
         return None
 
-    def _get_client(self, account: str) -> PacificaClient:  # type-checked
-        """팔로워 지갑 주소로 PacificaClient 캐시 반환 (Agent Key로 서명, account만 팔로워로 교체)"""
-        if account not in self._client_cache:
-            # AGENT_PRIVATE_KEY는 서버 공통; account만 팔로워 지갑으로 교체
-            self._client_cache[account] = PacificaClient(account_address=account)
-        return self._client_cache[account]
+    def _get_client(self, account: str = "") -> PacificaClient:  # type-checked
+        """
+        PacificaClient 반환.
+        Pacifica Agent Key 구조: account = ACCOUNT_ADDRESS (서버 계정 1개)
+        AGENT_PRIVATE_KEY로 서명 — 팔로워 지갑은 서버 DB 기록용, Pacifica 주문과 무관.
+        """
+        _server_account = os.getenv("ACCOUNT_ADDRESS", "")
+        if _server_account not in self._client_cache:
+            self._client_cache[_server_account] = PacificaClient(account_address=_server_account)
+        return self._client_cache[_server_account]
 
     async def on_fill(self, event: dict) -> None:  # type-checked
         """
@@ -324,16 +328,6 @@ class CopyEngine:
             logger.warning(f"[{follower['address'][:8]}] copy_ratio/max_pos 변환 실패: {_e} — 기본값 사용")
             copy_ratio = 0.1
             max_pos = 100.0
-
-        # ── AgentBind 체크: agent_bound=1인 팔로워만 주문 실행 ──────────────
-        # agent_bound 컬럼이 없는 구버전 DB에서는 None → 0으로 처리 (하위 호환)
-        _agent_bound = follower.get("agent_bound", 0)
-        if not self.mock_mode and not _agent_bound:
-            logger.debug(
-                f"[{follower_addr[:8]}] Agent 미바인딩 — 주문 스킵 "
-                f"(프론트에서 Agent Binding 완료 후 copy 시작)"
-            )
-            return
 
         # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
         # R10: per-follower+symbol lock (기존 per-follower는 다른 심볼도 블록하는 과도한 직렬화)
@@ -632,9 +626,6 @@ class CopyEngine:
             # R11+: 팔로워 자동 일시 중지 (반복 실패 방지)
             # 1) unauthorized to sign: Agent Binding 미완료
             # 2) IP not whitelisted: Pacifica API Key IP whitelist 미설정 (서버 전체 이슈)
-            _is_unauthorized = "unauthorized to sign" in err_str.lower() or (
-                "unauthorized" in err_str.lower() and "sign on behalf" in err_str.lower()
-            )
             _is_ip_blocked = "not whitelisted" in err_str.lower() or (
                 "ip address" in err_str.lower() and "whitelisted" in err_str.lower()
             )
@@ -645,22 +636,6 @@ class CopyEngine:
                     f"74.220.48.248 추가 필요: {err_str[:120]}"
                 )
                 status = "skipped_ip_blocked"
-            elif _is_unauthorized:
-                logger.warning(
-                    f"[{follower_addr[:8]}] Agent 미승인 — 팔로워 자동 중지 "
-                    f"(Pacifica 앱에서 Agent Binding 필요): {err_str[:120]}"
-                )
-                # 팔로워 비활성화: 같은 에러 반복 방지
-                try:
-                    await self.db.execute(
-                        "UPDATE followers SET active=0 WHERE address=?",
-                        (follower_addr,)
-                    )
-                    await self.db.commit()
-                    logger.info(f"[{follower_addr[:8]}] 팔로워 비활성화 완료 (agent_binding_required)")
-                except Exception as _db_err:
-                    logger.debug(f"팔로워 비활성화 실패 (무시): {_db_err}")
-                status = "skipped_agent_unbound"
             elif _is_balance_error:
                 logger.warning(
                     f"[{follower_addr[:8]}] 잔액 부족 — {symbol} {side} {copy_amount}: {err_str[:120]}"
