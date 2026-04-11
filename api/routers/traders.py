@@ -28,7 +28,7 @@ class TraderRegister(BaseModel):
 
 
 @router.get("")
-async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, description="최대 100명"), mock: bool = False):
+async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, description="최대 100명"), offset: int = Query(0, ge=0, description="페이지 오프셋"), mock: bool = False):
     """리더보드 — PnL 기준 정렬
     mock=true: Mock 데이터 강제 반환
     mock=false (기본): DB 우선, 비어있으면 Mock 폴백
@@ -58,7 +58,7 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
     try:
         from api.deps import _get_db_direct
         _db = _get_db_direct()
-        leaders = await get_leaderboard(_db, limit) if _db else []
+        leaders = await get_leaderboard(_db, limit, offset) if _db else []
         if leaders:
             def _enrich(r: dict) -> dict:
                 """composite_score 등 파생 필드 추가"""

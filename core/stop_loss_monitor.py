@@ -152,8 +152,14 @@ class StopLossMonitor:
 
             if new_high != high_p:
                 try:
+                    # positions 테이블 업데이트
                     await self.db.execute(
                         "UPDATE positions SET high_price=? WHERE follower_address=? AND symbol=? AND status='open'",
+                        (new_high, pos["follower_address"], sym)
+                    )
+                    # R10b: follower_positions 테이블도 동기화 (트레일링 스탑 정확도)
+                    await self.db.execute(
+                        "UPDATE follower_positions SET high_price=? WHERE follower_address=? AND symbol=?",
                         (new_high, pos["follower_address"], sym)
                     )
                     await self.db.commit()

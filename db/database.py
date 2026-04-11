@@ -383,7 +383,7 @@ async def record_copy_trade(conn, trade: dict) -> None:
                 pass  # 통계 업데이트 실패는 조용히 무시
 
 
-async def get_leaderboard(conn, limit: int = 20) -> list:
+async def get_leaderboard(conn, limit: int = 20, offset: int = 0) -> list:
     """복합 점수 기준 정렬: roi_30d*0.6 + roi_7d*0.3 + (1d 양수 보너스)
     전략팀 분석 기준: ROI 60% + 일관성 40%
 
@@ -427,8 +427,8 @@ async def get_leaderboard(conn, limit: int = 20) -> list:
                        ELSE total_pnl
                   END AS score
            FROM traders WHERE active = 1
-           ORDER BY score DESC LIMIT ?""",
-        (limit,)
+           ORDER BY score DESC LIMIT ? OFFSET ?""",
+        (limit, offset)
     ) as cur:
         return await cur.fetchall()
 

@@ -670,6 +670,11 @@ class CopyEngine:
                             "entry_price": db_pos["entry_price"],
                             "size": db_pos["size"],
                             "side": db_pos["side"],
+                            # R10b: DB fallback에서도 SL/TP 복원 (_load_positions_from_db와 동일하게)
+                            "stop_loss_price": db_pos.get("stop_loss_price", 0) or 0,
+                            "take_profit_price": db_pos.get("take_profit_price", 0) or 0,
+                            "high_price": db_pos.get("high_price") or db_pos["entry_price"],
+                            "strategy": db_pos.get("strategy", "passive") or "passive",
                         }
                 except Exception as _e:
                     logger.debug(f"[PnL] DB 포지션 조회 오류 (무시): {_e}")
@@ -685,6 +690,13 @@ class CopyEngine:
                         await delete_follower_position(self.db, follower_addr, pos_key)
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
+                    # pnl_tracker.positions 동기화 (performance API용)
+                    try:
+                        from db.pnl_tracker import close_position as _pt_close
+                        await _pt_close(self.db, follower_addr, trader_address, pos_key,
+                                        exec_price, size, trade_id)
+                    except Exception as _pt_e:
+                        logger.debug(f"[PnL] pnl_tracker 숏청산 기록 오류 (무시): {_pt_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 숏청산 PnL={realized_pnl:+.4f}")
                 elif pos_key in follower_positions and follower_positions[pos_key].get("side") == "bid":
                     # ── P0 Fix (Round 7): 같은 심볼에 OPEN_LONG이 2번 오는 경우 ──
@@ -703,8 +715,13 @@ class CopyEngine:
                         f"size {_old_size}→{_new_size}, avg_entry={_avg_entry:.4f}"
                     )
                     try:
+                        # R10b: 포지션 추가 시 기존 SL/TP/strategy 유지 (덮어쓰기 방지)
                         await upsert_follower_position(
-                            self.db, follower_addr, pos_key, "bid", _avg_entry, _new_size
+                            self.db, follower_addr, pos_key, "bid", _avg_entry, _new_size,
+                            stop_loss_price=_existing.get("stop_loss_price", 0) or 0,
+                            take_profit_price=_existing.get("take_profit_price", 0) or 0,
+                            high_price=_existing.get("high_price") or _avg_entry,
+                            strategy=_existing.get("strategy", "passive") or "passive",
                         )
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 업데이트 오류 (무시): {_e}")
@@ -729,12 +746,13 @@ class CopyEngine:
                             high_price=exec_price,
                             strategy=strategy_id,
                         )
-                        await self.db.execute(
-                            "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
-                            "WHERE follower_address=? AND symbol=? AND status='open'",
-                            (exec_price, sl_price or 0, tp_price or 0, strategy_id, follower_addr, pos_key)
-                        )
-                        await self.db.commit()
+                        # pnl_tracker.positions 테이블 동기화 (performance API용)
+                        try:
+                            from db.pnl_tracker import upsert_position as _pt_upsert
+                            await _pt_upsert(self.db, follower_addr, trader_address, pos_key,
+                                             "bid", float(copy_amount), exec_price, trade_id)
+                        except Exception as _pt_e:
+                            logger.debug(f"[PnL] pnl_tracker 롱 진입 기록 오류 (무시): {_pt_e}")
                         if sl_price:
                             logger.info(f"[SL] {follower_addr[:8]} {symbol} 롱 SL=${sl_price:.4f}")
                     except Exception as _e:
@@ -751,6 +769,13 @@ class CopyEngine:
                         await delete_follower_position(self.db, follower_addr, pos_key)
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
+                    # pnl_tracker.positions 동기화 (performance API용)
+                    try:
+                        from db.pnl_tracker import close_position as _pt_close
+                        await _pt_close(self.db, follower_addr, trader_address, pos_key,
+                                        exec_price, size, trade_id)
+                    except Exception as _pt_e:
+                        logger.debug(f"[PnL] pnl_tracker 롱청산 기록 오류 (무시): {_pt_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 롱청산 PnL={realized_pnl:+.4f}")
                 elif pos_key in follower_positions and follower_positions[pos_key].get("side") == "ask":
                     # ── P0 Fix (Round 7): 같은 심볼에 OPEN_SHORT가 2번 오는 경우 ──
@@ -767,8 +792,13 @@ class CopyEngine:
                         f"size {_old_size}→{_new_size}, avg_entry={_avg_entry:.4f}"
                     )
                     try:
+                        # R10b: 숏 포지션 추가 시 기존 SL/TP/strategy 유지 (덮어쓰기 방지)
                         await upsert_follower_position(
-                            self.db, follower_addr, pos_key, "ask", _avg_entry, _new_size
+                            self.db, follower_addr, pos_key, "ask", _avg_entry, _new_size,
+                            stop_loss_price=_existing.get("stop_loss_price", 0) or 0,
+                            take_profit_price=_existing.get("take_profit_price", 0) or 0,
+                            high_price=_existing.get("high_price") or _avg_entry,
+                            strategy=_existing.get("strategy", "passive") or "passive",
                         )
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 업데이트 오류 (무시): {_e}")
@@ -793,12 +823,13 @@ class CopyEngine:
                             high_price=exec_price,
                             strategy=strategy_id,
                         )
-                        await self.db.execute(
-                            "UPDATE positions SET high_price=?, stop_loss_price=?, take_profit_price=?, strategy=? "
-                            "WHERE follower_address=? AND symbol=? AND status='open'",
-                            (exec_price, sl_price or 0, tp_price or 0, strategy_id, follower_addr, pos_key)
-                        )
-                        await self.db.commit()
+                        # pnl_tracker.positions 테이블 동기화 (performance API용)
+                        try:
+                            from db.pnl_tracker import upsert_position as _pt_upsert
+                            await _pt_upsert(self.db, follower_addr, trader_address, pos_key,
+                                             "ask", float(copy_amount), exec_price, trade_id)
+                        except Exception as _pt_e:
+                            logger.debug(f"[PnL] pnl_tracker 숏 진입 기록 오류 (무시): {_pt_e}")
                         if sl_price:
                             logger.info(f"[SL] {follower_addr[:8]} {symbol} 숏 SL=${sl_price:.4f}")
                     except Exception as _e:

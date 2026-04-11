@@ -36,14 +36,28 @@ def _is_in_trusted_range(ip: str, cidrs: str) -> bool:
 
 
 def get_client_ip(request: Request) -> str:
-    """실제 클라이언트 IP 추출 (X-Forwarded-For, TRUSTED_PROXY_IPS 지원)."""
-    trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
+    """실제 클라이언트 IP 추출.
+
+    우선순위:
+    1. CF-Connecting-IP (Cloudflare 환경 — 위조 불가, CDN이 보장)
+    2. X-Forwarded-For 첫 번째 IP (TRUSTED_PROXY_IPS 설정 시만)
+    3. request.client.host (직접 연결 fallback)
+    """
+    # 1. Cloudflare CF-Connecting-IP 최우선 (Cloudflare가 실제 IP 보장)
+    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+    if cf_ip:
+        return cf_ip
+
     client_host = request.client.host if request.client else "unknown"
+
+    # 2. TRUSTED_PROXY_IPS 설정 시 X-Forwarded-For 첫 번째 IP 신뢰
+    trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
     if trusted_proxy and client_host != "unknown":
         if _is_in_trusted_range(client_host, trusted_proxy):
             xff = request.headers.get("X-Forwarded-For", "")
             if xff:
                 return xff.split(",")[0].strip()
+
     return client_host
 
 
@@ -60,9 +74,11 @@ def check_rate_limit(key: str, max_calls: int, window_sec: int = 60) -> bool:
 
 
 def require_rate_limit(key: str, max_calls: int, window_sec: int = 60) -> None:
-    """Rate limit 초과 시 HTTPException(429) 발생."""
+    """Rate limit 초과 시 HTTPException(429) 발생. Retry-After 헤더 포함."""
     if not check_rate_limit(key, max_calls, window_sec):
         raise HTTPException(
             status_code=429,
-            detail={"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"},
+            headers={"Retry-After": str(window_sec)},
+            detail={"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED",
+                    "retry_after_seconds": window_sec},
         )
