@@ -454,13 +454,13 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
 
     reasons = []
     if eq < HARD_FILTER["min_equity_usdc"]:
-        reasons.append(f"자산 ${eq:,.0f} < ${HARD_FILTER['min_equity_usdc']:,}")
+        reasons.append(f"Assets ${eq:,.0f} < ${HARD_FILTER['min_equity_usdc']:,}")
     if p30 < HARD_FILTER["min_pnl_30d"]:
-        reasons.append(f"30일 PnL ${p30:,.0f} < ${HARD_FILTER['min_pnl_30d']:,}")
+        reasons.append(f"30d PnL ${p30:,.0f} < ${HARD_FILTER['min_pnl_30d']:,}")
     if oi_ratio > HARD_FILTER["max_oi_equity_ratio"]:
         reasons.append(f"OI/Equity {oi_ratio:.1f}x > {HARD_FILTER['max_oi_equity_ratio']}x")
     if cons < HARD_FILTER["min_consistency"]:
-        reasons.append(f"일관성 {cons} < {HARD_FILTER['min_consistency']}")
+        reasons.append(f"Consistency {cons} < {HARD_FILTER['min_consistency']}")
     if p30 > 0 and mom_ratio < HARD_FILTER["min_momentum_ratio"]:
         reasons.append(f"Recent decline {mom_ratio:.0%} (>-30% vs 30d)")
     if roi30 > HARD_FILTER["max_roi_30d"]:
