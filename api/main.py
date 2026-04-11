@@ -209,8 +209,13 @@ app = FastAPI(
 async def add_request_id(request: Request, call_next):
     request_id = str(uuid.uuid4())[:8]
     request.state.request_id = request_id
-    # 요청 로그
-    logger.info(f"[{request_id}] {request.method} {request.url.path}")
+    # 요청 로그 (P2 Fix Round 7: 헬스/마켓 폴링 엔드포인트는 DEBUG로 다운그레이드)
+    _path = request.url.path
+    _QUIET_PATHS = ("/healthz", "/health", "/markets", "/signals", "/metrics")
+    if any(_path.startswith(p) for p in _QUIET_PATHS):
+        logger.debug(f"[{request_id}] {request.method} {_path}")
+    else:
+        logger.info(f"[{request_id}] {request.method} {_path}")
     # 응답 시간 측정 (IMPROVE 1)
     _t_start = _time_module.perf_counter()
     response = await call_next(request)
@@ -584,11 +589,17 @@ async def _sync_leaderboard_loop():
     P2 Fix (Round 6): startup 순서 보장
     - DB init → healthz ok (즉시) → leaderboard sync (5초 후 백그라운드)
     - 5초 딜레이: DB init 완료 후 첫 요청 수신 전에 sync 완료 가능성 최대화
+
+    P1 Fix (Round 7): 연속 실패 시 exponential backoff (최대 5분)
+    - 네트워크 오류로 루프 자체가 죽지 않도록 모든 예외 포괄 캐치
+    - 연속 실패 시 backoff: 1→2→4→8→16→32→60초 (최대 60초)
     """
     await asyncio.sleep(5)
     logger.info("[Leaderboard] 첫 번째 동기화 시작...")
     from pacifica.client import PacificaClient
     client = PacificaClient()
+    _fail_count = 0
+    _BACKOFF_MAX = 300  # 최대 5분
     while True:
         try:
             lb = await asyncio.get_event_loop().run_in_executor(
@@ -660,8 +671,15 @@ async def _sync_leaderboard_loop():
                     )
                 )
             await _db.commit()
+            _fail_count = 0  # 성공 시 리셋
         except Exception as e:
-            logger.warning(f"[Leaderboard] 동기화 오류: {e}")
+            _fail_count += 1
+            _backoff = min(2 ** (_fail_count - 1), _BACKOFF_MAX)
+            logger.warning(
+                f"[Leaderboard] 동기화 오류 (연속 {_fail_count}회, backoff={_backoff}s): {e}"
+            )
+            await asyncio.sleep(_backoff)
+            continue  # 즉시 재시도 (정상 60초 대기 없이)
         await asyncio.sleep(60)
 
 
@@ -760,7 +778,11 @@ async def _winrate_refresh_loop():
             await db.commit()
             logger.info(f"[WinRate] 갱신 완료: {updated}/{len(top_traders)}명 업데이트")
         except Exception as e:
-            logger.warning(f"[WinRate] 갱신 루프 오류: {e}")
+            # P1 Fix (Round 7): 루프 자체가 죽지 않도록 모든 예외 포괄 캐치
+            # 네트워크 오류 등 일시적 장애 → 5분 후 재시도 (1시간 대기 없이)
+            logger.warning(f"[WinRate] 갱신 루프 오류 — 5분 후 재시도: {e}")
+            await asyncio.sleep(300)
+            continue
 
         await asyncio.sleep(1 * 3600)  # 1시간마다 갱신 (프로덕트 기준)
 
@@ -1305,6 +1327,12 @@ async def list_trades(
         ) as _cur:
             _lose_all = int((await _cur.fetchone())[0])
         _wr = round(_win_all / max(_win_all + _lose_all, 1) * 100, 2) if (_win_all + _lose_all) > 0 else 0.0
+        # P2 Fix (Round 7): fee_usdc 합계 summary에 포함
+        async with db.execute(
+            f"""SELECT COALESCE(SUM(fee_usdc),0) FROM copy_trades {_where_all} {_join_kw} status='filled'""",
+            _params,
+        ) as _cur:
+            _fee_all = float((await _cur.fetchone())[0])
     except Exception:
         _total_all = len(data)
         _filled_all = len(filled)
@@ -1313,6 +1341,7 @@ async def list_trades(
         _pnl_all = total_pnl
         _win_all = 0
         _wr = 0.0
+        _fee_all = 0.0
 
     return {
         "data": data,
@@ -1324,6 +1353,7 @@ async def list_trades(
             "realized_pnl_usdc": round(_pnl_all, 4),
             "total_pnl_usdc": round(_pnl_all, 4),
             "total_volume_usdc": round(_vol_all, 2),
+            "total_fee_usdc": round(_fee_all, 6),  # P2 Fix (Round 7): fee 합계 추가
             "win_rate_pct": _wr,
         },
     }

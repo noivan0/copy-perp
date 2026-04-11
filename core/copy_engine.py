@@ -225,6 +225,11 @@ class CopyEngine:
 
         ok = sum(1 for r in results if not isinstance(r, Exception))
         fail = len(results) - ok
+        # P1 Fix (Round 7): 개별 팔로워 오류 상세 로깅 (루프 외부에서 한번에 처리)
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                _follower_addr_i = followers[i].get("address", "??")[:8] if isinstance(followers[i], dict) else "??"
+                logger.error(f"[CopyEngine] 팔로워 [{_follower_addr_i}] 처리 예외: {r}", exc_info=False)
         logger.info(f"복사 완료: 성공 {ok} / 실패 {fail}")
 
     async def _copy_to_follower(
@@ -504,9 +509,21 @@ class CopyEngine:
                     get_alert_manager().order_success(follower_addr, symbol, side, copy_amount)
 
         except Exception as e:
-            logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
+            err_str = str(e)
+            # P0 Fix (Round 7): 잔액 부족 에러 분류 — 다른 에러와 구분하여 로깅
+            _INSUFFICIENT_PATTERNS = (
+                "insufficient", "not enough", "margin", "funds",
+                "balance", "exceeds", "below minimum",
+            )
+            _is_balance_error = any(p in err_str.lower() for p in _INSUFFICIENT_PATTERNS)
+            if _is_balance_error:
+                logger.warning(
+                    f"[{follower_addr[:8]}] 잔액 부족 — {symbol} {side} {copy_amount}: {err_str[:120]}"
+                )
+            else:
+                logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
             status = "failed"
-            _error_msg = str(e)
+            _error_msg = err_str
             get_alert_manager().order_failed(follower_addr, symbol, side, _error_msg)
 
         # Fuul copy_trade 이벤트 (체결 성공 시)
@@ -573,8 +590,30 @@ class CopyEngine:
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 숏청산 PnL={realized_pnl:+.4f}")
+                elif pos_key in follower_positions and follower_positions[pos_key].get("side") == "bid":
+                    # ── P0 Fix (Round 7): 같은 심볼에 OPEN_LONG이 2번 오는 경우 ──
+                    # 기존 롱 포지션이 이미 열려있으면 중복 진입 방지
+                    # Pacifica는 자동으로 포지션을 증가(add)하므로 size만 업데이트
+                    _existing = follower_positions[pos_key]
+                    _old_size = _existing.get("size", 0)
+                    _new_size = _old_size + float(copy_amount)
+                    _old_entry = _existing.get("entry_price", exec_price)
+                    # 가중 평균 진입가 계산 (포지션 추가 시)
+                    _avg_entry = round((_old_entry * _old_size + exec_price * float(copy_amount)) / _new_size, 8) if _new_size > 0 else exec_price
+                    follower_positions[pos_key]["size"] = _new_size
+                    follower_positions[pos_key]["entry_price"] = _avg_entry
+                    logger.info(
+                        f"[PnL] {follower_addr[:8]} {symbol} 롱 포지션 추가: "
+                        f"size {_old_size}→{_new_size}, avg_entry={_avg_entry:.4f}"
+                    )
+                    try:
+                        await upsert_follower_position(
+                            self.db, follower_addr, pos_key, "bid", _avg_entry, _new_size
+                        )
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 업데이트 오류 (무시): {_e}")
                 else:
-                    # 롱 포지션 진입 — stop/take 계산 (strategy_presets 파라미터 기반)
+                    # 롱 포지션 신규 진입 — stop/take 계산 (strategy_presets 파라미터 기반)
                     from core.strategy import _calc_stop_from_preset
                     sl_price, tp_price = _calc_stop_from_preset(exec_price, "bid", preset)
                     follower_positions[pos_key] = {
@@ -613,8 +652,28 @@ class CopyEngine:
                     except Exception as _e:
                         logger.debug(f"[PnL] 포지션 삭제 오류 (무시): {_e}")
                     logger.info(f"[PnL] {follower_addr[:8]} {symbol} 롱청산 PnL={realized_pnl:+.4f}")
+                elif pos_key in follower_positions and follower_positions[pos_key].get("side") == "ask":
+                    # ── P0 Fix (Round 7): 같은 심볼에 OPEN_SHORT가 2번 오는 경우 ──
+                    # 기존 숏 포지션이 이미 열려있으면 포지션 추가 (사이즈 + 가중 평균 진입가)
+                    _existing = follower_positions[pos_key]
+                    _old_size = _existing.get("size", 0)
+                    _new_size = _old_size + float(copy_amount)
+                    _old_entry = _existing.get("entry_price", exec_price)
+                    _avg_entry = round((_old_entry * _old_size + exec_price * float(copy_amount)) / _new_size, 8) if _new_size > 0 else exec_price
+                    follower_positions[pos_key]["size"] = _new_size
+                    follower_positions[pos_key]["entry_price"] = _avg_entry
+                    logger.info(
+                        f"[PnL] {follower_addr[:8]} {symbol} 숏 포지션 추가: "
+                        f"size {_old_size}→{_new_size}, avg_entry={_avg_entry:.4f}"
+                    )
+                    try:
+                        await upsert_follower_position(
+                            self.db, follower_addr, pos_key, "ask", _avg_entry, _new_size
+                        )
+                    except Exception as _e:
+                        logger.debug(f"[PnL] 포지션 업데이트 오류 (무시): {_e}")
                 else:
-                    # 숏 포지션 진입 — stop/take 계산
+                    # 숏 포지션 신규 진입 — stop/take 계산
                     from core.strategy import _calc_stop_from_preset
                     sl_price, tp_price = _calc_stop_from_preset(exec_price, "ask", preset)
                     follower_positions[pos_key] = {

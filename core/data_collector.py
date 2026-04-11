@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL = 30          # 초 (기본 30초)
 STALE_THRESHOLD = 90        # 초 이상 업데이트 없으면 disconnected 처리
 RETRY_INTERVAL  = 5         # 오류 시 재시도 간격
+PRICE_TTL = 60              # 심볼별 가격 캐시 TTL (초) — 이보다 오래된 가격은 stale로 표시
 
 _price_cache: dict = {}
 _last_poll_ts: float = 0.0
@@ -29,6 +30,26 @@ def get_price_cache() -> dict:
 
 def is_connected() -> bool:
     return _data_connected and (time.time() - _last_updated) < STALE_THRESHOLD
+
+
+def get_mark_price(symbol: str) -> float:
+    """심볼의 최신 마크가격 반환.
+
+    P1 Fix (Round 7): per-symbol TTL 체크 추가
+    - 개별 심볼의 updated_at이 PRICE_TTL(60초)보다 오래됐으면 0.0 반환 (stale 가격 사용 방지)
+    - 캐시 자체가 없거나 mark=0 이면 0.0 반환
+    """
+    entry = _price_cache.get(symbol) or _price_cache.get(symbol.upper())
+    if not entry:
+        return 0.0
+    updated_at = entry.get("updated_at", 0)
+    if time.time() - updated_at > PRICE_TTL:
+        logger.debug(f"[DataCollector] {symbol} 가격 캐시 만료 ({time.time() - updated_at:.0f}s > TTL {PRICE_TTL}s)")
+        return 0.0
+    try:
+        return float(entry.get("mark", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 async def poll_once() -> int:
@@ -136,6 +157,7 @@ async def start_polling(interval: int = POLL_INTERVAL):
             if n > 0:
                 logger.debug(f"DataCollector: {n}개 심볼 업데이트")
             else:
+                logger.warning("DataCollector: 심볼 업데이트 없음 (빈 응답)")
                 _data_connected = False
 
             # 매일 UTC 00:00 ~ 00:05 사이 첫 폴링에서 leaderboard 스냅샷 저장
