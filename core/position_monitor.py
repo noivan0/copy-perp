@@ -283,7 +283,7 @@ class RestPositionMonitor(PositionMonitor):
         super().__init__(trader_address, on_fill)
         self._fail_count = 0
         self._last_poll_time: Optional[float] = None
-        self._current_backoff = self._BACKOFF_BASE
+        # _current_backoff 제거 — _next_backoff()가 _fail_count에서 직접 계산
 
     def _next_backoff(self) -> float:
         """exponential backoff 계산: 2^fail_count 초, max 30초"""
@@ -311,7 +311,6 @@ class RestPositionMonitor(PositionMonitor):
                     except Exception as e:
                         logger.debug(f"무시된 예외: {e}")
                 self._fail_count = 0
-                self._current_backoff = self._BACKOFF_BASE
                 self._last_poll_time = time.time()
 
             except Exception as e:
@@ -349,7 +348,6 @@ class RestPositionMonitor(PositionMonitor):
                     # backoff 대기 후 클라이언트 재생성
                     await asyncio.sleep(backoff)
                     self._fail_count = 0
-                    self._current_backoff = self._BACKOFF_BASE
                     client = PacificaClient(self.trader)
                     logger.info(f"[REST] {self.trader[:12]} 재시작 완료")
                     continue

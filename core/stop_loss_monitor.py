@@ -29,14 +29,16 @@ SCAN_INTERVAL = 30   # 30초마다 스캔
 
 
 def _get_mark_prices() -> dict[str, float]:
-    """현재 마크 가격 일괄 조회 (codetabs 프록시)"""
-    url = BASE + "/markets"
+    """현재 마크 가격 일괄 조회 (codetabs 프록시 → /info/prices)"""
+    url = BASE + "/info/prices"
     try:
         r = requests.get(PROXY + urllib.parse.quote(url), timeout=15)
         if r.ok:
-            data = r.json().get("data", []) or []
+            raw = r.json()
+            # /info/prices 응답: list 또는 {data: list}
+            data = raw if isinstance(raw, list) else (raw.get("data", []) or [])
             return {
-                m.get("symbol", "").upper(): float(m.get("mark_price", 0) or 0)
+                m.get("symbol", "").upper(): float(m.get("mark_price", m.get("mark", 0)) or 0)
                 for m in data
             }
     except Exception as e:

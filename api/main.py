@@ -370,6 +370,24 @@ def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bo
                 del _rate_limit_store[k]
     return True
 
+def _get_client_ip(request: Request) -> str:
+    """실제 클라이언트 IP 추출.
+    X-Forwarded-For 스푸핑 방지: TRUSTED_PROXY 환경변수가 설정된 경우에만 헤더 신뢰.
+    프록시 환경 아닐 경우 request.client.host 사용.
+    """
+    trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
+    client_host = request.client.host if request.client else "unknown"
+    if trusted_proxy:
+        # 신뢰할 프록시 IP 목록이 설정된 경우에만 X-Forwarded-For 헤더 신뢰
+        trusted_ips = {ip.strip() for ip in trusted_proxy.split(",") if ip.strip()}
+        if client_host in trusted_ips:
+            xff = request.headers.get("X-Forwarded-For", "")
+            if xff:
+                # 첫 번째 IP(원본)만 사용
+                return xff.split(",")[0].strip()
+    return client_host
+
+
 def _require_rate_limit(key: str, max_calls: int = None, window_sec: int = 60, request: Request = None) -> None:
     """Rate limit 초과 시 HTTPException(429) 발생.
     max_calls 생략 시 RATE_LIMIT_POLICY 테이블에서 자동 조회.
@@ -1357,7 +1375,7 @@ def get_config() -> dict:
         "network":           os.getenv("NETWORK", "testnet"),
         "mock_mode":         not bool(os.getenv("AGENT_PRIVATE_KEY", "")),
         "fuul_enabled":      bool(fuul_key),
-        "allowed_origins":   _ALLOWED_ORIGINS,
+        # allowed_origins 미노출 (보안): 내부 CORS 정책은 서버에서만 관리
     }
 
 
