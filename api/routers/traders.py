@@ -44,11 +44,11 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
             detail={"error": "Rate limit exceeded", "code": "RATE_LIMIT_EXCEEDED"}
         )
 
-    # limit 검증
-    if limit < 1 or limit > 200:
+    # limit 검증 (FastAPI Query le=100과 일치)
+    if limit < 1 or limit > 100:
         raise HTTPException(
             status_code=400,
-            detail={"error": "limit must be between 1 and 200", "code": "INVALID_LIMIT"}
+            detail={"error": "limit must be between 1 and 100", "code": "INVALID_LIMIT"}
         )
 
     if mock:
