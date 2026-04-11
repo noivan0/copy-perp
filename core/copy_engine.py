@@ -1,5 +1,5 @@
 """
-Copy Engine v1.1 — 트레이더 체결 이벤트 → 팔로워 복사 주문
+Copy Engine v1.2 — 트레이더 체결 이벤트 → 팔로워 복사 주문
 
 플로우:
 1. PositionMonitor → on_fill(event) 호출
@@ -11,6 +11,11 @@ v1.1 수정:
 - _parse_side: 대소문자 정규화, None 입력 안전 처리
 - _execute_copy: 음수 수량 방어, price_f=0 시 MIN_ORDER_USDC 체크 우회 수정
 - builder_code_approved 접근 패턴 .get()으로 통일
+
+v1.2 수정 (R11):
+- 동일 심볼 LONG+SHORT 동시 신호 스킵 (헤지 포지션 방지)
+- 잔액 부족 시 copy_trades에 status='skipped_insufficient' 기록
+- _pending_directions: 처리 중 방향 추적 버퍼 (5초 TTL)
 """
 
 import asyncio
@@ -114,6 +119,9 @@ class CopyEngine:
         self._client_cache: dict[str, PacificaClient] = {}
         # 팔로워별 동시 주문 중복 방지 Lock
         self._follower_locks: dict[str, asyncio.Lock] = {}
+        # R11: 동일 심볼 동시 방향 추적 버퍼 (LONG+SHORT 동시 신호 스킵용)
+        # {symbol: {"directions": set(), "ts": float}}
+        self._pending_directions: dict[str, dict] = {}
 
     async def _load_positions_from_db(self) -> None:
         """서버 재시작 시 DB의 follower_positions → self._positions 복원"""
