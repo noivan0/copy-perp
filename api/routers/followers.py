@@ -1469,9 +1469,23 @@ async def get_follower_portfolio(follower_address: str) -> dict:
 
     win_rate = win_trades / total_trades * 100 if total_trades > 0 else 0.0
 
+    # agent_bound 조회
+    _agent_bound = False
+    try:
+        async with _db.execute(
+            "SELECT agent_bound FROM followers WHERE address=? LIMIT 1",
+            (follower_address,)
+        ) as _cur:
+            _row = await _cur.fetchone()
+            if _row:
+                _agent_bound = bool(_row[0])
+    except Exception:
+        pass  # agent_bound 컬럼 없으면 False (마이그레이션 전)
+
     return {
         "ok": True,
         "follower_address": follower_address,
+        "agent_bound": _agent_bound,
         "pnl": {
             "realized_usdc": round(realized_pnl, 4),
             "unrealized_usdc": 0.0,
@@ -1492,7 +1506,7 @@ async def get_follower_portfolio(follower_address: str) -> dict:
 
 # ── Agent Bind 엔드포인트 (다중 유저 Agent Binding) ────────────────────────────
 
-@router.get("/bind-request")
+@router.get("/bind-agent/payload")
 async def get_bind_request(follower_address: str = Query(...)):
     """
     유저 지갑이 서명해야 할 bind 메시지 반환.
@@ -1541,7 +1555,7 @@ async def get_bind_request(follower_address: str = Query(...)):
     }
 
 
-@router.post("/bind-submit")
+@router.post("/bind-agent")
 async def submit_bind(body: dict):
     """
     유저가 서명한 bind 요청을 Pacifica에 제출.
@@ -1570,9 +1584,14 @@ async def submit_bind(body: dict):
         raise HTTPException(422, {"error": "Invalid follower_address format", "code": "INVALID_ADDRESS"})
 
     NETWORK = os.getenv("NETWORK", "testnet")
+    _direct = os.getenv("PACIFICA_DIRECT", "false").lower() == "true"
     if NETWORK == "mainnet":
         bind_url = "https://api.pacifica.fi/api/v1/agent/bind"
         host_header = "api.pacifica.fi"
+    elif _direct:
+        # testnet: 직접 접근 (IP whitelist 환경)
+        bind_url = "https://test-api.pacifica.fi/api/v1/agent/bind"
+        host_header = "test-api.pacifica.fi"
     else:
         # testnet: CloudFront SNI (HMG 웹필터 우회)
         bind_url = "https://do5jt23sqak4.cloudfront.net/api/v1/agent/bind"
