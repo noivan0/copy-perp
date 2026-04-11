@@ -912,8 +912,9 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
                 detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
             )
         # 본인 주소에 해당하는 팔로워 데이터만 반환
+        # R13 P1: Turso(libSQL)에서 boolean을 TRUE/1 혼용 가능 → active != 0으로 안전 처리
         async with _db_local.execute(
-            "SELECT * FROM followers WHERE address=? AND active=1 ORDER BY created_at DESC",
+            "SELECT * FROM followers WHERE address=? AND active != 0 ORDER BY created_at DESC",
             (follower_address,)
         ) as cur:
             rows = await cur.fetchall()

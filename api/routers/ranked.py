@@ -82,6 +82,13 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
                 "consistency_score": int(raw_data.get("consistency", 0)),
                 "data_source":       "db" if win_rate_val is not None else "summary",
             }
+        # win_rate 스케일 정규화: 0~1 → 0~100 (CRS 경로 포함 모든 경우)
+        if d.get("trade_stats") and d["trade_stats"].get("win_rate") is not None:
+            raw_wr = d["trade_stats"]["win_rate"]
+            if raw_wr is not None:
+                raw_wr_f = float(raw_wr)
+                if raw_wr_f <= 1.0:
+                    d["trade_stats"]["win_rate"] = round(raw_wr_f * 100, 1)
         return d
     except Exception as e:
         logger.warning(f"CRS 계산 오류 {row.get('address', '?')[:12]}: {e}")

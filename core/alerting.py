@@ -68,13 +68,27 @@ class AlertManager:
             "msg": msg,
         })
 
-    def order_failed(self, follower: str, symbol: str, side: str, error: str):
-        """Order failure notification"""
-        key = f"order_fail:{follower[:8]}"
+    def order_failed(self, follower: str, symbol: str, side: str, error: str,
+                     reason: str = "other"):
+        """Order failure notification
+        
+        reason: 'no_key' | 'api_error' | 'insufficient_funds' | 'other'
+        - no_key: AGENT_PRIVATE_KEY 미설정 (에러 카운트 증가 안 함)
+        - insufficient_funds: 잔액 부족
+        - api_error: Pacifica API 오류
+        - other: 기타
+        """
+        # P0 R13: no_key는 에러 카운트 증가 안 함 (설정 문제 → 반복 알림 방지)
+        if reason == "no_key":
+            logger.warning(f"[{follower[:8]}] 주문 스킵: AGENT_PRIVATE_KEY 미설정")
+            return
+
+        # R13: reason이 포함된 메트릭 키 (원인별 구분)
+        key = f"order_fail:{follower[:8]}:{reason}"
         self._error_count[key] = self._error_count.get(key, 0) + 1
         count = self._error_count[key]
 
-        msg = f"🚨 Order failed [{follower[:8]}] {symbol} {side}\n{error}"
+        msg = f"🚨 Order failed [{follower[:8]}] {symbol} {side} [{reason}]\n{error}"
         self._log_event("error", "order", msg)
 
         # Alert on 3+ consecutive failures
@@ -82,7 +96,7 @@ class AlertManager:
             logger.error(msg)
             _recent_alerts.append((time.time(), msg))
             if ALERT_BOT_TOKEN:
-                _send_telegram(f"<b>Copy Perp Order Failed</b>\nFollower: {follower[:12]}...\nSymbol: {symbol} {side}\nConsecutive failures: {count}\nError: {error[:100]}")
+                _send_telegram(f"<b>Copy Perp Order Failed</b>\nFollower: {follower[:12]}...\nSymbol: {symbol} {side}\nReason: {reason}\nConsecutive failures: {count}\nError: {error[:100]}")
         else:
             logger.warning(msg)
 

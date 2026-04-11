@@ -506,6 +506,35 @@ class CopyEngine:
         client_order_id = str(uuid.uuid4())
         trade_id = str(uuid.uuid4())
 
+        # ── P0 (R13): PRIVATE_KEY 없을 때 early return ──────────────────────
+        # AGENT_PRIVATE_KEY 없으면 주문 자체가 불가 → 에러 카운트 증가 방지
+        if not self.mock_mode:
+            import os as _os
+            _agent_pk = _os.getenv("AGENT_PRIVATE_KEY", "")
+            if not _agent_pk:
+                logger.warning(
+                    f"[{follower_addr[:8]}] AGENT_PRIVATE_KEY 미설정 — 주문 스킵 (skipped_no_key). "
+                    f"서버 환경변수를 확인하세요."
+                )
+                await record_copy_trade(self.db, {
+                    "id": trade_id,
+                    "follower_address": follower_addr,
+                    "trader_address": trader_address,
+                    "symbol": symbol,
+                    "side": side,
+                    "amount": copy_amount,
+                    "price": str(symbol_price) if symbol_price > 0 else "0",
+                    "client_order_id": client_order_id,
+                    "status": "skipped_no_key",
+                    "pnl": None,
+                    "entry_price": None,
+                    "exec_price": None,
+                    "created_at": int(time.time() * 1000),
+                    "error_msg": "AGENT_PRIVATE_KEY not set",
+                    "fee_usdc": 0.0,
+                })
+                return  # 에러 카운트 증가 없이 종료
+
         status = "failed"
         _error_msg: Optional[str] = None
         try:
@@ -620,7 +649,13 @@ class CopyEngine:
                 logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
                 status = "failed"
             _error_msg = err_str
-            get_alert_manager().order_failed(follower_addr, symbol, side, _error_msg)
+            # R13: reason 분류 (metrics 라벨 개선)
+            _reason = (
+                "insufficient_funds" if _is_balance_error
+                else "api_error" if ("api" in err_str.lower() or "request" in err_str.lower() or "timeout" in err_str.lower())
+                else "other"
+            )
+            get_alert_manager().order_failed(follower_addr, symbol, side, _error_msg, reason=_reason)
 
         # Fuul copy_trade 이벤트 (체결 성공 시)
         if status == "filled":

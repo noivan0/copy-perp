@@ -784,10 +784,20 @@ async def _winrate_refresh_loop():
                     continue
                 try:
                     # PacificaClient의 CF 요청 함수 재사용 (chunked 파싱 포함)
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda a=addr: _cf_request("GET", f"trades/history?account={a}&limit=200")
-                    )
+                    _path_wr = f"trades/history?account={a}&limit=200"
+                    _use_direct = os.getenv("PACIFICA_DIRECT","false").lower()=="true"
+                    if _use_direct:
+                        import requests as _req2
+                        _dr = _req2.get(
+                            f"https://test-api.pacifica.fi/api/v1/{_path_wr}",
+                            headers={"User-Agent":"CopyPerp/1.0"}, timeout=15
+                        )
+                        result = _dr.json()
+                    else:
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda a=addr: _cf_request("GET", f"trades/history?account={a}&limit=200")
+                        )
                     if not isinstance(result, dict):
                         logger.warning(f"[WinRate] {addr[:12]} API 응답 타입 이상: {type(result)}")
                         continue

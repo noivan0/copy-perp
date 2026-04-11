@@ -304,8 +304,9 @@ async def add_follower(
 
 
 async def get_followers(conn, trader_address: str) -> list:
+    # R13 P1: Turso(libSQL)에서 boolean을 TRUE/1 혼용 가능 → active != 0으로 안전 처리
     async with conn.execute(
-        "SELECT * FROM followers WHERE trader_address = ? AND active = 1",
+        "SELECT * FROM followers WHERE trader_address = ? AND active != 0",
         (trader_address,)
     ) as cur:
         rows = await cur.fetchall()

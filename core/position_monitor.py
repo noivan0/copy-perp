@@ -323,6 +323,18 @@ class RestPositionMonitor(PositionMonitor):
 
     async def start(self):
         self._running = True
+        # ── P0 (R13): AGENT_PRIVATE_KEY 없으면 monitor loop skip ───────────
+        # key 없으면 on_fill → copy_engine → 주문 실패 반복 → 에러 카운트 증가
+        # key 설정 전까지 모니터 자체를 시작하지 않음 (반복 실패 방지)
+        _agent_pk = _os.getenv("AGENT_PRIVATE_KEY", "")
+        if not _agent_pk:
+            logger.warning(
+                f"[REST] AGENT_PRIVATE_KEY 미설정 — PositionMonitor 시작 스킵 "
+                f"({self.trader[:12]}...). AGENT_PRIVATE_KEY 설정 후 재시작 필요."
+            )
+            # 모니터 자체는 running=False로 종료 (재시도 없음)
+            self._running = False
+            return
         logger.info(f"[REST] PositionMonitor 시작: {self.trader[:12]}...")
         from pacifica.client import PacificaClient
         client = PacificaClient(self.trader)
