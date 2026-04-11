@@ -27,13 +27,9 @@ except ImportError:
     _TURSO_AVAILABLE = False
     logger.warning("[TursoAdapter] libsql_experimental 미설치 → aiosqlite fallback")
 
-_TURSO_URL   = os.getenv("TURSO_URL", "")
-_TURSO_TOKEN = os.getenv("TURSO_TOKEN", "")
-_LOCAL_PATH  = os.getenv("TURSO_LOCAL_PATH", "/tmp/copy_perp_replica.db")
-
-
 def is_turso_configured() -> bool:
-    return bool(_TURSO_URL and _TURSO_TOKEN and _TURSO_AVAILABLE)
+    """런타임에 동적으로 환경변수 확인 (import 시점 캐싱 방지)"""
+    return bool(os.getenv("TURSO_URL") and os.getenv("TURSO_TOKEN") and _TURSO_AVAILABLE)
 
 
 class TursoRow(dict):
@@ -193,9 +189,9 @@ async def get_turso_connection() -> TursoConnection:
     global _turso_conn
     if _turso_conn is None:
         _turso_conn = await TursoConnection.connect(
-            url=_TURSO_URL,
-            auth_token=_TURSO_TOKEN,
-            local_path=_LOCAL_PATH,
+            url=os.getenv("TURSO_URL", ""),
+            auth_token=os.getenv("TURSO_TOKEN", ""),
+            local_path=os.getenv("TURSO_LOCAL_PATH", "/tmp/copy_perp_replica.db"),
         )
     return _turso_conn
 

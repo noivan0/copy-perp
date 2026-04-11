@@ -30,14 +30,12 @@ from typing import Any, List, Optional, Sequence, Union
 logger = logging.getLogger(__name__)
 
 # ── 환경변수 ─────────────────────────────────────────────────────────────────
-_TURSO_URL   = os.getenv("TURSO_URL", "")
-_TURSO_TOKEN = os.getenv("TURSO_TOKEN", "")
-_DB_PATH     = os.getenv("DB_PATH", "copy_perp.db")
+_DB_PATH = os.getenv("DB_PATH", "copy_perp.db")
 
 
 def is_turso_mode() -> bool:
-    """TURSO_URL + TURSO_TOKEN 환경변수가 모두 설정된 경우 True"""
-    return bool(_TURSO_URL and _TURSO_TOKEN)
+    """런타임에 동적으로 환경변수 확인 (import 시점 캐싱 방지)"""
+    return bool(os.getenv("TURSO_URL") and os.getenv("TURSO_TOKEN"))
 
 
 # ── 파라미터 정규화 ──────────────────────────────────────────────────────────
@@ -291,12 +289,16 @@ async def _get_turso_db() -> TursoDb:
     global _turso_db
     if _turso_db is None:
         import libsql_client
+        _raw_url = os.getenv("TURSO_URL", "")
+        # libsql_client는 https:// 형식 필요 (libsql:// → https:// 자동 변환)
+        _http_url = _raw_url.replace("libsql://", "https://") if _raw_url.startswith("libsql://") else _raw_url
         client = libsql_client.create_client(
-            url=_TURSO_URL,
-            auth_token=_TURSO_TOKEN,
+            url=_http_url,
+            auth_token=os.getenv("TURSO_TOKEN", ""),
         )
         _turso_db = TursoDb(client)
-        logger.info(f"[DB] Turso 연결 완료 (HTTP): {_TURSO_URL[:60]}")
+        _turso_url_log = os.getenv("TURSO_URL","")
+        logger.info(f"[DB] Turso 연결 완료 (HTTP): {_turso_url_log[:60]}")
     return _turso_db
 
 
