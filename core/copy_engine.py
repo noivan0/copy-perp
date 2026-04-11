@@ -52,6 +52,13 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+def _log(level: str, msg: str, **kwargs) -> None:
+    """logger 안전 래퍼 — 모듈 로드 중 NameError 방지"""
+    try:
+        getattr(logger, level)(msg, **kwargs)
+    except Exception:
+        pass  # 로깅 실패는 무시
+
 # 안전 파라미터
 MAX_LEVERAGE = 5
 MIN_ORDER_USDC = 10.0   # 최소 주문 금액 (Pacifica testnet min_order_size=$10)
@@ -187,6 +194,9 @@ class CopyEngine:
           {"event_type": "fulfill_taker", "price": "108.34", "amount": "0.01",
            "side": "open_long", "cause": "normal", "created_at": 1773322044313}
         """
+        if self.db is None:
+            _log("warning", "[CopyEngine] DB 미초기화 — 이벤트 스킵 (startup race condition)")
+            return
         try:
             await self._process_fill(event)
             self._last_processed_ts = time.time()  # R11: 처리 시간 갱신
@@ -648,7 +658,11 @@ class CopyEngine:
             else:
                 logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
                 status = "failed"
-            _error_msg = err_str
+            # NameError(logger 미정의 등) 방어: 실제 에러로 교체
+            if "NameError" in type(e).__name__ or "'logger'" in err_str:
+                _error_msg = f"Internal error (startup race condition): {type(e).__name__}"
+            else:
+                _error_msg = err_str
             # R13: reason 분류 (metrics 라벨 개선)
             _reason = (
                 "insufficient_funds" if _is_balance_error
