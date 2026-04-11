@@ -939,6 +939,13 @@ async def get_follower_pnl(
     - open_positions: follower_positions 목록
     - pnl_by_trader: 트레이더별 PnL 집계
     """
+    # ── 주소 검증 ──────────────────────────────────────────
+    if not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
+        )
+
     from api.deps import _get_db_direct
     _db = _get_db_direct()
     if not _db:

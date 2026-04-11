@@ -154,7 +154,12 @@ async def get_ranked_traders(
     from api.utils import check_rate_limit as _crl
     client_ip = _get_client_ip(request)
     if not _crl(f"ranked:{client_ip}", 30, 60):
-        raise HTTPException(429, {"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"})
+        raise HTTPException(
+            status_code=429,
+            headers={"Retry-After": "60"},
+            detail={"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED",
+                    "retry_after_seconds": 60},
+        )
 
     # ── 60초 캐시 확인 ───────────────────────────────────
     _cache_key = (limit, min_grade.upper(), exclude_disqualified)
