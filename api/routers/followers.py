@@ -1620,7 +1620,8 @@ async def submit_bind(body: dict):
         if not resp.ok and not result:
             raise Exception(f"Pacifica returned HTTP {resp.status_code}: {resp.text[:120]}")
 
-        if resp.ok and (result.get("success") or result.get("ok")):
+        if resp.ok:
+            # Pacifica bind 성공: HTTP 200이면 bind 완료 (응답 body 무관)
             # DB에 agent_bound=1 업데이트
             try:
                 await _db.execute(
@@ -1633,7 +1634,7 @@ async def submit_bind(body: dict):
                 # agent_bound 컬럼 마이그레이션 전 폴백 — 무시하고 성공 반환
                 logger.warning(f"[{follower_address[:8]}] agent_bound DB 업데이트 실패 (무시): {_db_e}")
 
-            return {"success": True, "message": "Agent bind 완료"}
+            return {"success": True, "message": "Agent binding successful — copy trading is now active"}
         else:
             err_msg = result.get("error") or result.get("message") or f"HTTP {resp.status_code}"
             logger.warning(f"[{follower_address[:8]}] Bind 실패: {result}")
