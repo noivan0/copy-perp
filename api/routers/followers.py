@@ -1533,7 +1533,7 @@ async def get_bind_request(follower_address: str = Query(...)):
     # Pacifica sign_message 방식: sort_json_keys({header, "data": payload}) → compact JSON
     # expiry_window: 60초 (유저가 팝업 확인 + 서명 클릭까지 충분한 시간)
     # 5000ms(5초)는 UI 표시 → 유저 서명 완료 전에 만료됨
-    EXPIRY_WINDOW = 60000
+    EXPIRY_WINDOW = 30000
 
     header = {
         "timestamp": timestamp,

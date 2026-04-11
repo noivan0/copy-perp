@@ -433,8 +433,28 @@ def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
         except Exception:
             return _proxy_get(path)
 
-    # POST/PUT/DELETE: CloudFront SNI 우회
-    return _cf_request(method, path, body)
+    # POST/PUT/DELETE: requests로 직접 접근 (raw socket 대비 안정적, 타임아웃 짧음)
+    # CF SNI 우회: Host 헤더로 라우팅
+    try:
+        import requests as _req_fb
+        _fb_resp = _req_fb.post(
+            f"https://do5jt23sqak4.cloudfront.net/api/v1/{path}",
+            json=body,
+            headers={
+                "Host": "test-api.pacifica.fi",
+                "Content-Type": "application/json",
+                "User-Agent": "CopyPerp/1.0",
+            },
+            timeout=10,
+            verify=False,
+        )
+        _fb_data = _fb_resp.json()
+        if not _fb_resp.ok:
+            raise RuntimeError(f"HTTP {_fb_resp.status_code}: {_fb_data.get('error', _fb_resp.text[:120])}")
+        return _fb_data.get("data", _fb_data) if isinstance(_fb_data, dict) and "data" in _fb_data else _fb_data
+    except Exception as _fb_e:
+        logger.warning(f"[CF-Requests] 실패 → raw socket 폴백: {_fb_e}")
+        return _cf_request(method, path, body)
 
 
 class PacificaClient:
@@ -537,7 +557,7 @@ class PacificaClient:
         if not self._kp:
             raise RuntimeError("AGENT_PRIVATE_KEY 미설정 — 주문 실행 불가")
         timestamp = int(time.time() * 1000)
-        header = {"timestamp": timestamp, "expiry_window": 5000, "type": order_type}
+        header = {"timestamp": timestamp, "expiry_window": 30000, "type": order_type}
         # payload에 builder_code가 있으면 서명 대상(data)에도 포함됨 — 공식 문서 기준
         _, signature = _sign_request(header, payload, self._kp)
         body = {
@@ -545,7 +565,7 @@ class PacificaClient:
             "agent_wallet": AGENT_WALLET_PUBKEY or None,  # API Key 공개키 = 서명 검증용 (지갑 아님)
             "signature":    signature,
             "timestamp":    timestamp,
-            "expiry_window": 5000,
+            "expiry_window": 30000,
         }
         # payload를 top-level로 flatten (data 래퍼 제거)
         body.update(payload)
