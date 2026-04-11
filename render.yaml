@@ -31,9 +31,16 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: "https://copy-perp-frontend.vercel.app,https://copy-perp.onrender.com,http://localhost:3000"
-      # 영속 디스크 경로 (재배포 후에도 데이터 유지)
+      # ── Turso 영속 DB (Render Disk 없이 영구 영속성) ──
+      - key: TURSO_URL
+        value: libsql://copy-perp-nothink.aws-ap-northeast-1.turso.io
+      - key: TURSO_TOKEN
+        value: eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzU4OTUxMDEsImlkIjoiMDE5ZDdiOTgtMmUwMS03MDk2LWFiZTktYTE0Yjc3OWU2MTMyIiwicmlkIjoiZjc5MzRiYzMtOWQ1Zi00MDY1LTljMmUtMmJlNTg4MWQ3YmFlIn0.Y7Re1HNbKovfoY4xXLpAotAi8OuRg0-IkEkqhqhD9gS1UwI3XiB40iFsUi2fT_KMtXMpe72MsmwSjRvQqEFtBA
+      - key: TURSO_LOCAL_PATH
+        value: /tmp/copy_perp_replica.db
+      # 영속 디스크 경로 (Turso 사용 시 미사용 — fallback 전용)
       - key: DB_PATH
-        value: /var/data/copy_perp.db
+        value: /tmp/copy_perp.db
       - key: DEBUG
         value: "false"
       # Render 리버스 프록시 IP 신뢰 (rate limit IP 정확도 향상)

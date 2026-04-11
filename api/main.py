@@ -111,7 +111,21 @@ async def lifespan(app_):
     """FastAPI lifespan — startup + graceful shutdown"""
     # ── Startup ──────────────────────────────────
     global _db, _engine
-    _db = await init_db()
+
+    # ── DB 초기화: Turso 우선, fallback → aiosqlite ──────────
+    from db.turso_adapter import is_turso_configured, get_turso_connection
+    if is_turso_configured():
+        logger.info("[DB] Turso 연결 초기화 중...")
+        _db = await get_turso_connection()
+        # 스키마 생성 (aiosqlite.executescript 호환)
+        from db.database import CREATE_SQL
+        await _db.executescript(CREATE_SQL)
+        await _db.commit()
+        logger.info("✅ [DB] Turso 연결 완료 — 영속 DB")
+    else:
+        _db = await init_db()
+        logger.info("⚠️ [DB] aiosqlite 로컬 DB — 재배포 시 초기화")
+
     _engine = CopyEngine(_db)
 
     # P2 Fix (Round 5): startup 필수 환경변수 검증 강화
@@ -153,7 +167,7 @@ async def lifespan(app_):
     # IMPROVE 4: DB 영속성 체크 로그
     _db_is_persistent = _db_path.startswith("/var/")
     logger.info(
-        f"DB 영속성: {'✅ Render Disk' if _db_is_persistent else '⚠️ 로컬 (재배포 시 초기화)'} | {_db_path}"
+        f"DB 영속성: {'✅ Turso' if os.getenv('TURSO_URL') else '✅ Render Disk' if _db_is_persistent else '⚠️ 로컬 (재배포 시 초기화)'} | {_db_path}"
     )
     logger.info(f"🌐 NETWORK={_network} | REST={_rest_url} | DB={_db_path}")
     if _network == "mainnet":
@@ -590,8 +604,16 @@ from core.data_collector import get_price_cache as _get_pc, is_connected as _dc_
 _fuul = FuulReferral()
 
 
-async def get_db() -> aiosqlite.Connection:
+async def get_db():
+    """DB 연결 반환 — TURSO_URL 설정 시 Turso, 없으면 aiosqlite"""
     global _db
+
+    # ── Turso 우선 ──────────────────────────────────────────
+    from db.turso_adapter import is_turso_configured, get_turso_connection
+    if is_turso_configured():
+        return await get_turso_connection()
+
+    # ── aiosqlite fallback ───────────────────────────────────
     # closed connection 감지: aiosqlite.Connection._connection이 None이면 재연결
     if _db is None or getattr(_db, "_connection", True) is None:
         if _db is not None:
@@ -1005,12 +1027,21 @@ async def healthz() -> dict:
     _last_synced_ts = None
     _active_traders = 0
     try:
-        _db_path_hz = os.getenv("DB_PATH", "copy_perp.db")
-        def _db_probe():
-            with _sqlite3.connect(_db_path_hz, timeout=5) as _sc:
-                _r = _sc.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1").fetchone()
-                return _r[0] or 0, _r[1]
-        _active_traders, _last_synced_ts = await asyncio.get_event_loop().run_in_executor(None, _db_probe)
+        from db.turso_adapter import is_turso_configured
+        if is_turso_configured():
+            # Turso: get_db() 사용
+            _hdb = await get_db()
+            _hcur = await _hdb.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1")
+            _hrow = await _hcur.fetchone()
+            _active_traders = _hrow[0] if _hrow else 0
+            _last_synced_ts = _hrow[1] if _hrow else None
+        else:
+            _db_path_hz = os.getenv("DB_PATH", "copy_perp.db")
+            def _db_probe():
+                with _sqlite3.connect(_db_path_hz, timeout=5) as _sc:
+                    _r = _sc.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1").fetchone()
+                    return _r[0] or 0, _r[1]
+            _active_traders, _last_synced_ts = await asyncio.get_event_loop().run_in_executor(None, _db_probe)
         _db_ok = True
     except Exception as _he:
         logger.warning(f"[healthz] DB probe 실패: {_he}")
@@ -1027,7 +1058,7 @@ async def healthz() -> dict:
         "last_leaderboard_sync_ts": _last_synced_ts,   # traders.last_synced 최댓값 (Unix 초)
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
         "active_monitors": len(_monitors),
-        "db_path": _db_path_hz,
+        "db_path": (os.getenv("TURSO_URL") or os.getenv("DB_PATH", "copy_perp.db")),
         "db_writable": os.access(os.path.dirname(os.path.abspath(_db_path_hz)) or ".", os.W_OK),
     }
 

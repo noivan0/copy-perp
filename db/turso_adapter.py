@@ -86,7 +86,14 @@ class TursoConnection:
         self.row_factory = None  # 호환용 no-op
 
     @classmethod
-    async def connect(cls, url: str, auth_token: str, local_path: str = ":memory:") -> "TursoConnection":
+    async def connect(cls, url: str = None, auth_token: str = None, local_path: str = None) -> "TursoConnection":
+        """DB 커넥션 생성 — 파라미터 없으면 환경변수 자동 사용"""
+        import os
+        url        = url        or os.getenv("TURSO_URL", "")
+        auth_token = auth_token or os.getenv("TURSO_TOKEN", "")
+        local_path = local_path or os.getenv("DB_PATH", "copy_perp.db")
+        if not url or not auth_token:
+            raise RuntimeError("TURSO_URL 또는 TURSO_TOKEN 환경변수 누락")
         loop = asyncio.get_event_loop()
 
         def _connect():
