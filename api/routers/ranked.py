@@ -149,6 +149,7 @@ async def get_ranked_traders(
     limit: int = Query(20, ge=1, le=100),
     min_grade: str = Query("C", description="최소 등급 필터: S/A/B/C/D"),
     exclude_disqualified: bool = Query(True, description="하드 필터 제외 트레이더 숨김"),
+    sort_by: str = Query("crs", description="정렬 기준: crs|roi_30d|pnl_30d|risk_score|win_rate"),
 ):
     """
     CRS 신뢰도 점수 기반 트레이더 랭킹
@@ -208,8 +209,16 @@ async def get_ranked_traders(
         if grade_order.get(grade, 0) >= min_threshold:
             filtered.append(t)
 
-    # CRS 점수 기준 내림차순 정렬
-    filtered.sort(key=lambda x: x.get("crs", 0), reverse=True)
+    # 정렬 기준 적용 (sort_by 파라미터)
+    _sort_fields = {
+        "crs":        lambda x: float(x.get("crs") or 0),
+        "roi_30d":    lambda x: float(x.get("roi_30d") or x.get("raw", {}).get("roi_30d") or 0),
+        "pnl_30d":    lambda x: float(x.get("pnl_30d") or x.get("raw", {}).get("pnl_30d") or 0),
+        "risk_score": lambda x: float(x.get("risk_score") or 0),
+        "win_rate":   lambda x: float(x.get("raw", {}).get("win_rate") or 0),
+    }
+    _sort_key = _sort_fields.get(sort_by, _sort_fields["crs"])
+    filtered.sort(key=_sort_key, reverse=True)
 
     result = {
         "data": filtered[:limit],

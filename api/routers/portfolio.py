@@ -9,6 +9,7 @@ GET /portfolio/equity-curve  - equity curve 조회
 """
 import logging
 import re
+from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from core.reliability import compute_crs
 
@@ -155,31 +156,35 @@ async def backtest_portfolio(
 
 @router.get("/performance")
 async def get_follower_performance(
-    address: str = Query(..., description="팔로워 주소"),
+    follower_address: Optional[str] = Query(None, description="팔로워 주소 (follower_address)"),
+    address: Optional[str] = Query(None, description="팔로워 주소 (address — 하위호환)"),
     days: int = Query(30, ge=1, le=365),
 ):
     """팔로워 PnL 리포트 — Sharpe, MDD, by_trader/symbol, daily equity curve"""
-    if not _is_valid_solana_address(address):
+    addr = follower_address or address  # follower_address 우선, 하위호환 address 폴백
+    if not addr or not _is_valid_solana_address(addr):
         raise HTTPException(status_code=400, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
     try:
         from api.main import get_db
         from core.stats import compute_follower_pnl_report
         db = await get_db()
-        return await compute_follower_pnl_report(db, address, days)
+        return await compute_follower_pnl_report(db, addr, days)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"performance 조회 실패 {address[:12]}: {e}")
+        logger.error(f"performance 조회 실패 {addr[:12]}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/equity-curve")
 async def get_equity_curve(
-    address: str = Query(..., description="팔로워 또는 트레이더 주소"),
+    follower_address: Optional[str] = Query(None, description="팔로워 주소 (follower_address)"),
+    address: Optional[str] = Query(None, description="팔로워 주소 (address — 하위호환)"),
     days: int = Query(30, ge=1, le=365),
 ):
     """Equity Curve 조회 — snapshot 우선, 없으면 실시간 계산"""
-    if not _is_valid_solana_address(address):
+    address = follower_address or address  # follower_address 우선
+    if not address or not _is_valid_solana_address(address):
         raise HTTPException(status_code=400, detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
     try:
         from api.main import get_db
