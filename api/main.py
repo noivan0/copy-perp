@@ -1180,6 +1180,12 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
             status_code=400,
             detail={"error": "Invalid trader_address (Solana address format)", "code": "INVALID_ADDRESS"}
         )
+    # self-follow 방지: 팔로워가 자기 자신을 트레이더로 팔로우 시 무한 복사 루프 발생
+    if body.follower_address == body.trader_address:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Cannot follow yourself", "code": "SELF_FOLLOW_NOT_ALLOWED"}
+        )
 
     try:
         db = await get_db()

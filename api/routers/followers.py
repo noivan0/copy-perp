@@ -548,8 +548,11 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
 
     # ── Rate Limit 체크 ─────────────────────────────────
     from api.utils import get_client_ip as _gcip, require_rate_limit as _rrl
+    from api.main import RATE_LIMIT_POLICY as _RLP
     client_ip = _gcip(request)
-    _rrl(f"onboard:{client_ip}", 10, 60)
+    # RATE_LIMIT_POLICY 참조로 하드코딩 제거 (main.py 정책 단일 관리)
+    _onboard_max, _onboard_win = _RLP.get("onboard", (10, 60))
+    _rrl(f"onboard:{client_ip}", _onboard_max, _onboard_win)
 
     # ── risk_mode → RISK_PRESETS 적용 (copy_ratio/traders/max_position 미지정 시) ──
     _risk_preset = RISK_PRESETS.get(body.risk_mode or "default", RISK_PRESETS["default"])
@@ -711,6 +714,13 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
         )
     from db.database import add_trader as _add_trader
+    # self-follow 방지: 팔로워 주소가 traders 목록에 있으면 제거
+    traders = [t for t in traders if t != follower]
+    if not traders:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Cannot follow yourself", "code": "SELF_FOLLOW_NOT_ALLOWED"}
+        )
     for trader_addr in traders:
         try:
             # traders 테이블에 먼저 등록 (없으면 추가, 있으면 무시)
