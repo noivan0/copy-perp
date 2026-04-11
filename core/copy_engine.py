@@ -578,13 +578,23 @@ class CopyEngine:
                 "balance", "exceeds", "below minimum",
             )
             _is_balance_error = any(p in err_str.lower() for p in _INSUFFICIENT_PATTERNS)
-            # R11+: unauthorized to sign → 팔로워 자동 일시 중지
-            # Pacifica testnet에서 팔로워가 agent wallet approve 안 한 경우
-            # 이벤트마다 반복 실패를 막기 위해 팔로워 비활성화 후 알림
+            # R11+: 팔로워 자동 일시 중지 (반복 실패 방지)
+            # 1) unauthorized to sign: Agent Binding 미완료
+            # 2) IP not whitelisted: Pacifica API Key IP whitelist 미설정 (서버 전체 이슈)
             _is_unauthorized = "unauthorized to sign" in err_str.lower() or (
                 "unauthorized" in err_str.lower() and "sign on behalf" in err_str.lower()
             )
-            if _is_unauthorized:
+            _is_ip_blocked = "not whitelisted" in err_str.lower() or (
+                "ip address" in err_str.lower() and "whitelisted" in err_str.lower()
+            )
+            if _is_ip_blocked:
+                # IP whitelist 문제: 서버 전체 이슈 — 팔로워 비활성화 불필요, 경고만
+                logger.error(
+                    f"[{follower_addr[:8]}] IP whitelist 미설정 — Pacifica 대시보드에서 "
+                    f"74.220.48.248 추가 필요: {err_str[:120]}"
+                )
+                status = "skipped_ip_blocked"
+            elif _is_unauthorized:
                 logger.warning(
                     f"[{follower_addr[:8]}] Agent 미승인 — 팔로워 자동 중지 "
                     f"(Pacifica 앱에서 Agent Binding 필요): {err_str[:120]}"
