@@ -177,13 +177,35 @@ _builder_stats_cache: dict = {"data": None, "ts": 0.0}
 _BUILDER_STATS_TTL = 60.0  # 60초 캐시
 
 @router.get("/stats")
-def builder_stats():
-    """noivan 빌더 코드 수익 통계 (60초 캐시)"""
+async def builder_stats():
+    """noivan 빌더 코드 수익 통계 (60초 캐시) — Turso async DB 직접 조회"""
     import time
     now = time.time()
     if _builder_stats_cache["data"] and now - _builder_stats_cache["ts"] < _BUILDER_STATS_TTL:
         return {**_builder_stats_cache["data"], "cached": True}
-    data = get_builder_revenue(BUILDER_CODE)
+
+    # Turso async DB 직접 조회 (get_builder_revenue는 sqlite3 sync → Turso 환경에서 실패)
+    try:
+        from api.main import get_db as _get_db
+        _db = await _get_db()
+        async with _db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(fee_usdc), 0) FROM fee_records WHERE builder_code=?",
+            (BUILDER_CODE,)
+        ) as cur:
+            row = await cur.fetchone()
+        total_trades = int(row[0]) if row and row[0] else 0
+        total_fee = float(row[1]) if row and row[1] else 0.0
+        data = {
+            "builder_code":        BUILDER_CODE,
+            "total_trades":        total_trades,
+            "total_fee_collected": round(total_fee, 6),
+            "fee_rate":            str(BUILDER_FEE_RATE),
+            "source":              "db",
+        }
+    except Exception as _e:
+        logger.warning(f"builder/stats Turso 조회 실패 — sync fallback: {_e}")
+        data = get_builder_revenue(BUILDER_CODE)
+
     _builder_stats_cache["data"] = data
     _builder_stats_cache["ts"] = now
     return {**data, "cached": False}
