@@ -192,12 +192,21 @@ async def apply_preset(
         raise HTTPException(status_code=503, detail={"error": "Trader selection failed. Please try again."})
 
     # followers/onboard 직접 호출
+    # SL/TP: strategy_presets.py는 소수형(0.08=8%) 저장, onboard validator는 퍼센트형(0.1~99) 기대
+    # 소수형 → 퍼센트형 변환 (0.08 → 8.0)
+    _sl_raw = preset.get("stop_loss_pct")
+    _tp_raw = preset.get("take_profit_pct")
+    _sl_pct = round(_sl_raw * 100, 2) if _sl_raw is not None and _sl_raw <= 1.0 else _sl_raw
+    _tp_pct = round(_tp_raw * 100, 2) if _tp_raw is not None and _tp_raw <= 1.0 else _tp_raw
+
     from api.routers.followers import OnboardRequest, onboard_follower
     onboard_body = OnboardRequest(
         follower_address=body.follower_address,
         copy_ratio=preset["copy_ratio"],
         max_position_usdc=preset["max_position_usdc"],
         traders=traders,
+        stop_loss_pct=_sl_pct,
+        take_profit_pct=_tp_pct,
     )
 
     try:
