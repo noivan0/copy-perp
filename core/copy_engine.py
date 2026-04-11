@@ -10,6 +10,7 @@ Copy Engine v1 — 트레이더 체결 이벤트 → 팔로워 복사 주문
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 import json
@@ -166,7 +167,10 @@ class CopyEngine:
             logger.error(f"CopyEngine.on_fill 오류: {e}", exc_info=True)
 
     async def _process_fill(self, event: dict) -> None:  # type-checked
-        symbol = event.get("symbol", "BTC")  # WS 이벤트에 symbol 포함 예상
+        symbol = event.get("symbol")  # WS 이벤트에 symbol 필수 포함
+        if not symbol:
+            logger.warning(f"[CopyEngine] symbol 누락 이벤트 스킵: {event}")
+            return
         side_raw = event.get("side", "")
         amount = event.get("amount", "0")
         price = event.get("price", "0")
@@ -404,7 +408,7 @@ class CopyEngine:
                     status = "filled"
                 else:
                     status = "failed"
-                    _error_msg = f"주문 응답 data 없음: {str(result)[:120]}"
+                    _error_msg = f"Order response missing data: {str(result)[:120]}"
                     logger.warning(f"[{follower_addr[:8]}] {symbol} 주문 응답 data 없음: {result}")
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
                 if status == "filled":
@@ -609,21 +613,20 @@ class CopyEngine:
         if not self.mock_mode:
             try:
                 bc = follower.get("builder_code_approved", 0)
-                builder = BUILDER_CODE if bc else ""
+                builder = BUILDER_CODE if bc else None
                 client = self._get_client(follower_addr)
                 resp = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: client.place_order(
+                    lambda: client.market_order(
                         symbol=symbol,
                         side=close_side,
-                        order_type="market",
                         amount=copy_amount,
+                        slippage_percent=MAX_SLIPPAGE,
                         builder_code=builder,
-                        reduce_only=True,
                         client_order_id=client_order_id,
                     )
                 )
-                status = "filled" if resp.get("status") not in ("failed", "rejected") else "failed"
+                status = "filled" if resp.get("data") else "failed"
             except Exception as e:
                 status = "failed"
                 logger.error(f"[FORCE_CLOSE] 주문 오류: {e}")

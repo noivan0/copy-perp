@@ -124,7 +124,14 @@ async def get_ranked_traders(
 
     # 필터링
     grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
-    min_threshold = grade_order.get(min_grade.upper(), 0)
+    min_grade_upper = min_grade.upper()
+    if min_grade_upper not in grade_order:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Invalid min_grade '{min_grade}'. Must be one of: S, A, B, C, D", "code": "INVALID_GRADE"}
+        )
+    min_threshold = grade_order.get(min_grade_upper, 0)
     filtered = []
     for t in ranked:
         if exclude_disqualified and t.get("disqualified"):

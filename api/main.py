@@ -238,6 +238,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    req_id = getattr(request.state, "request_id", "??")
+    return JSONResponse(
+        status_code=400,
+        content={"error": str(exc), "code": "VALIDATION_ERROR", "request_id": req_id},
+    )
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     req_id = getattr(request.state, "request_id", "??")
@@ -464,6 +472,7 @@ async def _sync_leaderboard_loop():
                         float(t.get("oi_current", 0) or 0),
                     )
                 )
+
                 try:
                     from core.reliability import compute_crs
                     _crs_row = {
@@ -535,7 +544,23 @@ async def _winrate_refresh_loop():
                     except Exception as _recv_err:
                         logger.debug(f"소켓 수신 오류 (무시): {_recv_err}")
                     ss.close()
+                    hdrs_raw_wr = data.split(b'\r\n\r\n', 1)[0].decode('utf-8', 'ignore') if b'\r\n\r\n' in data else ''
                     body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
+                    # chunked transfer encoding 처리
+                    if 'transfer-encoding' in hdrs_raw_wr.lower() and 'chunked' in hdrs_raw_wr.lower():
+                        try:
+                            decoded_wr = b''
+                            buf_wr = body
+                            while buf_wr:
+                                crlf_wr = buf_wr.find(b'\r\n')
+                                if crlf_wr < 0: break
+                                sz_wr = int(buf_wr[:crlf_wr].split(b';')[0].strip(), 16)
+                                if sz_wr == 0: break
+                                decoded_wr += buf_wr[crlf_wr+2: crlf_wr+2+sz_wr]
+                                buf_wr = buf_wr[crlf_wr+2+sz_wr+2:]
+                            body = decoded_wr
+                        except Exception as _cde:
+                            logger.debug(f"winrate chunked decode 오류: {_cde}")
                     result = _j.loads(body.decode('utf-8', 'ignore'))
                     trades = result.get('data', []) if isinstance(result, dict) else []
                     closes = [t for t in trades if 'close' in t.get('side', '')]
@@ -1010,32 +1035,34 @@ async def list_trades(
             f"SELECT COUNT(*) FROM copy_trades {_where_all}", _params
         ) as _cur:
             _total_all = int((await _cur.fetchone())[0])
+        # WHERE 또는 AND 분기: 조건이 이미 있으면 AND, 없으면 WHERE
+        _join_kw = "AND" if _conds else "WHERE"
         async with db.execute(
-            f"SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='filled'",
+            f"SELECT COUNT(*) FROM copy_trades {_where_all} {_join_kw} status='filled'",
             _params,
         ) as _cur:
             _filled_all = int((await _cur.fetchone())[0])
         async with db.execute(
-            f"SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='failed'",
+            f"SELECT COUNT(*) FROM copy_trades {_where_all} {_join_kw} status='failed'",
             _params,
         ) as _cur:
             _failed_all = int((await _cur.fetchone())[0])
         async with db.execute(
             f"""SELECT COALESCE(SUM(CAST(amount AS REAL)*CAST(price AS REAL)),0)
-                FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} status='filled'""",
+                FROM copy_trades {_where_all} {_join_kw} status='filled'""",
             _params,
         ) as _cur:
             _vol_all = float((await _cur.fetchone())[0])
         async with db.execute(
             f"""SELECT COALESCE(SUM(pnl),0), COUNT(CASE WHEN pnl>0 THEN 1 END)
-                FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} pnl IS NOT NULL""",
+                FROM copy_trades {_where_all} {_join_kw} pnl IS NOT NULL""",
             _params,
         ) as _cur:
             _pnl_row = await _cur.fetchone()
             _pnl_all = float(_pnl_row[0])
             _win_all = int(_pnl_row[1])
         async with db.execute(
-            f"""SELECT COUNT(*) FROM copy_trades {_where_all} {'AND' if _conds else 'WHERE'} pnl<0""",
+            f"""SELECT COUNT(*) FROM copy_trades {_where_all} {_join_kw} pnl<0""",
             _params,
         ) as _cur:
             _lose_all = int((await _cur.fetchone())[0])
@@ -1162,13 +1189,17 @@ def get_events(limit: int = 50, level: Optional[str] = None) -> dict:
 
 
 @app.get("/stream")
-async def sse_stream():
+async def sse_stream(request: Request):
     """SSE(Server-Sent Events) 실시간 스트림"""
     from fastapi.responses import StreamingResponse
     import json as _json
 
     async def event_generator():
         while True:
+            # 클라이언트 연결 끊김 감지 — 연결 해제 시 루프 종료
+            if await request.is_disconnected():
+                logger.debug("SSE 클라이언트 연결 끊김 — 스트림 종료")
+                break
             try:
                 btc = _get_pc().get("BTC", {})
                 db = await get_db()

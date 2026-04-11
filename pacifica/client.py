@@ -256,6 +256,30 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
     # Rate limit 헤더 파싱
     _parse_ratelimit_headers(hdrs_raw)
 
+    # chunked transfer encoding 처리
+    is_chunked = any(
+        "transfer-encoding" in line.lower() and "chunked" in line.lower()
+        for line in hdrs_raw.split("\r\n")
+    )
+    if is_chunked:
+        try:
+            decoded = b""
+            buf = raw_body
+            while buf:
+                # 청크 크기 헤더 파싱
+                crlf = buf.find(b"\r\n")
+                if crlf < 0:
+                    break
+                chunk_size = int(buf[:crlf].split(b";")[0].strip(), 16)
+                if chunk_size == 0:
+                    break
+                chunk_data = buf[crlf + 2: crlf + 2 + chunk_size]
+                decoded += chunk_data
+                buf = buf[crlf + 2 + chunk_size + 2:]  # skip chunk + trailing \r\n
+            raw_body = decoded
+        except Exception as _ce:
+            logger.debug(f"chunked decoding 오류 (무시): {_ce}")
+
     # gzip 디코딩
     for line in hdrs_raw.split("\r\n"):
         if "content-encoding" in line.lower() and "gzip" in line.lower():

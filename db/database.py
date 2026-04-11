@@ -244,6 +244,7 @@ async def get_followers(conn, trader_address: str) -> list:
 
 
 async def record_copy_trade(conn, trade: dict) -> None:
+    # 중복 키 방지: **trade 언패킹 없이 명시적 키만 사용
     await conn.execute(
         """INSERT OR IGNORE INTO copy_trades
            (id, follower_address, trader_address, symbol, side, amount, price,
@@ -252,15 +253,20 @@ async def record_copy_trade(conn, trade: dict) -> None:
                    :amount, :price, :client_order_id, :status, :pnl,
                    :entry_price, :exec_price, :created_at, :error_msg)""",
         {
-            **trade,
+            "id": trade.get("id"),
+            "follower_address": trade.get("follower_address"),
+            "trader_address": trade.get("trader_address"),
+            "symbol": trade.get("symbol"),
+            "side": trade.get("side"),
+            "amount": trade.get("amount"),
+            "price": trade.get("price"),
+            "client_order_id": trade.get("client_order_id"),
+            "status": trade.get("status"),
             "pnl": trade.get("pnl"),
             "entry_price": trade.get("entry_price"),
             "exec_price": trade.get("exec_price"),
+            "created_at": trade.get("created_at"),
             "error_msg": trade.get("error_msg"),
-            "follower_address": trade.get("follower_address"),
-            "trader_address": trade.get("trader_address"),
-            "price": trade.get("price"),
-            "amount": trade.get("amount"),
         }
     )
     await conn.commit()

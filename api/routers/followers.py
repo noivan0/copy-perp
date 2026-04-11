@@ -1,10 +1,11 @@
+import os
 """
 팔로워 온보딩 라우터
 POST /followers/onboard — 팔로워 지갑 등록 + Builder Code 승인 + Tier1 트레이더 자동 팔로우
 
 플로우:
 1. 팔로워 지갑 주소 + 개인키 받기
-2. Builder Code 'noivan' 승인 서명 자동 생성 (개인키로 서명)
+2. Builder Code sign auto-generated (server private key)
 3. POST /account/builder_codes/approve (CloudFront SNI)
 4. 팔로워 DB 등록
 5. 기본 Tier1 트레이더 2명 자동 팔로우 + PositionMonitor 시작
@@ -303,7 +304,7 @@ class OnboardRequest(BaseModel):
     @classmethod
     def validate_risk_mode(cls, v):
         if v is not None and v not in RISK_PRESETS:
-            raise ValueError(f"risk_mode는 {list(RISK_PRESETS.keys())} 중 하나여야 합니다")
+            raise ValueError(f"risk_mode must be one of {list(RISK_PRESETS.keys())}")
         return v
 
     @field_validator("strategy")
@@ -312,7 +313,7 @@ class OnboardRequest(BaseModel):
         # STRATEGY_PRESETS + RISK_PRESETS 키 모두 허용
         allowed = set(STRATEGY_PRESETS.keys()) | set(RISK_PRESETS.keys())
         if v is not None and v not in allowed:
-            raise ValueError(f"strategy는 {sorted(allowed)} 중 하나여야 합니다")
+            raise ValueError(f"strategy must be one of {sorted(allowed)}")
         return v
 
     @field_validator("preset")
@@ -320,7 +321,7 @@ class OnboardRequest(BaseModel):
     def validate_preset(cls, v):
         from core.strategy_presets import PRESETS as _NEW_PRESETS
         if v is not None and v not in _NEW_PRESETS:
-            raise ValueError(f"preset은 {list(_NEW_PRESETS.keys())} 중 하나여야 합니다")
+            raise ValueError(f"preset must be one of {list(_NEW_PRESETS.keys())}")
         return v
 
     @field_validator("copy_ratio")
@@ -541,7 +542,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     resolved_max_pos_usdc   = body.max_position_usdc or _risk_max_pos
     resolved_strategy_label = preset.get("label", f"risk_mode:{body.risk_mode or 'default'}")
     logger.info(
-        f"전략: {resolved_strategy_label} | "
+        f"Strategy: {resolved_strategy_label} | "
         f"copy_ratio={resolved_copy_ratio*100:.0f}% | "
         f"max_pos=${resolved_max_pos_usdc:.0f}"
     )
@@ -695,7 +696,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
                 result["followers_registered"].append(trader_addr)
                 logger.info(f"팔로워 등록: {follower[:12]}... → {trader_addr[:12]}...")
             except Exception as e:
-                result["errors"].append(f"DB 등록 실패 {trader_addr[:12]}: {e}")
+                result["errors"].append(f"DB registration failed {trader_addr[:12]}: {e}")
 
     # ── Step 4: PositionMonitor 시작 ──────────────────
     for trader_addr in traders:
@@ -706,7 +707,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
                 background_tasks.add_task(monitor.start)
                 result["monitors_started"].append(trader_addr)
             except Exception as e:
-                result["errors"].append(f"모니터 시작 실패 {trader_addr[:12]}: {e}")
+                result["errors"].append(f"Monitor start failed {trader_addr[:12]}: {e}")
 
     # ── Step 5: Fuul 레퍼럴 추적 ─────────────────────
     if body.referrer_address and _engine:
@@ -754,7 +755,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     _binding_url = (
         "https://app.pacifica.fi/settings/agents"
         if _network == "mainnet"
-        else "https://testnet.app.pacifica.fi/settings/agents"
+        else f"https://{os.getenv('NETWORK', 'testnet')}.app.pacifica.fi"
     )
     result["agent_binding_required"] = True   # 팔로워가 Pacifica 앱에서 Agent 등록 필요
     result["agent_wallet"] = _agent_wallet
@@ -839,6 +840,9 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
     from api.main import _db
     if not _db:
         raise HTTPException(503, "DB 미초기화")
+    # 빈 문자열 조기 반환 (DB 전체 쿼리 방지)
+    if follower_address is not None and follower_address.strip() == "":
+        return {"data": [], "count": 0}
     if follower_address:
         # 주소 형식 검증 (did:privy: 허용)
         if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
@@ -1011,7 +1015,7 @@ async def get_paper_trading():
     if not _os.path.exists(paper_db):
         return {
             "status":  "not_started",
-            "message": "페이퍼트레이딩 미시작. python3 scripts/paper_trading_4x.py --capital 10000 실행 필요",
+            "message": "Paper trading not started. Run: python3 scripts/paper_trading_4x.py --capital 10000",
             "comparison": [],
         }
 
@@ -1035,7 +1039,7 @@ async def get_paper_trading():
             await db.close()
             return {
                 "status":  "not_started",
-                "message": "세션 없음. python3 scripts/paper_trading_4x.py --capital 10000 실행 필요",
+                "message": "No session. Run: python3 scripts/paper_trading_4x.py --capital 10000",
                 "comparison": [],
             }
 
