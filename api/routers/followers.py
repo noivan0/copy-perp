@@ -1547,7 +1547,8 @@ async def get_bind_request(follower_address: str = Query(...)):
     message = json.dumps(message_obj, separators=(",", ":"))
 
     return {
-        "message": message,            # 유저 지갑이 서명해야 할 문자열
+        "message_to_sign": message,    # QA 스펙 필드명
+        "message": message,            # 하위 호환
         "agent_wallet": agent_wallet,  # 서버 Agent 공개키
         "timestamp": timestamp,
         "expiry_window": 5000,
@@ -1612,7 +1613,12 @@ async def submit_bind(body: dict):
 
     try:
         resp = _req_lib.post(bind_url, json=request_body, headers=headers, timeout=10, verify=False)
-        result = resp.json()
+        try:
+            result = resp.json()
+        except Exception:
+            result = {}
+        if not resp.ok and not result:
+            raise Exception(f"Pacifica returned HTTP {resp.status_code}: {resp.text[:120]}")
 
         if resp.ok and (result.get("success") or result.get("ok")):
             # DB에 agent_bound=1 업데이트

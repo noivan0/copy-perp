@@ -26,6 +26,8 @@ import base58
 from solders.keypair import Keypair
 import warnings as _warnings
 
+logger = _logging.getLogger(__name__)
+
 # scrapling은 선택적 의존성 — 없으면 CloudFront SNI 직접 소켓만 사용
 _fetcher = None
 try:
