@@ -7,7 +7,7 @@ GET  /traders/{address}/trades     — 체결 이력
 GET  /traders/{address}/followers  — 팔로워 목록
 """
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Query
 from pydantic import BaseModel
 from typing import Optional
 
@@ -28,7 +28,7 @@ class TraderRegister(BaseModel):
 
 
 @router.get("")
-async def list_traders(request: Request, limit: int = 50, mock: bool = False):
+async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, description="최대 100명"), mock: bool = False):
     """리더보드 — PnL 기준 정렬
     mock=true: Mock 데이터 강제 반환
     mock=false (기본): DB 우선, 비어있으면 Mock 폴백
