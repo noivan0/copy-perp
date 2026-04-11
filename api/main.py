@@ -570,8 +570,14 @@ async def get_db() -> aiosqlite.Connection:
 
 # ── 가격 데이터 수집 — DataCollector REST 폴링 ──────────────
 async def _sync_leaderboard_loop():
-    """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)"""
-    await asyncio.sleep(10)
+    """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)
+    
+    P2 Fix (Round 6): startup 순서 보장
+    - DB init → healthz ok (즉시) → leaderboard sync (5초 후 백그라운드)
+    - 5초 딜레이: DB init 완료 후 첫 요청 수신 전에 sync 완료 가능성 최대화
+    """
+    await asyncio.sleep(5)
+    logger.info("[Leaderboard] 첫 번째 동기화 시작...")
     from pacifica.client import PacificaClient
     client = PacificaClient()
     while True:
@@ -1655,6 +1661,96 @@ async def health_detailed(request: Request) -> dict:
 
 
 # ── 클라이언트 설정 제공 ──────────────────────────────
+@app.post("/admin/sync")
+async def admin_sync_leaderboard(request: Request) -> dict:
+    """P2 Fix (Round 6): 수동 leaderboard 재동기화 트리거 (API Key 인증)
+    
+    사용:
+        curl -X POST https://copy-perp.onrender.com/admin/sync \\
+             -H "X-Admin-Key: $ADMIN_API_KEY"
+    
+    환경변수 ADMIN_API_KEY 미설정 시 비활성화 (보안 기본값).
+    """
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Admin endpoint disabled (ADMIN_API_KEY not set)", "code": "NOT_CONFIGURED"}
+        )
+    
+    provided_key = request.headers.get("X-Admin-Key", "")
+    if not provided_key or provided_key != admin_key:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Invalid or missing X-Admin-Key header", "code": "UNAUTHORIZED"}
+        )
+    
+    # 백그라운드에서 leaderboard 즉시 동기화 트리거
+    async def _do_sync():
+        from pacifica.client import PacificaClient
+        client = PacificaClient()
+        try:
+            lb = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: client.get_leaderboard(100)
+            )
+            synced = 0
+            for t in lb:
+                addr = t.get("address", "")
+                if not addr:
+                    continue
+                pnl_all = float(t.get("pnl_all_time", 0) or 0)
+                pnl_30d = float(t.get("pnl_30d", 0) or 0)
+                pnl_7d  = float(t.get("pnl_7d", 0) or 0)
+                pnl_1d  = float(t.get("pnl_1d", 0) or 0)
+                equity  = float(t.get("equity_current", 0) or 0)
+                await _db.execute(
+                    """INSERT INTO traders
+                       (address, alias, total_pnl, followers,
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
+                        volume_7d, volume_30d, oi_current, active, last_synced)
+                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,strftime('%s','now'))
+                       ON CONFLICT(address) DO UPDATE SET
+                           total_pnl    = excluded.total_pnl,
+                           pnl_1d       = excluded.pnl_1d,
+                           pnl_7d       = excluded.pnl_7d,
+                           pnl_30d      = excluded.pnl_30d,
+                           pnl_all_time = excluded.pnl_all_time,
+                           equity       = excluded.equity,
+                           active       = 1,
+                           last_synced  = strftime('%s','now')""",
+                    (
+                        addr,
+                        t.get("username") or addr[:8],
+                        pnl_all,
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
+                        float(t.get("volume_7d", 0) or 0),
+                        float(t.get("volume_30d", 0) or 0),
+                        float(t.get("oi_current", 0) or 0),
+                    )
+                )
+                synced += 1
+            await _db.commit()
+            logger.info(f"[Admin] 수동 leaderboard 동기화 완료: {synced}명")
+            return synced
+        except Exception as e:
+            logger.error(f"[Admin] leaderboard 동기화 오류: {e}")
+            raise
+
+    try:
+        synced_count = await _do_sync()
+        return {
+            "ok": True,
+            "synced_traders": synced_count,
+            "triggered_at": int(_time_module.time()),
+            "message": f"Leaderboard synced {synced_count} traders",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": f"Sync failed: {str(e)}", "code": "SYNC_FAILED"}
+        )
+
+
 @app.get("/config")
 def get_config() -> dict:
     privy_app_id = os.getenv("PRIVY_APP_ID", "")

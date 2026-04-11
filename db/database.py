@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS follower_positions (
     side             TEXT NOT NULL,
     entry_price      REAL NOT NULL,
     size             REAL NOT NULL,
+    mark_price       REAL DEFAULT 0,
+    unrealized_pnl   REAL DEFAULT 0,
     opened_at        INTEGER NOT NULL,
     updated_at       INTEGER NOT NULL,
     PRIMARY KEY (follower_address, symbol)
@@ -176,6 +178,10 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         "ALTER TABLE copy_trades ADD COLUMN closed_at INTEGER",
         "ALTER TABLE copy_trades ADD COLUMN hold_duration_sec INTEGER",
         "ALTER TABLE copy_trades ADD COLUMN trader_alias TEXT",
+        "ALTER TABLE copy_trades ADD COLUMN fee_usdc REAL DEFAULT 0",
+        # follower_positions 컬럼 (Round 6: mark_price, unrealized_pnl 추가)
+        "ALTER TABLE follower_positions ADD COLUMN mark_price REAL DEFAULT 0",
+        "ALTER TABLE follower_positions ADD COLUMN unrealized_pnl REAL DEFAULT 0",
         # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
         # fee_records는 CREATE_SQL에 이미 포함되어 있음
     ]
@@ -262,13 +268,14 @@ async def get_followers(conn, trader_address: str) -> list:
 
 async def record_copy_trade(conn, trade: dict) -> None:
     # 중복 키 방지: **trade 언패킹 없이 명시적 키만 사용
+    # P1 Fix (Round 6): fee_usdc 컬럼 추가
     await conn.execute(
         """INSERT OR IGNORE INTO copy_trades
            (id, follower_address, trader_address, symbol, side, amount, price,
-            client_order_id, status, pnl, entry_price, exec_price, created_at, error_msg)
+            client_order_id, status, pnl, entry_price, exec_price, created_at, error_msg, fee_usdc)
            VALUES (:id, :follower_address, :trader_address, :symbol, :side,
                    :amount, :price, :client_order_id, :status, :pnl,
-                   :entry_price, :exec_price, :created_at, :error_msg)""",
+                   :entry_price, :exec_price, :created_at, :error_msg, :fee_usdc)""",
         {
             "id": trade.get("id"),
             "follower_address": trade.get("follower_address"),
@@ -284,6 +291,7 @@ async def record_copy_trade(conn, trade: dict) -> None:
             "exec_price": trade.get("exec_price"),
             "created_at": trade.get("created_at"),
             "error_msg": trade.get("error_msg"),
+            "fee_usdc": trade.get("fee_usdc", 0),
         }
     )
     await conn.commit()

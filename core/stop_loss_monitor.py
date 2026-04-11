@@ -71,26 +71,62 @@ class StopLossMonitor:
         self._running = False
 
     async def _scan_positions(self):
-        """DB의 열린 포지션 전체 스캔 → 손절 조건 확인"""
+        """DB의 열린 포지션 전체 스캔 → 손절 조건 확인
+        
+        P0 Fix (Round 6): positions 테이블과 follower_positions 테이블 이중 스캔
+        - CopyEngine은 follower_positions에 저장 (기본)
+        - pnl_tracker는 positions 테이블 사용 (별도)
+        - 두 테이블 UNION하여 누락 없이 스캔
+        """
         # 현재가 조회
         prices = _get_mark_prices()
         if not prices:
             return
 
-        # 열린 포지션 + 전략 정보 조회
-        async with self.db.execute("""
-            SELECT p.follower_address, p.symbol, p.side,
-                   p.avg_entry_price, p.size,
-                   p.stop_loss_price, p.take_profit_price,
-                   p.high_price, p.strategy,
-                   f.strategy as follower_strategy,
-                   p.trader_address
-            FROM positions p
-            JOIN followers f ON p.follower_address = f.address
-            WHERE p.status = 'open'
-              AND p.avg_entry_price > 0
-        """) as cur:
-            rows = [dict(zip([d[0] for d in cur.description], r)) for r in await cur.fetchall()]
+        rows = []
+
+        # 1차: positions 테이블 (pnl_tracker 관리)
+        try:
+            async with self.db.execute("""
+                SELECT p.follower_address, p.symbol, p.side,
+                       p.avg_entry_price AS avg_entry_price, p.size,
+                       COALESCE(p.stop_loss_price, 0) AS stop_loss_price,
+                       COALESCE(p.take_profit_price, 0) AS take_profit_price,
+                       COALESCE(p.high_price, p.avg_entry_price) AS high_price,
+                       COALESCE(p.strategy, 'passive') AS strategy,
+                       COALESCE(f.strategy, 'passive') AS follower_strategy,
+                       COALESCE(p.trader_address, '') AS trader_address
+                FROM positions p
+                JOIN followers f ON p.follower_address = f.address
+                WHERE p.status = 'open'
+                  AND p.avg_entry_price > 0
+            """) as cur:
+                rows += [dict(zip([d[0] for d in cur.description], r)) for r in await cur.fetchall()]
+        except Exception as _e:
+            logger.debug(f"[StopLoss] positions 테이블 조회 오류 (무시): {_e}")
+
+        # 2차: follower_positions 테이블 (CopyEngine 관리) — positions에 없는 항목만 추가
+        try:
+            existing_keys = {(r["follower_address"], r["symbol"]) for r in rows}
+            async with self.db.execute("""
+                SELECT fp.follower_address, fp.symbol, fp.side,
+                       fp.entry_price AS avg_entry_price, fp.size,
+                       0 AS stop_loss_price,
+                       0 AS take_profit_price,
+                       fp.entry_price AS high_price,
+                       COALESCE(f.strategy, 'passive') AS strategy,
+                       COALESCE(f.strategy, 'passive') AS follower_strategy,
+                       COALESCE(f.trader_address, '') AS trader_address
+                FROM follower_positions fp
+                JOIN followers f ON fp.follower_address = f.address
+            """) as cur:
+                for r in await cur.fetchall():
+                    row_dict = dict(zip([d[0] for d in cur.description], r))
+                    key = (row_dict["follower_address"], row_dict["symbol"])
+                    if key not in existing_keys:
+                        rows.append(row_dict)
+        except Exception as _e:
+            logger.debug(f"[StopLoss] follower_positions 테이블 조회 오류 (무시): {_e}")
 
         if not rows:
             return

@@ -315,8 +315,17 @@ class CopyEngine:
                 logger.debug(f"[{follower_addr[:8]}] volume/funding 체크 오류 (무시): {_ve}")
 
         # ── 전략 프리셋 파라미터 적용 ────────────────────
-        copy_ratio = preset.get("copy_ratio", copy_ratio)
-        max_pos    = preset.get("max_position_usdc", max_pos)
+        # P0 Fix (Round 6): 프리셋의 copy_ratio는 팔로워 개별 설정의 상한선으로만 사용
+        # (프리셋이 팔로워 설정을 완전히 덮어쓰는 버그 수정)
+        # 팔로워 DB 설정값(copy_ratio)이 존재하면 이를 우선, 프리셋은 최대값으로 제한
+        _preset_ratio = preset.get("copy_ratio")
+        if _preset_ratio is not None:
+            # 프리셋의 copy_ratio는 팔로워 설정의 상한선: min(follower_ratio, preset_ratio)
+            copy_ratio = min(copy_ratio, float(_preset_ratio))
+        _preset_max_pos = preset.get("max_position_usdc")
+        if _preset_max_pos is not None:
+            # 프리셋의 max_position_usdc는 팔로워 설정의 상한선
+            max_pos = min(max_pos, float(_preset_max_pos))
 
         # ── 트레이더 통계 조회 (로깅용) ──────────────────
         trader_stats = await self._get_trader_stats_sync(trader_address)
@@ -641,6 +650,14 @@ class CopyEngine:
         if symbol in _fp:
             _entry = _fp[symbol].get("entry_price")
 
+        # P1 Fix (Round 6): fee_usdc를 copy_trades에 함께 기록
+        _trade_fee_usdc = 0.0
+        if status == "filled" and exec_price > 0:
+            try:
+                _trade_fee_usdc = round(float(copy_amount) * exec_price * float(BUILDER_FEE_RATE), 6)
+            except Exception:
+                pass
+
         await record_copy_trade(self.db, {
             "id": trade_id,
             "follower_address": follower_addr,
@@ -656,6 +673,7 @@ class CopyEngine:
             "exec_price": exec_price if exec_price > 0 else None,
             "created_at": _now_ms,
             "error_msg": _error_msg if status == "failed" else None,
+            "fee_usdc": _trade_fee_usdc,
         })
 
 
