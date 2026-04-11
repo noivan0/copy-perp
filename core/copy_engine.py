@@ -578,7 +578,29 @@ class CopyEngine:
                 "balance", "exceeds", "below minimum",
             )
             _is_balance_error = any(p in err_str.lower() for p in _INSUFFICIENT_PATTERNS)
-            if _is_balance_error:
+            # R11+: unauthorized to sign → 팔로워 자동 일시 중지
+            # Pacifica testnet에서 팔로워가 agent wallet approve 안 한 경우
+            # 이벤트마다 반복 실패를 막기 위해 팔로워 비활성화 후 알림
+            _is_unauthorized = "unauthorized to sign" in err_str.lower() or (
+                "unauthorized" in err_str.lower() and "sign on behalf" in err_str.lower()
+            )
+            if _is_unauthorized:
+                logger.warning(
+                    f"[{follower_addr[:8]}] Agent 미승인 — 팔로워 자동 중지 "
+                    f"(Pacifica 앱에서 Agent Binding 필요): {err_str[:120]}"
+                )
+                # 팔로워 비활성화: 같은 에러 반복 방지
+                try:
+                    await self.db.execute(
+                        "UPDATE followers SET active=0 WHERE address=?",
+                        (follower_addr,)
+                    )
+                    await self.db.commit()
+                    logger.info(f"[{follower_addr[:8]}] 팔로워 비활성화 완료 (agent_binding_required)")
+                except Exception as _db_err:
+                    logger.debug(f"팔로워 비활성화 실패 (무시): {_db_err}")
+                status = "skipped_agent_unbound"
+            elif _is_balance_error:
                 logger.warning(
                     f"[{follower_addr[:8]}] 잔액 부족 — {symbol} {side} {copy_amount}: {err_str[:120]}"
                 )
