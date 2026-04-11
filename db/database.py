@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS followers (
     builder_code_approved   INTEGER DEFAULT 0,
     active                  INTEGER DEFAULT 1,
     created_at              INTEGER,
+    privy_user_id           TEXT,
+    stop_loss_pct           REAL DEFAULT 8.0,
+    take_profit_pct         REAL DEFAULT 15.0,
+    agent_bound             INTEGER DEFAULT 0,
     PRIMARY KEY (address, trader_address)
 );
 

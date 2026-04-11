@@ -558,7 +558,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     from api.main import RATE_LIMIT_POLICY as _RLP
     client_ip = _gcip(request)
     # RATE_LIMIT_POLICY 참조로 하드코딩 제거 (main.py 정책 단일 관리)
-    _onboard_max, _onboard_win = _RLP.get("onboard", (10, 60))
+    _onboard_max, _onboard_win = _RLP.get("onboard", (20, 60))  # default fallback main.py 정책과 통일
     _rrl(f"onboard:{client_ip}", _onboard_max, _onboard_win)
 
     # ── risk_mode → RISK_PRESETS 적용 (copy_ratio/traders/max_position 미지정 시) ──
