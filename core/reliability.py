@@ -253,12 +253,23 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     """
     리스크 신뢰성 (25%)
     OI/Equity: 팔로워가 실제 따라갈 수 있는가 + 레버리지 과용
+
+    P0 Fix (Round 4):
+    - OI=0 트레이더: 현재 오픈 포지션 없음 = 리스크 낮지만 비활성 상태
+      → risk_score를 100(최고)으로 주지 않고 중립값 50으로 처리
+      → 실제 모멘텀/일관성 점수에서 패널티를 받도록 설계 (각 차원 역할 유지)
+    - stats 없을 때 OI=0이면 score=50(중립), OI>0이면 oi_score 그대로 사용
     """
     warnings = []
 
     # OI/Equity 비율 (레버리지 proxy)
     oi_ratio = oi / eq if eq > 0 else 0
-    if oi_ratio > 3.0:
+
+    # P0 Fix: OI=0 → 포지션 없음 → risk 판단 불가 → 중립(50)
+    if oi == 0:
+        oi_score = 50.0  # 중립: 위험하지도 않지만 활동 데이터 없음
+        warnings.append("OI=0 — no open positions (neutral risk)")
+    elif oi_ratio > 3.0:
         oi_score = 0.0
         warnings.append(f"OI/Equity {oi_ratio:.1f}x — extreme leverage")
     elif oi_ratio > 1.5:
@@ -287,6 +298,7 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     if stats:
         score = oi_score * 0.45 + liq_score * 0.30 + streak_score * 0.25
     else:
+        # stats 없을 때: OI=0이면 중립(50), 아니면 oi_score 그대로
         score = oi_score
     return round(score, 1), warnings
 
@@ -439,7 +451,36 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     roi30 = _safe(raw.get("roi_30d"))
     eq    = _safe(raw.get("equity", 100000))
     oi    = _safe(raw.get("oi"))
-    cons  = int(_safe(raw.get("consistency", 3)))
+    # P0 Fix (Round 4): consistency 기본값 3 고착 문제
+    # Pacifica API가 consistency 필드를 제공하지 않으면 leaderboard 데이터로 추정
+    _raw_cons = raw.get("consistency")
+    if _raw_cons is not None:
+        cons = int(_safe(_raw_cons))
+    else:
+        # API가 consistency 미제공 시: p7d/p30d 비율로 1~5 추정
+        # - 최근 7일 활동 + 30일 일관성 기반 proxy
+        _p30_v = _safe(raw.get("pnl_30d"))
+        _p7_v  = _safe(raw.get("pnl_7d"))
+        _p1_v  = _safe(raw.get("pnl_1d"))
+        if _p30_v > 0 and _p7_v > 0:
+            # 7일 기여율: 이상적 0.15~0.45 → 일관성 4~5
+            _ratio = _p7_v / _p30_v
+            if 0.10 <= _ratio <= 0.50:
+                cons = 4
+            elif _ratio > 0 and _ratio < 0.10:
+                cons = 3   # 7일 기여 낮음 (비활성 경향)
+            elif _ratio > 0.50:
+                cons = 3   # 단발성 (한 주에 집중)
+            elif _ratio < 0:
+                cons = 2   # 최근 손실 (하락 전환)
+            else:
+                cons = 3
+        elif _p30_v > 0 and _p7_v == 0:
+            cons = 2       # 30일 수익 있지만 최근 7일 활동 없음
+        elif _p1_v > 0:
+            cons = 3       # 오늘만 수익
+        else:
+            cons = 2       # 기본 낮음 (데이터 불충분)
 
     result = CRSResult(address=addr, alias=alias)
     result.raw = {

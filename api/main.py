@@ -1303,7 +1303,13 @@ async def get_stats(request: Request) -> dict:
 # ── 메트릭 / 이벤트 로그 ──────────────────────────────
 @app.get("/metrics")
 async def get_metrics():
-    """Prometheus 텍스트 형식 메트릭"""
+    """Prometheus 텍스트 형식 메트릭
+    P2 Fix (Round 4): 실제 DB 집계 추가
+    - copy_trades 건수 (today/total/failed)
+    - follower 수
+    - 오늘 빌더피 합계
+    - 최근 24h PnL
+    """
     from fastapi.responses import PlainTextResponse
     try:
         db = await get_db()
@@ -1311,14 +1317,71 @@ async def get_metrics():
     except Exception:
         s = {}
     btc = _get_pc().get("BTC", {})
+
+    # ── DB 실제 집계 (P2 추가) ──────────────────────────────
+    _today_trades = 0
+    _today_fee = 0.0
+    _today_pnl = 0.0
+    _failed_trades = 0
+    _total_followers_ever = 0
+    try:
+        db2 = await get_db()
+        _today_start = int((_time_module.time() // 86400) * 86400 * 1000)  # UTC 자정 ms
+        async with db2.execute(
+            "SELECT COUNT(*) FROM copy_trades WHERE status='filled' AND created_at >= ?",
+            (_today_start,)
+        ) as _c:
+            _today_trades = int((await _c.fetchone())[0])
+        async with db2.execute(
+            "SELECT COUNT(*) FROM copy_trades WHERE status='failed' AND created_at >= ?",
+            (_today_start,)
+        ) as _c:
+            _failed_trades = int((await _c.fetchone())[0])
+        async with db2.execute(
+            "SELECT COALESCE(SUM(fee_usdc), 0) FROM fee_records WHERE created_at >= ?",
+            (_today_start // 1000,)  # fee_records는 초 단위
+        ) as _c:
+            _today_fee = float((await _c.fetchone())[0])
+        async with db2.execute(
+            "SELECT COALESCE(SUM(pnl), 0) FROM copy_trades WHERE pnl IS NOT NULL AND created_at >= ?",
+            (_today_start,)
+        ) as _c:
+            _today_pnl = float((await _c.fetchone())[0])
+        async with db2.execute("SELECT COUNT(DISTINCT address) FROM followers") as _c:
+            _total_followers_ever = int((await _c.fetchone())[0])
+    except Exception as _me:
+        logger.debug(f"[metrics] DB 집계 오류 (무시): {_me}")
+
     lines = [
+        f"# HELP copy_perp_active_traders Number of active traders being monitored",
+        f"# TYPE copy_perp_active_traders gauge",
         f"copy_perp_active_traders {s.get('active_traders', 0)}",
+        f"# HELP copy_perp_active_followers Number of active followers",
+        f"# TYPE copy_perp_active_followers gauge",
         f"copy_perp_active_followers {s.get('active_followers', 0)}",
+        f"copy_perp_total_followers_ever {_total_followers_ever}",
+        f"# HELP copy_perp_copy_trades_total Total copy trades (filled)",
+        f"# TYPE copy_perp_copy_trades_total counter",
         f"copy_perp_copy_trades_total {s.get('total_trades_filled', 0)}",
+        f"copy_perp_copy_trades_today {_today_trades}",
+        f"copy_perp_copy_trades_failed_today {_failed_trades}",
+        f"# HELP copy_perp_volume_usdc Total copy trade volume (USDC)",
+        f"# TYPE copy_perp_volume_usdc counter",
         f"copy_perp_volume_usdc {s.get('total_volume_usdc', 0)}",
+        f"# HELP copy_perp_builder_fee_today_usdc Builder fee collected today (USDC)",
+        f"# TYPE copy_perp_builder_fee_today_usdc gauge",
+        f"copy_perp_builder_fee_today_usdc {round(_today_fee, 6)}",
+        f"copy_perp_builder_fee_total_usdc {s.get('builder_fee_total_usdc', 0)}",
+        f"# HELP copy_perp_realized_pnl_today_usdc Realized PnL from copy trades today (USDC)",
+        f"# TYPE copy_perp_realized_pnl_today_usdc gauge",
+        f"copy_perp_realized_pnl_today_usdc {round(_today_pnl, 4)}",
+        f"# HELP copy_perp_monitors_active Active position monitors",
+        f"# TYPE copy_perp_monitors_active gauge",
         f"copy_perp_monitors_active {len(_monitors)}",
         f"copy_perp_btc_price {float(btc.get('mark', 0))}",
+        f"copy_perp_btc_funding {float(btc.get('funding', 0))}",
         f"copy_perp_symbols_cached {len(_get_pc())}",
+        f"copy_perp_uptime_seconds {round(_time_module.time() - _start_time, 1)}",
         f'copy_perp_network{{network="{os.getenv("NETWORK","testnet")}"}} 1',
     ]
     am = get_alert_manager()

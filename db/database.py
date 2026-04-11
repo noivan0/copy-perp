@@ -179,11 +179,21 @@ async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
         # fee_records 테이블 (없으면 CREATE, 있으면 무시됨 — executescript 특성)
         # fee_records는 CREATE_SQL에 이미 포함되어 있음
     ]
+    import logging as _db_log
+    _db_logger = _db_log.getLogger(__name__)
+    _mig_applied = 0
+    _mig_skipped = 0
     for sql in _migrations:
         try:
             await conn.execute(sql)
-        except Exception:
-            pass  # 이미 컬럼 있으면 무시
+            _mig_applied += 1
+        except Exception as _mig_e:
+            # 이미 컬럼 있으면 "duplicate column name" 오류 → 무시 (정상)
+            # 다른 오류도 무시하되 DEBUG 로그 남김
+            _db_logger.debug(f"[migrate_db] skipped (already exists?): {sql[:60]!r} → {_mig_e}")
+            _mig_skipped += 1
+    if _mig_applied > 0:
+        _db_logger.info(f"[migrate_db] applied={_mig_applied} skipped={_mig_skipped}")
 
     # 인덱스 추가 (없으면 생성)
     _indexes = [

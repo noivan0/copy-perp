@@ -277,7 +277,10 @@ _verify_privy_jwt._cache = {"keys": [], "ts": 0.0}  # type: ignore[attr-defined]
 class OnboardRequest(BaseModel):
     """팔로워 온보딩 요청"""
     follower_address: str                       # 팔로워 Solana 지갑 주소
-    private_key: Optional[str] = None          # base58 개인키 (Builder Code 서명용, 선택)
+    # ⚠️ DEPRECATED: private_key를 HTTP body로 전송하는 것은 보안 위험입니다.
+    # 프로덕션에서는 client_signature(Privy embedded wallet 서명)를 사용하세요.
+    # 이 필드는 향후 제거될 예정입니다 (use client_signature instead).
+    private_key: Optional[str] = None          # DEPRECATED: base58 개인키 (Builder Code 서명용)
     client_signature: Optional[str] = None     # Privy embedded wallet 서명 (base58) — private_key 대체
 
     # ── 전략 선택 ─────────────────────────────────────────────────────
@@ -514,6 +517,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     6. DB 팔로워 등록 (privy_user_id 포함)
     7. Tier1 트레이더 자동 팔로우 + 모니터링 시작
     """
+    import uuid as _uuid
     from api.deps import _get_db_direct, _get_engine_direct, _get_monitors_direct
     from api.main import _check_rate_limit
     _db = _get_db_direct()
@@ -522,6 +526,9 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     from core.position_monitor import RestPositionMonitor
     from db.database import add_follower
     from fuul.referral import FuulReferral
+
+    # request_id: 미들웨어에서 붙인 경우 재사용, 아니면 신규 생성
+    req_id = getattr(request.state, "request_id", None) or str(_uuid.uuid4())[:8]
 
     # ── Rate Limit 체크 ─────────────────────────────────
     client_ip = request.client.host if request.client else "unknown"
@@ -534,6 +541,7 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
     _risk_copy_ratio = body.copy_ratio or _risk_preset["copy_ratio"]
     _risk_max_pos    = body.max_position_usdc or _risk_preset["max_position_usdc"]
     logger.info(
+        f"[{req_id}] onboard follower={body.follower_address[:12]} "
         f"risk_mode={body.risk_mode or 'default'} | "
         f"traders={len(_risk_traders)}명 | "
         f"copy_ratio={_risk_copy_ratio*100:.0f}% | "
@@ -644,7 +652,15 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             signature = body.client_signature
             logger.info(f"Privy 클라이언트 서명 사용: {follower[:12]}...")
         elif body.private_key:
-            # 서버 측 개인키로 서명 (데모/백엔드 용도)
+            # ⚠️ DEPRECATED: private_key HTTP body 전송 — 보안 경고
+            # 프로덕션에서는 client_signature를 사용해야 합니다
+            logger.warning(
+                f"[SECURITY] private_key field used in /followers/onboard request "
+                f"from follower={follower[:12]}... — "
+                f"DEPRECATED: Use client_signature (Privy embedded wallet) instead. "
+                f"Sending private keys over HTTP is a security risk."
+            )
+            # 서버 측 개인키로 서명 (데모/백엔드 용도 — DEPRECATED)
             signature = _sign_builder_approval(body.private_key, payload_to_sign)
         else:
             # 서명 없음 — Builder Code 승인 보류 (Pacifica 팀 등록 후 자동 처리)
@@ -983,6 +999,8 @@ async def remove_follower(
     trader_address: str,
     follower_address: Optional[str] = Query(default=None, description="팔로워 지갑 주소"),
     request: Request = None,
+    x_privy_token: Optional[str] = Header(None, alias="X-Privy-Token"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ) -> dict:
     """
     팔로우 해지 (soft delete)
@@ -992,13 +1010,72 @@ async def remove_follower(
 
     follower_address 제공 시: 해당 팔로워-트레이더 쌍만 해지
     미제공 시: trader_address를 follower로 간주 (backward compat)
+
+    ⚠️ 보안 주의 (Round 4):
+    follower_address가 쿼리 파라미터로만 전달 — 현재 누구나 타인 해지 가능.
+    강화된 rate limit (분당 10회) 적용.
+    Privy JWT 있을 경우 소유권 검증 수행.
+    TODO: Privy JWT 필수화 (v2 계획)
     """
     from api.deps import _get_db_direct
+    from api.main import _check_rate_limit
+
+    # ── Rate limit 강화: IP당 분당 10회 (기본 unfollow 정책 사용) ──────
+    _client_ip = request.client.host if request and request.client else "unknown"
+    _rl_key = f"unfollow:{_client_ip}"
+    if not _check_rate_limit(_rl_key, max_calls=10, window_sec=60):
+        raise HTTPException(
+            status_code=429,
+            headers={"Retry-After": "60"},
+            detail={"error": "Rate limit exceeded", "code": "RATE_LIMIT_EXCEEDED", "retry_after_seconds": 60}
+        )
+
     _db = _get_db_direct()
     if not _db:
         raise HTTPException(
             status_code=503,
             detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
+        )
+
+    # ── Privy JWT 선택적 소유권 검증 ──────────────────────────────────
+    # JWT가 제공된 경우: follower_address 소유권 확인 (타인 해지 방지)
+    _jwt_token = x_privy_token
+    if not _jwt_token and authorization and authorization.startswith("Bearer "):
+        _jwt_token = authorization[7:].strip()
+
+    if _jwt_token and follower_address:
+        _privy_uid = _verify_privy_jwt(_jwt_token)
+        if _privy_uid:
+            # DB에서 해당 팔로워의 privy_user_id 확인
+            try:
+                async with _db.execute(
+                    "SELECT privy_user_id FROM followers WHERE address=? AND active=1 LIMIT 1",
+                    (follower_address,)
+                ) as cur:
+                    row = await cur.fetchone()
+                if row and row[0] and row[0] != _privy_uid:
+                    logger.warning(
+                        f"[SECURITY] DELETE /followers/{trader_address[:12]} — "
+                        f"Privy ID mismatch: requester={_privy_uid[:20]}, "
+                        f"owner={row[0][:20]}, follower={follower_address[:12]}"
+                    )
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"error": "Not authorized to remove this follower", "code": "FORBIDDEN"}
+                    )
+            except HTTPException:
+                raise
+            except Exception as _ve:
+                logger.debug(f"DELETE follower Privy 검증 DB 오류 (무시): {_ve}")
+        else:
+            logger.warning(f"[SECURITY] DELETE /followers — invalid Privy JWT provided, proceeding without auth")
+    elif not _jwt_token and follower_address:
+        # JWT 없이 follower_address 쿼리 파라미터로만 요청 — 보안 감사 로그
+        logger.warning(
+            f"[SECURITY] DELETE /followers/{trader_address[:12]} "
+            f"without auth token. follower={follower_address[:12] if follower_address else 'N/A'} "
+            f"from ip={_client_ip}. "
+            f"TODO: Require Privy JWT in v2."
         )
 
     if follower_address:

@@ -288,6 +288,25 @@ class CopyEngine:
                 logger.info(f"[{follower_addr[:8]}] {symbol} 미지원 심볼 차단 (strategy={strategy_id})")
                 return
 
+        # ── P0 Fix (Round 4): volume=0 + 극단 펀딩비 마켓 진입 차단 ──────
+        # PIPPIN 같은 유동성 없는 마켓: volume_24h=0 + |funding| > 3% 이면 주문 스킵
+        # (슬리피지 폭발 위험, 사실상 진입/청산 불가)
+        if not self.mock_mode:
+            try:
+                from core.data_collector import get_price_cache
+                _mkt = get_price_cache().get(symbol.upper(), {})
+                _vol24 = float(_mkt.get("volume_24h", 0) or _mkt.get("volume", 0) or 0)
+                _funding = float(_mkt.get("funding", 0) or 0)
+                _FUNDING_THRESHOLD = 0.03   # |funding| > 3% = 극단 펀딩비
+                if _vol24 == 0 and abs(_funding) > _FUNDING_THRESHOLD:
+                    logger.warning(
+                        f"[{follower_addr[:8]}] {symbol} 주문 스킵: "
+                        f"volume_24h=0 + funding={_funding:.2%} (극단 펀딩비 + 유동성 없음)"
+                    )
+                    return
+            except Exception as _ve:
+                logger.debug(f"[{follower_addr[:8]}] volume/funding 체크 오류 (무시): {_ve}")
+
         # ── 전략 프리셋 파라미터 적용 ────────────────────
         copy_ratio = preset.get("copy_ratio", copy_ratio)
         max_pos    = preset.get("max_position_usdc", max_pos)
