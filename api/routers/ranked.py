@@ -37,6 +37,10 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
         # 프론트 편의 필드 추가
         d["tier_label"] = _tier_label(result.grade)
         d["copy_ratio_pct"] = round(result.recommended_copy_ratio * 100, 1)
+        # top-level 편의 필드 (raw에서 추출 — 프론트 직접 접근용)
+        d["pnl_30d"] = result.raw.get("pnl_30d")
+        d["pnl_7d"]  = result.raw.get("pnl_7d")
+        d["roi_30d"] = result.raw.get("roi_30d")
         return d
     except Exception as e:
         logger.warning(f"CRS 계산 오류 {row.get('address', '?')[:12]}: {e}")
