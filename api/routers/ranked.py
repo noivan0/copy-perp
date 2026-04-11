@@ -14,6 +14,19 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from core.reliability import compute_crs, GRADE, MAX_COPY_RATIO
 
+
+def _get_client_ip(request: Request) -> str:
+    """실제 클라이언트 IP 추출 (ranked 라우터 로컬 정의 — main.py 순환 임포트 방지)"""
+    import os
+    trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
+    client_host = request.client.host if request.client else "unknown"
+    if not trusted_proxy:
+        return client_host
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return client_host
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/traders/ranked", tags=["ranked"])
@@ -107,7 +120,7 @@ def _tier_label(grade: str) -> str:
 async def _fetch_rows_from_db(limit: int = 200) -> list:
     """DB에서 active 트레이더 rows 가져오기"""
     try:
-        from api.main import get_db, _get_client_ip
+        from api.main import get_db
         db = await get_db()
         async with db.execute(
             "SELECT * FROM traders WHERE active=1 ORDER BY pnl_30d DESC LIMIT ?", (limit,)
