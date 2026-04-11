@@ -76,7 +76,6 @@ load_dotenv(_env_path, override=True)
 import aiosqlite
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
@@ -131,6 +130,11 @@ async def lifespan(app_):
     _network = os.getenv("NETWORK", "testnet")
     _rest_url = os.getenv("PACIFICA_REST_URL", "")
     _db_path  = os.getenv("DB_PATH", "copy_perp.db")
+    # IMPROVE 4: DB 영속성 체크 로그
+    _db_is_persistent = _db_path.startswith("/var/")
+    logger.info(
+        f"DB 영속성: {'✅ Render Disk' if _db_is_persistent else '⚠️ 로컬 (재배포 시 초기화)'} | {_db_path}"
+    )
     logger.info(f"🌐 NETWORK={_network} | REST={_rest_url} | DB={_db_path}")
     if _network == "mainnet":
         logger.info("🚀 MAINNET MODE: api.pacifica.fi 직접 접근")
@@ -178,8 +182,13 @@ async def add_request_id(request: Request, call_next):
     request.state.request_id = request_id
     # 요청 로그
     logger.info(f"[{request_id}] {request.method} {request.url.path}")
+    # 응답 시간 측정 (IMPROVE 1)
+    _t_start = _time_module.perf_counter()
     response = await call_next(request)
+    _elapsed_ms = round((_time_module.perf_counter() - _t_start) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time"] = f"{_elapsed_ms}ms"   # IMPROVE 1
+    response.headers["X-API-Version"] = APP_VERSION              # IMPROVE 3
     # 보안 헤더
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -221,13 +230,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Privy-Token"],
-    allow_credentials=True,
-)
+# ── 커스텀 CORS 미들웨어 (origin 검증 후 조건부 credentials 헤더) ──────────
+# 이유: FastAPI 기본 CORSMiddleware는 allow_credentials=True 시 비허용 origin에도
+# Access-Control-Allow-Credentials: true를 반환하는 보안 취약점이 있음.
+# 커스텀 미들웨어로 origin 화이트리스트 검증 후 조건부로만 CORS 헤더를 붙임.
+class CORSMiddlewareCustom(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        origin = request.headers.get("origin", "")
+
+        # OPTIONS preflight 요청 — 허용된 origin만 200 응답
+        if request.method == "OPTIONS" and origin in _ALLOWED_ORIGINS:
+            from starlette.responses import Response as _Resp
+            return _Resp(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Privy-Token",
+                    "Access-Control-Max-Age": "600",
+                    "Vary": "Origin",
+                }
+            )
+
+        response = await call_next(request)
+
+        # 허용된 origin에만 CORS 헤더 추가
+        if origin in _ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Privy-Token"
+            response.headers["Vary"] = "Origin"
+
+        return response
+
+app.add_middleware(CORSMiddlewareCustom)
 
 # ── 전역 에러 핸들러 ────────────────────────────────
 @app.exception_handler(RequestValidationError)
@@ -507,23 +545,6 @@ async def _sync_leaderboard_loop():
                 pnl_1d  = float(t.get("pnl_1d", 0) or 0)
                 equity  = float(t.get("equity_current", 0) or 0)
                 score = (pnl_30d/equity*0.6 + pnl_7d/equity*0.3 + (0.1 if pnl_1d > 0 else 0)) if equity > 0 else 0
-                await _db.execute(
-                    """INSERT OR IGNORE INTO traders
-                       (address, alias, total_pnl, followers,
-                        pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
-                        volume_7d, volume_30d, oi_current, active, last_synced)
-                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,strftime('%s','now'))""",
-                    (
-                        addr,
-                        t.get("username") or addr[:8],
-                        pnl_all,
-                        pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
-                        float(t.get("volume_7d", 0) or 0),
-                        float(t.get("volume_30d", 0) or 0),
-                        float(t.get("oi_current", 0) or 0),
-                    )
-                )
-
                 try:
                     from core.reliability import compute_crs
                     _crs_row = {
@@ -540,22 +561,37 @@ async def _sync_leaderboard_loop():
                     _tier = "C"
                     _sharpe = 0.0
 
+                # UPSERT 패턴: INSERT OR IGNORE + UPDATE를 하나로 통일
                 await _db.execute(
-                    """UPDATE traders SET
-                       alias=COALESCE(?,alias), total_pnl=?, pnl_1d=?, pnl_7d=?,
-                       pnl_30d=?, pnl_all_time=?, equity=?, volume_7d=?,
-                       volume_30d=?, oi_current=?, active=1, tier=?,
-                       sharpe=COALESCE(NULLIF(sharpe,0), ?),
-                       last_synced=strftime('%s','now')
-                       WHERE address=?""",
+                    """INSERT INTO traders
+                       (address, alias, total_pnl, followers,
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all_time, equity,
+                        volume_7d, volume_30d, oi_current, active, tier, sharpe, last_synced)
+                       VALUES (?,?,?,0, ?,?,?,?,?,?,?,?,1,?,?,strftime('%s','now'))
+                       ON CONFLICT(address) DO UPDATE SET
+                           alias         = COALESCE(excluded.alias, alias),
+                           total_pnl     = excluded.total_pnl,
+                           pnl_1d        = excluded.pnl_1d,
+                           pnl_7d        = excluded.pnl_7d,
+                           pnl_30d       = excluded.pnl_30d,
+                           pnl_all_time  = excluded.pnl_all_time,
+                           equity        = excluded.equity,
+                           volume_7d     = excluded.volume_7d,
+                           volume_30d    = excluded.volume_30d,
+                           oi_current    = excluded.oi_current,
+                           active        = 1,
+                           tier          = excluded.tier,
+                           sharpe        = COALESCE(NULLIF(sharpe, 0), excluded.sharpe),
+                           last_synced   = strftime('%s','now')""",
                     (
-                        t.get("username") or None,
-                        pnl_all, pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
+                        addr,
+                        t.get("username") or addr[:8],
+                        pnl_all,
+                        pnl_1d, pnl_7d, pnl_30d, pnl_all, equity,
                         float(t.get("volume_7d", 0) or 0),
                         float(t.get("volume_30d", 0) or 0),
                         float(t.get("oi_current", 0) or 0),
                         _tier, _sharpe,
-                        addr,
                     )
                 )
             await _db.commit()
@@ -791,7 +827,7 @@ def healthz() -> dict:
     return {"status": "ok", "startup_at": _STARTUP_AT, "revision": _GIT_REV}
 
 @app.get("/health")
-def health(request: Request) -> dict:
+async def health(request: Request) -> dict:
     client_ip = _get_client_ip(request)
     _require_rate_limit(f"health:{client_ip}")
     btc = _get_pc().get("BTC", {})
@@ -816,9 +852,13 @@ def health(request: Request) -> dict:
     try:
         import sqlite3 as _sqlite3
         _db_path2 = os.getenv("DB_PATH", "copy_perp.db")
-        with _sqlite3.connect(_db_path2) as _sc:
-            _row = _sc.execute("SELECT COUNT(*) FROM traders WHERE active=1").fetchone()
-            active_cnt = _row[0] if _row else 0
+
+        def _count_active_traders():
+            with _sqlite3.connect(_db_path2) as _sc:
+                _row = _sc.execute("SELECT COUNT(*) FROM traders WHERE active=1").fetchone()
+                return _row[0] if _row else 0
+
+        active_cnt = await asyncio.get_event_loop().run_in_executor(None, _count_active_traders)
         if network_env == "mainnet":
             mainnet_traders_count = active_cnt
         else:
@@ -1313,8 +1353,12 @@ def get_referral(address: str) -> dict:
 
 
 @app.get("/health/detailed")
-async def health_detailed() -> dict:
-    """상세 헬스 체크"""
+async def health_detailed(request: Request) -> dict:
+    """상세 헬스 체크 (rate limit 적용 — DDoS 방어)"""
+    # Rate limit: IP당 분당 60회 (health 정책 준용)
+    client_ip = _get_client_ip(request)
+    _require_rate_limit(f"health:{client_ip}")
+
     import core.data_collector as _dc_mod
     from core.data_collector import get_price_cache
 

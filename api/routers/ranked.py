@@ -7,6 +7,7 @@ GET  /traders/ranked/summary   — S/A/B/C 등급별 요약 통계
 GET  /traders/ranked/{address} — 개별 트레이더 CRS 상세 분석
 """
 import logging
+import time as _time_mod
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -16,6 +17,10 @@ from core.reliability import compute_crs, GRADE, MAX_COPY_RATIO
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/traders/ranked", tags=["ranked"])
+
+# ── 60초 인메모리 캐시 ────────────────────────────────────────────────────────
+_ranked_cache: dict = {}  # key: (limit, min_grade, exclude_disqualified) → (ts, payload)
+_RANKED_CACHE_TTL = 60    # 초
 
 
 def _leaderboard_row_to_crs(row: dict) -> dict:

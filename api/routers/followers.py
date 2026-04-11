@@ -673,34 +673,41 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             result["errors"].append(f"Builder Code API error: {e}")
 
     # ── Step 3: DB 팔로워 등록 ────────────────────────
-    if _db:
-        for trader_addr in traders:
-            try:
-                await add_follower(
-                    _db, follower, trader_addr,
-                    copy_ratio=resolved_copy_ratio,
-                    max_position_usdc=resolved_max_pos_usdc
-                )
-                # builder_code 승인 — noivan 플랫폼 레벨 승인 완료이므로 항상 1
-                await _db.execute(
-                    "UPDATE followers SET builder_code_approved=1, builder_approved=1 WHERE address=?",
-                    (follower,)
-                )
-                # privy_user_id 저장 (있을 경우)
-                if privy_user_id:
-                    try:
-                        await _db.execute(
-                            "UPDATE followers SET privy_user_id=? WHERE address=?",
-                            (privy_user_id, follower)
-                        )
-                        logger.info(f"privy_user_id 저장: {follower[:12]}... → {privy_user_id}")
-                    except Exception as e:
-                        logger.debug(f"privy_user_id 저장 실패 (컬럼 없을 수 있음): {e}")
-                await _db.commit()
-                result["followers_registered"].append(trader_addr)
-                logger.info(f"팔로워 등록: {follower[:12]}... → {trader_addr[:12]}...")
-            except Exception as e:
-                result["errors"].append(f"DB registration failed {trader_addr[:12]}: {e}")
+    if not _db:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"}
+        )
+    from db.database import add_trader as _add_trader
+    for trader_addr in traders:
+        try:
+            # traders 테이블에 먼저 등록 (없으면 추가, 있으면 무시)
+            await _add_trader(_db, trader_addr)
+            await add_follower(
+                _db, follower, trader_addr,
+                copy_ratio=resolved_copy_ratio,
+                max_position_usdc=resolved_max_pos_usdc,
+            )
+            # builder_code 승인 — noivan 플랫폼 레벨 승인 완료이므로 항상 1
+            await _db.execute(
+                "UPDATE followers SET builder_code_approved=1, builder_approved=1 WHERE address=?",
+                (follower,)
+            )
+            # privy_user_id 저장 (있을 경우)
+            if privy_user_id:
+                try:
+                    await _db.execute(
+                        "UPDATE followers SET privy_user_id=? WHERE address=?",
+                        (privy_user_id, follower)
+                    )
+                    logger.info(f"privy_user_id 저장: {follower[:12]}... → {privy_user_id}")
+                except Exception as e:
+                    logger.debug(f"privy_user_id 저장 실패 (컬럼 없을 수 있음): {e}")
+            await _db.commit()
+            result["followers_registered"].append(trader_addr)
+            logger.info(f"팔로워 등록: {follower[:12]}... → {trader_addr[:12]}...")
+        except Exception as e:
+            result["errors"].append(f"DB registration failed {trader_addr[:12]}: {e}")
 
     # ── Step 4: PositionMonitor 시작 ──────────────────
     for trader_addr in traders:
@@ -841,8 +848,9 @@ async def list_strategies() -> dict:
 @router.get("/list")
 async def list_followers(follower_address: Optional[str] = None) -> dict:
     """팔로워 목록 조회 — follower_address로 본인 데이터만 조회"""
-    from api.deps import _get_db_direct as _gdb
-    if not _gdb():
+    from api.deps import _get_db_direct
+    _db_local = _get_db_direct()  # 한 번만 호출 → 로컬 변수에 저장 (이중 호출 방지)
+    if not _db_local:
         raise HTTPException(503, "DB not initialized")
     # 빈 문자열 조기 반환 (DB 전체 쿼리 방지)
     if follower_address is not None and follower_address.strip() == "":
@@ -855,7 +863,7 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
                 detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
             )
         # 본인 주소에 해당하는 팔로워 데이터만 반환
-        async with _gdb().execute(
+        async with _db_local.execute(
             "SELECT * FROM followers WHERE address=? AND active=1 ORDER BY created_at DESC",
             (follower_address,)
         ) as cur:

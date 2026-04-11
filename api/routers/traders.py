@@ -28,7 +28,7 @@ class TraderRegister(BaseModel):
 
 
 @router.get("")
-async def list_traders(request: Request, limit: int = 20, mock: bool = False):
+async def list_traders(request: Request, limit: int = 50, mock: bool = False):
     """리더보드 — PnL 기준 정렬
     mock=true: Mock 데이터 강제 반환
     mock=false (기본): DB 우선, 비어있으면 Mock 폴백

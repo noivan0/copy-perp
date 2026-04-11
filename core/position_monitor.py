@@ -278,10 +278,12 @@ class RestPositionMonitor(PositionMonitor):
     _BACKOFF_BASE = 1.0     # 초기 backoff 1초
     _BACKOFF_MAX  = 30.0    # 최대 backoff 30초
     _RESTART_THRESHOLD = 10 # 이 횟수 초과 시 자동 재시작
+    _HALT_THRESHOLD    = 20 # 누적 재시작 횟수 초과 시 영구 중단
 
     def __init__(self, trader_address: str, on_fill: Callable):
         super().__init__(trader_address, on_fill)
         self._fail_count = 0
+        self._restart_count = 0   # 누적 재시작 횟수 (halt 판단용)
         self._last_poll_time: Optional[float] = None
         # _current_backoff 제거 — _next_backoff()가 _fail_count에서 직접 계산
 
@@ -332,15 +334,34 @@ class RestPositionMonitor(PositionMonitor):
 
                 # 10회 초과 → 자동 재시작
                 if self._fail_count > self._RESTART_THRESHOLD:
+                    self._restart_count += 1
+
+                    # 누적 재시작 20회 초과 → 영구 중단
+                    if self._restart_count > self._HALT_THRESHOLD:
+                        logger.error(
+                            f"[REST] 🚨 {self.trader[:12]} 누적 재시작 {self._restart_count}회 초과 — "
+                            f"모니터 영구 중단 (연속 실패 {self._fail_count}회, 마지막 오류: {e})"
+                        )
+                        try:
+                            from core.alerting import get_alert_manager
+                            get_alert_manager().monitor_disconnected(
+                                self.trader,
+                                f"누적 재시작 {self._restart_count}회 초과 → 영구 중단"
+                            )
+                        except Exception as e2:
+                            logger.debug(f"무시된 예외: {e2}")
+                        self._running = False
+                        break
+
                     logger.warning(
                         f"[REST] ⚠️ {self.trader[:12]} 연속 {self._fail_count}회 실패 — "
-                        f"모니터 자동 재시작 (backoff={backoff:.1f}s)"
+                        f"모니터 자동 재시작 #{self._restart_count} (backoff={backoff:.1f}s)"
                     )
                     try:
                         from core.alerting import get_alert_manager
                         get_alert_manager().monitor_disconnected(
                             self.trader,
-                            f"연속 {self._fail_count}회 실패로 자동 재시작: {e}"
+                            f"연속 {self._fail_count}회 실패로 자동 재시작 #{self._restart_count}: {e}"
                         )
                     except Exception as e2:
                         logger.debug(f"무시된 예외: {e2}")
@@ -349,7 +370,7 @@ class RestPositionMonitor(PositionMonitor):
                     await asyncio.sleep(backoff)
                     self._fail_count = 0
                     client = PacificaClient(self.trader)
-                    logger.info(f"[REST] {self.trader[:12]} 재시작 완료")
+                    logger.info(f"[REST] {self.trader[:12]} 재시작 완료 (#{self._restart_count})")
                     continue
                 else:
                     # 일반 backoff
