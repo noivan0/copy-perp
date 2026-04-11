@@ -133,3 +133,52 @@ def run():
 if __name__ == "__main__":
     ok = run()
     sys.exit(0 if ok else 1)
+
+
+def run_extended():
+    """확장 관측성 검증"""
+    import re
+    print(f"\n{'='*60}")
+    print("  확장 검증 (관측성 + 정합성)")
+    print(f"{'='*60}\n")
+    ex_results = []
+
+    def chk(name, ok, detail=""):
+        ex_results.append((name, ok))
+        print(f"  {'✅' if ok else '❌'} [{'PASS' if ok else 'FAIL'}] {name}" + (f": {detail}" if detail else ""))
+
+    # Prometheus 메트릭
+    s, d, _ = api("/metrics")
+    text = d if isinstance(d, str) else ""
+    req = __import__('urllib.request', fromlist=['request']).request.Request(f"{API}/metrics")
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen(req, timeout=10) as r:
+            text = r.read().decode()
+    except: pass
+
+    lines = text.split('\n') if text else []
+    chk("active_traders 메트릭", any("copy_perp_active_traders" in l and not l.startswith('#') for l in lines))
+    chk("copy_trades_total 메트릭", any("copy_perp_copy_trades_total" in l and not l.startswith('#') for l in lines))
+    chk("active_followers 메트릭", any("copy_perp_active_followers" in l and not l.startswith('#') for l in lines))
+
+    # health/detailed 구조
+    s2, d2, _ = api("/health/detailed")
+    if isinstance(d2, dict):
+        chk("db 체크", "db" in d2 and d2["db"].get("ok"), f"db={d2.get('db',{})}")
+        chk("data_collector 체크", "data_collector" in d2, f"connected={d2.get('data_collector',{}).get('connected')}")
+        h_followers = d2.get("db", {}).get("followers", -1)
+        s3, d3, _ = api("/stats")
+        st_followers = d3.get("active_followers", -2) if isinstance(d3, dict) else -2
+        chk("followers 카운트 일관성", h_followers == st_followers, f"health={h_followers} stats={st_followers}")
+
+    passed = sum(1 for _, ok in ex_results if ok)
+    print(f"\n  확장 검증: {passed}/{len(ex_results)} PASS")
+    return passed == len(ex_results)
+
+
+if __name__ == "__main__":
+    ok1 = run()
+    ok2 = run_extended()
+    import sys
+    sys.exit(0 if (ok1 and ok2) else 1)
