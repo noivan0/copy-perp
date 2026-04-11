@@ -1255,14 +1255,25 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
     top_n = max(1, min(top_n, 50))
     items = list(_get_pc().values())
 
-    # 위험 마켓 필터: funding 극단 + volume=0 동시 충족 마켓 제외
-    # (리서치팀 발견: PIPPIN funding +4% + volume=0 + 괴리 1208% → 유동성 이상)
+    # 위험 마켓 필터: funding 극단 + 유동성 이상 마켓 제외
+    # (리서치팀 발견: PIPPIN funding +4% + volume=0 → 진입 차단)
+    # (리서치팀 R11: MON funding -3.72% + volume_24h=946 + OI=4.8M → volume/OI=0.02% 사실상 유동성 없음)
     def _is_risky_market(m: dict) -> bool:
         funding_abs = abs(float(m.get("funding", 0)))
         # volume 필드명 대응: volume_24h 우선, volume, 없으면 None (0으로 처리)
         vol_raw = m.get("volume_24h") or m.get("volume")
         volume = float(vol_raw) if vol_raw is not None else 0.0
-        return funding_abs > 0.030 and volume == 0  # 3.0% 초과 + volume 없음 (리서치팀 권고)
+        oi = float(m.get("open_interest", 0) or 0)
+
+        # 조건 1: funding 3.0% 초과 + volume 완전 없음 (PIPPIN 유형)
+        if funding_abs > 0.030 and volume == 0:
+            m["exclusion_reason"] = "high_funding_no_volume"
+            return True
+        # 조건 2: funding 2.5% 초과 + volume/OI 비율 1% 미만 (MON 유형 — 사실상 유동성 없음)
+        if funding_abs > 0.025 and oi > 0 and volume / oi < 0.01:
+            m["exclusion_reason"] = "high_funding_low_liquidity"
+            return True
+        return False
 
     all_sorted = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)
     excluded_risk = [m for m in all_sorted if _is_risky_market(m)]
@@ -1935,7 +1946,8 @@ async def health_detailed(request: Request) -> dict:
             "builder_code": BUILDER_CODE,
             "network": os.getenv("NETWORK", "testnet"),
             "rest_url": os.getenv("PACIFICA_REST_URL", "auto"),
-            "db_path": os.getenv("DB_PATH", "./copy_perp.db"),
+            "db_path": os.getenv("TURSO_URL") or os.getenv("DB_PATH", "./copy_perp.db"),
+            "db_mode": "turso" if os.getenv("TURSO_URL") else "sqlite",
         }
     }
 
