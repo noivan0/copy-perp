@@ -9,6 +9,9 @@ PnL 라우터 — 팔로워 실적 조회/스냅샷 API
   POST /pnl/{follower_address}/snapshot   — 오늘 PnL 스냅샷 강제 저장
 """
 import logging
+import re
+
+_SOLANA_ADDR_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -35,6 +38,9 @@ async def get_pnl_summary(
     days: int = Query(default=30, ge=1, le=365),
 ) -> dict:
     """팔로워 PnL 요약 (최근 N일)"""
+    if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
+        from fastapi import HTTPException
+        raise HTTPException(422, {"error": "Invalid Solana address", "code": "INVALID_ADDRESS"})
     db = _get_db()
     try:
         import aiosqlite
