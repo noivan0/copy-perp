@@ -1751,7 +1751,12 @@ async def get_metrics():
     # ── 메모리 사용량 수집 (P1 R9) ──────────────────────────────
     _mem_rss_bytes = 0
     _mem_vms_bytes = 0
-    _rate_limit_keys = len(_rate_limit_store)
+    # rate limit store 2개 합산 (main._rate_limit_store + api.utils._rl_store)
+    try:
+        from api.utils import _rl_store as _utils_rl_store
+        _rate_limit_keys = len(_rate_limit_store) + len(_utils_rl_store)
+    except Exception:
+        _rate_limit_keys = len(_rate_limit_store)
     _price_cache_keys = len(_get_pc())
     _monitor_count = len(_monitors)
     try:
