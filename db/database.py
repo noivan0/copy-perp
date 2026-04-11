@@ -293,19 +293,31 @@ async def add_follower(
     trader_address: str,
     copy_ratio: float = 1.0,
     max_position_usdc: float = 100.0,
-    stop_loss_pct: float | None = None,
-    take_profit_pct: float | None = None,
+    stop_loss_pct=None,
+    take_profit_pct=None,
 ) -> None:
     import time
-    await conn.execute(
-        """INSERT OR REPLACE INTO followers
-           (address, trader_address, copy_ratio, max_position_usdc,
-            builder_approved, builder_code_approved, active, created_at,
-            stop_loss_pct, take_profit_pct)
-           VALUES (?, ?, ?, ?, 1, 1, 1, ?, ?, ?)""",
-        (address, trader_address, copy_ratio, max_position_usdc,
-         int(time.time() * 1000), stop_loss_pct, take_profit_pct)
-    )
+    _now = int(time.time() * 1000)
+    # stop_loss_pct/take_profit_pct 컬럼이 없을 수 있으므로 방어적 2단계 INSERT
+    try:
+        await conn.execute(
+            """INSERT OR REPLACE INTO followers
+               (address, trader_address, copy_ratio, max_position_usdc,
+                builder_approved, builder_code_approved, active, created_at,
+                stop_loss_pct, take_profit_pct)
+               VALUES (?, ?, ?, ?, 1, 1, 1, ?, ?, ?)""",
+            (address, trader_address, copy_ratio, max_position_usdc,
+             _now, stop_loss_pct, take_profit_pct)
+        )
+    except Exception:
+        # SL/TP 컬럼 미생성 시 기본 INSERT fallback (migration 전 호환)
+        await conn.execute(
+            """INSERT OR REPLACE INTO followers
+               (address, trader_address, copy_ratio, max_position_usdc,
+                builder_approved, builder_code_approved, active, created_at)
+               VALUES (?, ?, ?, ?, 1, 1, 1, ?)""",
+            (address, trader_address, copy_ratio, max_position_usdc, _now)
+        )
     await conn.commit()
 
 
