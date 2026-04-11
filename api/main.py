@@ -78,7 +78,6 @@ from dotenv import load_dotenv
 _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(_env_path, override=True)
 
-import aiosqlite
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
@@ -112,12 +111,12 @@ async def lifespan(app_):
     # ── Startup ──────────────────────────────────
     global _db, _engine
 
-    # ── DB 초기화: Turso 우선, fallback → aiosqlite ──────────
-    from db.turso_adapter import is_turso_configured, get_turso_connection
-    if is_turso_configured():
-        logger.info("[DB] Turso 연결 초기화 중...")
-        _db = await get_turso_connection()
-        # 스키마 생성 (aiosqlite.executescript 호환)
+    # ── DB 초기화: core/db 추상화 레이어 사용 (Turso / aiosqlite 자동 선택) ──
+    from core.db import get_db as _core_get_db, is_turso_mode
+    if is_turso_mode():
+        logger.info("[DB] Turso 연결 초기화 중 (libsql_client HTTP)...")
+        _db = await _core_get_db()
+        # 스키마 생성 (executescript 호환)
         from db.database import CREATE_SQL
         await _db.executescript(CREATE_SQL)
         await _db.commit()
@@ -217,9 +216,9 @@ async def lifespan(app_):
             logger.info(f"  모니터 중지: {addr[:16]}...")
         except Exception as e:
             logger.debug(f"무시된 예외: {e}")
-    if _db:
-        await _db.close()
-        logger.info("  DB 연결 닫힘")
+    from core.db import close_db as _close_db
+    await _close_db()
+    logger.info("  DB 연결 닫힘")
     logger.info("✅ Graceful shutdown 완료")
 
 # DEBUG 모드에서만 /docs, /redoc 노출 (프로덕션 보안)
@@ -309,11 +308,33 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CacheControlMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
 
 # ── 커스텀 CORS 미들웨어 (origin 검증 후 조건부 credentials 헤더) ──────────
 # 이유: FastAPI 기본 CORSMiddleware는 allow_credentials=True 시 비허용 origin에도
 # Access-Control-Allow-Credentials: true를 반환하는 보안 취약점이 있음.
 # 커스텀 미들웨어로 origin 화이트리스트 검증 후 조건부로만 CORS 헤더를 붙임.
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """요청 body 크기 제한 — 1MB 초과 시 413 반환 (OOM 방어)"""
+    MAX_BYTES = int(os.getenv("MAX_BODY_SIZE_BYTES", str(1 * 1024 * 1024)))  # 기본 1MB
+
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                cl = int(content_length)
+                if cl > self.MAX_BYTES:
+                    from starlette.responses import Response as _Resp
+                    return _Resp(
+                        content='{"error":"Request body too large","code":"PAYLOAD_TOO_LARGE","max_bytes":' + str(self.MAX_BYTES) + '}',
+                        status_code=413,
+                        media_type="application/json",
+                    )
+            except ValueError:
+                pass
+        return await call_next(request)
+
+
 class CORSMiddlewareCustom(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         origin = request.headers.get("origin", "")
@@ -605,21 +626,9 @@ _fuul = FuulReferral()
 
 
 async def get_db():
-    """DB 연결 반환 — TURSO_URL 설정 시 Turso, 없으면 aiosqlite"""
-    global _db
-
-    # ── Turso 우선 ──────────────────────────────────────────
-    from db.turso_adapter import is_turso_configured, get_turso_connection
-    if is_turso_configured():
-        return await get_turso_connection()
-
-    # ── aiosqlite fallback ───────────────────────────────────
-    # closed connection 감지: aiosqlite.Connection._connection이 None이면 재연결
-    if _db is None or getattr(_db, "_connection", True) is None:
-        if _db is not None:
-            logger.warning("[DB] 연결 끊김 감지 — 재연결 시도")
-        _db = await init_db()
-    return _db
+    """DB 연결 반환 — core/db 추상화 레이어 위임 (Turso / aiosqlite 자동 선택)"""
+    from core.db import get_db as _core_get_db
+    return await _core_get_db()
 
 
 # ── 가격 데이터 수집 — DataCollector REST 폴링 ──────────────
