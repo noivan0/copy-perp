@@ -29,9 +29,16 @@ async def _get_db():
     return await get_db()
 
 
+import re as _re
+_SOLANA_ADDR_RE = _re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
+
 def _validate_addr(address: str) -> None:
-    if not address or len(address) < 10:
-        raise HTTPException(422, detail=f"Invalid address: {address!r}")
+    """Solana base58 주소 검증 — 유효하지 않으면 422 (예: 'leaderboard' 같은 경로 혼동 방지)."""
+    if not address or not _SOLANA_ADDR_RE.match(address):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "Invalid Solana address format", "code": "INVALID_ADDRESS"}
+        )
 
 
 def _mask(addr: str) -> str:
