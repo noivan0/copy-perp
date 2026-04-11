@@ -592,7 +592,10 @@ _fuul = FuulReferral()
 
 async def get_db() -> aiosqlite.Connection:
     global _db
-    if _db is None:
+    # closed connection 감지: aiosqlite.Connection._connection이 None이면 재연결
+    if _db is None or getattr(_db, "_connection", True) is None:
+        if _db is not None:
+            logger.warning("[DB] 연결 끊김 감지 — 재연결 시도")
         _db = await init_db()
     return _db
 
