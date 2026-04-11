@@ -134,6 +134,14 @@ async def get_ranked_traders(
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"ranked:{client_ip}", *RATE_LIMIT_POLICY["ranked"]):
         raise HTTPException(429, {"error": "Rate limit exceeded — please wait", "code": "RATE_LIMIT_EXCEEDED"})
+
+    # ── 60초 캐시 확인 ───────────────────────────────────
+    _cache_key = (limit, min_grade.upper(), exclude_disqualified)
+    _cached = _ranked_cache.get(_cache_key)
+    if _cached and (_time_mod.time() - _cached[0]) < _RANKED_CACHE_TTL:
+        logger.debug(f"[ranked] 캐시 히트 (TTL {_RANKED_CACHE_TTL}s)")
+        return {**_cached[1], "cached": True, "cache_age_sec": round(_time_mod.time() - _cached[0], 1)}
+
     # DB 우선, 없으면 API
     rows = await _fetch_rows_from_db(200)
     source = "db"
@@ -167,12 +175,17 @@ async def get_ranked_traders(
     # CRS 점수 기준 내림차순 정렬
     filtered.sort(key=lambda x: x.get("crs", 0), reverse=True)
 
-    return {
+    result = {
         "data": filtered[:limit],
         "count": len(filtered),
         "total_analyzed": len(ranked),
         "source": source,
     }
+
+    # 캐시 저장
+    _ranked_cache[_cache_key] = (_time_mod.time(), result)
+
+    return result
 
 
 @router.get("/summary")

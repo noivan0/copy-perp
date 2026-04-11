@@ -321,7 +321,12 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "code": _status_to_code(exc.status_code),
             "request_id": req_id,
         }
-    return JSONResponse(status_code=exc.status_code, content=content)
+    # exc.headers (e.g. Retry-After) 반드시 전달 — 누락 시 rate limit 헤더 소실
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+        headers=dict(exc.headers) if exc.headers else None,
+    )
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: Exception):
