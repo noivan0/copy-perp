@@ -548,7 +548,7 @@ class PacificaClient:
             "symbol": ..., "amount": ..., "side": ...,
             "slippage_percent": ..., "reduce_only": false,
             "client_order_id": ...,
-            "builder_code": "noivan"   ← data 안에 포함해야 서명 검증 통과
+            "builder_code": BUILDER_CODE   # data 안에 포함해야 서명 검증 통과
           }
         """
         payload = {
@@ -647,7 +647,7 @@ class PacificaClient:
 def approve_builder_code(
     main_private_key: str,
     account_address: str,
-    builder_code: str = "noivan",
+    builder_code: str = BUILDER_CODE,
     max_fee_rate: str = BUILDER_FEE_RATE,
 ) -> dict:
     """
@@ -661,7 +661,7 @@ def approve_builder_code(
           "expiry_window": 5000,
           "type": "approve_builder_code",
           "data": {
-            "builder_code": "noivan",
+            "builder_code": BUILDER_CODE,
             "max_fee_rate": BUILDER_FEE_RATE
           }
         }
@@ -674,7 +674,7 @@ def approve_builder_code(
           "signature": "<base58>",
           "timestamp": <ms>,
           "expiry_window": 5000,
-          "builder_code": "noivan",     ← data 래퍼 제거, top-level
+          "builder_code": BUILDER_CODE,  # top-level (data 래퍼 제거)
           "max_fee_rate": BUILDER_FEE_RATE       ← data 래퍼 제거, top-level
         }
 
