@@ -23,7 +23,7 @@ import logging
 from typing import Optional
 
 import base58 as _base58
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 

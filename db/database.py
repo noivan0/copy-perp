@@ -147,11 +147,12 @@ CREATE TABLE IF NOT EXISTS follower_trader_stats (
 
 
 async def init_db(db_path: str = DB_PATH) -> aiosqlite.Connection:
-    conn = await aiosqlite.connect(db_path)
+    conn = await aiosqlite.connect(db_path, timeout=30)  # workers=2 동시 쓰기 시 locked 방지
     conn.row_factory = aiosqlite.Row
-    # WAL 모드: 동시 읽기/쓰기 성능 개선
+    # WAL 모드: 동시 읽기/쓰기 성능 개선 (workers=2 필수)
     await conn.execute("PRAGMA journal_mode=WAL")
     await conn.execute("PRAGMA synchronous=NORMAL")
+    await conn.execute("PRAGMA busy_timeout=30000")  # 30초 락 대기 (즉시 에러 방지)
     await conn.executescript(CREATE_SQL)
     # 마이그레이션: 기존 DB에 누락된 컬럼 추가
     _migrations = [

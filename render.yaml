@@ -5,8 +5,13 @@ services:
     plan: free
     region: oregon
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    # SQLite는 단일 프로세스만 안전 — workers=2는 database is locked 유발
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /healthz
+    disk:
+      name: copy-perp-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -26,7 +31,11 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: "https://copy-perp-frontend.vercel.app,https://copy-perp.onrender.com,http://localhost:3000"
+      # 영속 디스크 경로 (재배포 후에도 데이터 유지)
       - key: DB_PATH
-        value: ./copy_perp.db
+        value: /var/data/copy_perp.db
       - key: DEBUG
-        value: "true"
+        value: "false"
+      # Render 리버스 프록시 IP 신뢰 (rate limit IP 정확도 향상)
+      - key: TRUSTED_PROXY_IPS
+        value: "10.0.0.0/8"

@@ -358,33 +358,56 @@ def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bo
         return False
     _rate_limit_store[key].append(now)
     # 메모리 누수 방지: 키 수 1000 초과 시 정리
-    # 1) 빈 항목 + 오래된 항목 제거 → 부족하면 LRU 방식 오래된 키 강제 제거
     if len(_rate_limit_store) > 1000:
         expired = [k for k, v in list(_rate_limit_store.items())
                    if not v or now - v[-1] > window_sec]
         for k in expired:
             del _rate_limit_store[k]
-        # 여전히 1000 초과면 가장 오래된 키 강제 제거
+        # 여전히 1000 초과면 가장 오래된 키 강제 제거 (빈 리스트 안전 처리)
         if len(_rate_limit_store) > 1000:
-            oldest = sorted(_rate_limit_store.items(), key=lambda x: x[1][-1] if x[1] else 0)
-            for k, _ in oldest[:len(_rate_limit_store) - 1000]:
-                del _rate_limit_store[k]
+            oldest = sorted(
+                _rate_limit_store.items(),
+                key=lambda x: x[1][-1] if x[1] else 0.0  # 빈 리스트 → 0 (가장 오래된 것으로 처리)
+            )
+            to_delete = oldest[:len(_rate_limit_store) - 1000]
+            for k, _ in to_delete:
+                _rate_limit_store.pop(k, None)  # 이미 삭제됐을 경우 KeyError 방지
     return True
+
+def _is_in_trusted_range(host: str, trusted_proxy: str) -> bool:
+    """CIDR 및 단일 IP 모두 지원하는 프록시 신뢰 검사"""
+    import ipaddress
+    try:
+        host_ip = ipaddress.ip_address(host)
+        for entry in trusted_proxy.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                if "/" in entry:
+                    if host_ip in ipaddress.ip_network(entry, strict=False):
+                        return True
+                else:
+                    if host_ip == ipaddress.ip_address(entry):
+                        return True
+            except ValueError:
+                continue
+    except ValueError:
+        pass
+    return False
+
 
 def _get_client_ip(request: Request) -> str:
     """실제 클라이언트 IP 추출.
-    X-Forwarded-For 스푸핑 방지: TRUSTED_PROXY 환경변수가 설정된 경우에만 헤더 신뢰.
-    프록시 환경 아닐 경우 request.client.host 사용.
+    X-Forwarded-For 스푸핑 방지: TRUSTED_PROXY_IPS 환경변수가 설정된 경우에만 헤더 신뢰.
+    CIDR 표기법 지원 (예: 10.0.0.0/8 — Render 내부망).
     """
     trusted_proxy = os.getenv("TRUSTED_PROXY_IPS", "")
     client_host = request.client.host if request.client else "unknown"
-    if trusted_proxy:
-        # 신뢰할 프록시 IP 목록이 설정된 경우에만 X-Forwarded-For 헤더 신뢰
-        trusted_ips = {ip.strip() for ip in trusted_proxy.split(",") if ip.strip()}
-        if client_host in trusted_ips:
+    if trusted_proxy and client_host != "unknown":
+        if _is_in_trusted_range(client_host, trusted_proxy):
             xff = request.headers.get("X-Forwarded-For", "")
             if xff:
-                # 첫 번째 IP(원본)만 사용
                 return xff.split(",")[0].strip()
     return client_host
 
@@ -533,8 +556,9 @@ async def _sync_leaderboard_loop():
 
 
 async def _winrate_refresh_loop():
-    """win_rate 자동 갱신 — 6시간마다 Tier1 트레이더 trades/history 재수집"""
-    import ssl as _ssl
+    """win_rate 자동 갱신 — 6시간마다 Tier1 트레이더 trades/history 재수집
+    raw 소켓 파싱 제거 → PacificaClient._cf_request 사용 (chunked 파싱 버그 방지)
+    """
     await asyncio.sleep(60)
     while True:
         try:
@@ -544,73 +568,47 @@ async def _winrate_refresh_loop():
             ) as cur:
                 top_traders = await cur.fetchall()
 
+            from pacifica.client import _cf_request, get_ratelimit_status
+            import re as _re
+
             for row in top_traders:
                 addr = row[0]
+                if not addr:
+                    continue
                 try:
-                    import json as _j, socket as _sock
-                    ctx = _ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=_ssl.CERT_NONE
-                    s = _sock.create_connection((_CF_HOST, 443), timeout=12)
-                    ss = ctx.wrap_socket(s, server_hostname=_CF_HOST)
-                    req = (f"GET /api/v1/trades/history?account={addr}&limit=100 HTTP/1.1\r\n"
-                           f"Host: {_PACIFICA_HOST}\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
-                    ss.sendall(req.encode()); data = b''
-                    ss.settimeout(12)
-                    try:
-                        while True:
-                            c = ss.recv(16384)
-                            if not c: break
-                            data += c
-                    except Exception as _recv_err:
-                        logger.debug(f"소켓 수신 오류 (무시): {_recv_err}")
-                    ss.close()
-                    hdrs_raw_wr = data.split(b'\r\n\r\n', 1)[0].decode('utf-8', 'ignore') if b'\r\n\r\n' in data else ''
-                    body = data.split(b'\r\n\r\n', 1)[1] if b'\r\n\r\n' in data else data
-                    # chunked transfer encoding 처리
-                    if 'transfer-encoding' in hdrs_raw_wr.lower() and 'chunked' in hdrs_raw_wr.lower():
-                        try:
-                            decoded_wr = b''
-                            buf_wr = body
-                            while buf_wr:
-                                crlf_wr = buf_wr.find(b'\r\n')
-                                if crlf_wr < 0: break
-                                sz_wr = int(buf_wr[:crlf_wr].split(b';')[0].strip(), 16)
-                                if sz_wr == 0: break
-                                decoded_wr += buf_wr[crlf_wr+2: crlf_wr+2+sz_wr]
-                                buf_wr = buf_wr[crlf_wr+2+sz_wr+2:]
-                            body = decoded_wr
-                        except Exception as _cde:
-                            logger.debug(f"winrate chunked decode 오류: {_cde}")
-                    result = _j.loads(body.decode('utf-8', 'ignore'))
+                    # PacificaClient의 CF 요청 함수 재사용 (chunked 파싱 포함)
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda a=addr: _cf_request("GET", f"trades/history?account={a}&limit=100")
+                    )
                     trades = result.get('data', []) if isinstance(result, dict) else []
-                    closes = [t for t in trades if 'close' in t.get('side', '')]
-                    wins = sum(1 for t in closes if float(t.get('pnl', 0) or 0) > 0)
+                    # 'close' side 포함한 거래만 (청산 이벤트)
+                    closes = [t for t in trades if 'close' in str(t.get('side', '')).lower()]
+                    wins   = sum(1 for t in closes if float(t.get('pnl', 0) or 0) > 0)
                     losses = len(closes) - wins
-                    total = wins + losses
-                    wr = wins / total if total > 0 else 0.0
+                    total  = wins + losses
+                    wr     = wins / total if total > 0 else 0.0
+
                     await db.execute(
                         "UPDATE traders SET win_rate=?, win_count=?, lose_count=? WHERE address=?",
                         (wr, wins, losses, addr)
                     )
+
                     # Rate limit 기반 동적 대기
-                    # 1,000 credits/60초 → 트레이더당 1 credit 가정
-                    # 안전: 50명 기준 60/50 = 1.2초 간격
-                    from pacifica.client import get_ratelimit_status
                     rl = get_ratelimit_status()
-                    if rl["credits_remaining"] < 100:
-                        # credit 부족 → reset_in 대기
-                        wait = max(rl["reset_in_seconds"], 5)
-                        logger.warning(f"[WinRate] credit 부족({rl['credits_remaining']}) → {wait}초 대기")
+                    if rl.get("credits_remaining", 999) < 100:
+                        wait = max(rl.get("reset_in_seconds", 5), 5)
+                        logger.warning(f"[WinRate] credit 부족({rl.get('credits_remaining')}) → {wait}초 대기")
                         await asyncio.sleep(wait)
                     else:
-                        await asyncio.sleep(1.2)  # 안전 간격 (0.3→1.2초)
+                        await asyncio.sleep(1.2)
+
                 except Exception as e:
                     err_str = str(e)
                     if "429" in err_str:
-                        # Retry-After 파싱
-                        import re
-                        m = re.search(r'retry after (\d+)', err_str)
+                        m = _re.search(r'retry after (\d+)', err_str)
                         wait = int(m.group(1)) if m else 60
-                        logger.warning(f"[WinRate] 429 Rate Limit → {wait}초 대기")
+                        logger.warning(f"[WinRate] 429 → {wait}초 대기")
                         await asyncio.sleep(wait)
                     else:
                         logger.debug(f"[WinRate] 갱신 실패 {addr[:12]}: {e}")
@@ -780,7 +778,7 @@ def healthz() -> dict:
 
 @app.get("/health")
 def health(request: Request) -> dict:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"health:{client_ip}")
     btc = _get_pc().get("BTC", {})
     monitors_detail = []
@@ -840,7 +838,7 @@ def health(request: Request) -> dict:
 
 @app.get("/markets")
 def get_markets(request: Request, symbol: Optional[str] = None) -> dict:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"markets:{client_ip}")
     if symbol:
         data = _get_pc().get(symbol.upper())
@@ -857,8 +855,10 @@ def get_markets(request: Request, symbol: Optional[str] = None) -> dict:
 @app.get("/signals")
 def get_signals(request: Request, top_n: int = 5) -> dict:
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"signals:{client_ip}")
+    # top_n 범위 방어 (음수 or 과도한 값)
+    top_n = max(1, min(top_n, 50))
     items = list(_get_pc().values())
     funding_top = sorted(items, key=lambda x: abs(float(x.get("funding", 0))), reverse=True)[:top_n]
     raw_div = [m for m in items if float(m.get("oracle", 0)) > 0]
@@ -881,7 +881,7 @@ async def follow_trader(body: FollowRequest, background_tasks: BackgroundTasks, 
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 10회
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"follow:{client_ip}", request=request)
 
     # Solana 주소 검증
@@ -946,7 +946,7 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 10회
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"unfollow:{client_ip}", request=request)
 
     # 주소 검증
@@ -999,7 +999,7 @@ async def list_trades(
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 60회
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"trades:{client_ip}", request=request)
 
     # 입력 검증
@@ -1117,7 +1117,7 @@ async def get_stats(request: Request) -> dict:
     req_id = getattr(request.state, "request_id", "??")
 
     # Rate limit: IP당 분당 60회
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _require_rate_limit(f"stats:{client_ip}", request=request)
 
     try:
@@ -1276,6 +1276,12 @@ async def track_referral(body: ReferralTrackRequest) -> dict:
 
 @app.get("/referral/{address}")
 def get_referral(address: str) -> dict:
+    # Solana 주소 검증 — 유효하지 않으면 400 반환
+    if not _is_valid_solana_address(address):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Invalid Solana address", "code": "INVALID_ADDRESS"}
+        )
     try:
         link = _fuul.generate_referral_link(address)
         points = _fuul.get_points(address)
