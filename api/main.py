@@ -181,6 +181,10 @@ async def lifespan(app_):
     _bg_tasks.append(asyncio.create_task(_restore_monitors_from_db(), name="restore_monitors"))
     _bg_tasks.append(asyncio.create_task(_auto_monitor_top_traders(), name="auto_monitor"))
     _bg_tasks.append(asyncio.create_task(_winrate_refresh_loop(), name="winrate_refresh"))
+    # R11: copy_trades 레코드 자동 정리 (90일 이상 오래된 레코드 주 1회 삭제)
+    _bg_tasks.append(asyncio.create_task(_copy_trades_cleanup_loop(), name="copy_trades_cleanup"))
+    # R11: 주요 지표 임계값 모니터링 (active_monitors=0 CRITICAL, queue stall)
+    _bg_tasks.append(asyncio.create_task(_threshold_monitor_loop(), name="threshold_monitor"))
 
     # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
     try:
@@ -632,6 +636,11 @@ async def get_db():
 
 
 # ── 가격 데이터 수집 — DataCollector REST 폴링 ──────────────
+
+# R11: 마지막 성공 리더보드 캐시 (API 실패 중에도 /signals, /traders/ranked 제공용)
+_leaderboard_cache: dict = {"ts": 0.0, "data": []}
+
+
 async def _sync_leaderboard_loop():
     """Pacifica 실제 리더보드 주기적 동기화 (DB 업서트)
     
@@ -642,7 +651,11 @@ async def _sync_leaderboard_loop():
     P1 Fix (Round 7): 연속 실패 시 exponential backoff (최대 5분)
     - 네트워크 오류로 루프 자체가 죽지 않도록 모든 예외 포괄 캐치
     - 연속 실패 시 backoff: 1→2→4→8→16→32→60초 (최대 60초)
+
+    R11: 마지막 성공 리더보드 메모리 캐시 보관
+    - API 실패 중에도 캐시 데이터로 /signals, /traders/ranked 제공
     """
+    global _leaderboard_cache
     await asyncio.sleep(5)
     logger.info("[Leaderboard] 첫 번째 동기화 시작...")
     from pacifica.client import PacificaClient
@@ -720,11 +733,18 @@ async def _sync_leaderboard_loop():
                     )
                 )
             await _db.commit()
+            # R11: 성공한 리더보드 데이터 메모리 캐시에 보관
+            _leaderboard_cache["data"] = lb
+            _leaderboard_cache["ts"] = _time_module.time()
+            logger.debug(f"[Leaderboard] 캐시 갱신: {len(lb)}명")
             _fail_count = 0  # 성공 시 리셋
         except Exception as e:
             _fail_count += 1
             _backoff = min(2 ** (_fail_count - 1), _BACKOFF_MAX)
+            _cache_age = _time_module.time() - _leaderboard_cache["ts"] if _leaderboard_cache["ts"] else None
             logger.warning(
+                f"[Leaderboard] 동기화 오류 (연속 {_fail_count}회, backoff={_backoff}s, "
+                f"캐시나이={int(_cache_age)}s): {e}" if _cache_age else
                 f"[Leaderboard] 동기화 오류 (연속 {_fail_count}회, backoff={_backoff}s): {e}"
             )
             await asyncio.sleep(_backoff)
@@ -861,6 +881,65 @@ async def _winrate_refresh_loop():
             continue
 
     await asyncio.sleep(30 * 60)  # 30분마다 갱신 (프로덕션 기준)
+
+
+async def _threshold_monitor_loop():
+    """R11: 주요 지표 임계값 주기적 체크 (60초마다)
+    
+    - active_monitors=0 → CRITICAL 로그 + 텔레그램 알림
+    - copy_engine queue 10분 이상 미처리 → WARNING 알림
+    """
+    await asyncio.sleep(60)  # 서버 기동 1분 후 첫 체크
+    am = get_alert_manager()
+    while True:
+        try:
+            # active_monitors 체크
+            am.check_monitors_critical(len(_monitors))
+            # copy_engine queue stall 체크
+            if _engine is not None:
+                am.check_copy_engine_queue_stall(
+                    getattr(_engine, "_last_processed_ts", 0.0)
+                )
+        except Exception as e:
+            logger.debug(f"[Threshold] 임계값 체크 오류 (무시): {e}")
+        await asyncio.sleep(60)
+
+
+async def _copy_trades_cleanup_loop():
+    """R11: copy_trades 테이블 장기 운영 시 레코드 무한 증가 방지
+    
+    - 90일(7,776,000초) 이상 된 레코드 삭제
+    - 주 1회(604800초) 실행
+    - 첫 실행: 서버 기동 1시간 후 (초기 안정화 후)
+    """
+    await asyncio.sleep(3600)  # 서버 기동 1시간 후 첫 실행
+    _RETENTION_DAYS = 90
+    _RETENTION_MS = _RETENTION_DAYS * 24 * 3600 * 1000  # ms 단위 (copy_trades.created_at)
+    _RUN_INTERVAL = 7 * 24 * 3600  # 7일마다 실행
+    while True:
+        try:
+            db = await get_db()
+            cutoff_ms = int(_time_module.time() * 1000) - _RETENTION_MS
+            async with db.execute(
+                "SELECT COUNT(*) FROM copy_trades WHERE created_at < ?", (cutoff_ms,)
+            ) as cur:
+                _old_count = (await cur.fetchone())[0]
+            
+            if _old_count > 0:
+                await db.execute(
+                    "DELETE FROM copy_trades WHERE created_at < ?", (cutoff_ms,)
+                )
+                await db.commit()
+                logger.info(
+                    f"[Cleanup] copy_trades {_old_count}건 삭제 "
+                    f"({_RETENTION_DAYS}일 이상 된 레코드)"
+                )
+            else:
+                logger.debug(f"[Cleanup] copy_trades 정리 대상 없음 ({_RETENTION_DAYS}일 기준)")
+        except Exception as e:
+            logger.warning(f"[Cleanup] copy_trades 정리 오류 (무시): {e}")
+        
+        await asyncio.sleep(_RUN_INTERVAL)
 
 
 @app.on_event("startup")
@@ -1022,6 +1101,14 @@ except Exception:
 @app.get("/healthz")
 async def healthz() -> dict:
     """
+    Render/k8s 헬스 프로브용 — 머신 레벨 생존 체크.
+    DB 연결 실패 시 503 반환 → Render 자동 재시작 트리거.
+    
+    NOTE (R11 통일): /health와 /healthz는 다른 목적으로 유지.
+    - /healthz : 배포/프로브용 (DB ok, env_degraded) — rate limit 없음
+    - /health  : 운영 상세 (BTC가격, 모니터 목록, rate_limit 적용)
+    - /health/detailed : 내부 디버그 (DB통계, 팔로워수, stop_loss 상태)
+    
     P2 Fix (Round 5): Render health check용 상세 헬스체크
     - DB 연결 상태 (connect 가능 여부)
     - leaderboard 마지막 동기화 시각 (last_synced 최신값)
@@ -1035,9 +1122,10 @@ async def healthz() -> dict:
     _db_ok = False
     _last_synced_ts = None
     _active_traders = 0
+    _db_path_hz = os.getenv("DB_PATH", "copy_perp.db")  # fallback path (healthz writable check)
     try:
-        from db.turso_adapter import is_turso_configured
-        if is_turso_configured():
+        from db.turso_adapter import is_turso_configured as _is_turso_configured
+        if _is_turso_configured():
             # Turso: get_db() 사용
             _hdb = await get_db()
             _hcur = await _hdb.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1")
@@ -1045,7 +1133,6 @@ async def healthz() -> dict:
             _active_traders = _hrow[0] if _hrow else 0
             _last_synced_ts = _hrow[1] if _hrow else None
         else:
-            _db_path_hz = os.getenv("DB_PATH", "copy_perp.db")
             def _db_probe():
                 with _sqlite3.connect(_db_path_hz, timeout=5) as _sc:
                     _r = _sc.execute("SELECT COUNT(*), MAX(last_synced) FROM traders WHERE active=1").fetchone()

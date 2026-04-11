@@ -12,8 +12,6 @@ import asyncio
 import logging
 import time
 
-import aiosqlite
-
 from core.strategy import _should_stop_from_preset, STRATEGY_PASSIVE
 from core.strategy_presets import get_preset
 
@@ -52,7 +50,7 @@ class StopLossMonitor:
     Reuses CopyEngine.on_fill callback for close orders
     """
 
-    def __init__(self, db: aiosqlite.Connection, copy_engine):
+    def __init__(self, db, copy_engine):  # db: TursoDb or aiosqlite.Connection
         self.db = db
         self.engine = copy_engine   # CopyEngine instance (used for close orders)
         self._running = False

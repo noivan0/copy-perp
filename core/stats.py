@@ -166,7 +166,6 @@ async def get_platform_stats(db) -> dict:
     """플랫폼 전체 통계 (비동기)"""
     try:
         from db.database import get_leaderboard, get_copy_trades
-        import aiosqlite
 
         traders_raw = await get_leaderboard(db, limit=1000)
 

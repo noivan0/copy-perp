@@ -8,10 +8,7 @@ services:
     # SQLite는 단일 프로세스만 안전 — workers=2는 database is locked 유발
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /healthz
-    disk:
-      name: copy-perp-data
-      mountPath: /var/data
-      sizeGB: 1
+    # disk 섹션 제거 — Turso 클라우드 DB 사용으로 영속 Disk 불필요
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -31,18 +28,13 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: "https://copy-perp-frontend.vercel.app,https://copy-perp.onrender.com,http://localhost:3000"
-      # ── Turso 영속 DB (Render Disk 없이 영구 영속성) ──
-      - key: TURSO_URL
-        value: libsql://copy-perp-nothink.aws-ap-northeast-1.turso.io
-      - key: TURSO_TOKEN
-        value: eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzU4OTUxMDEsImlkIjoiMDE5ZDdiOTgtMmUwMS03MDk2LWFiZTktYTE0Yjc3OWU2MTMyIiwicmlkIjoiZjc5MzRiYzMtOWQ1Zi00MDY1LTljMmUtMmJlNTg4MWQ3YmFlIn0.Y7Re1HNbKovfoY4xXLpAotAi8OuRg0-IkEkqhqhD9gS1UwI3XiB40iFsUi2fT_KMtXMpe72MsmwSjRvQqEFtBA
-      - key: TURSO_LOCAL_PATH
-        value: /tmp/copy_perp_replica.db
-      # 영속 디스크 경로 (Turso 사용 시 미사용 — fallback 전용)
-      - key: DB_PATH
-        value: /tmp/copy_perp.db
       - key: DEBUG
         value: "false"
       # Render 리버스 프록시 IP 신뢰 (rate limit IP 정확도 향상)
       - key: TRUSTED_PROXY_IPS
         value: "10.0.0.0/8"
+      # ── Turso 클라우드 DB (영속 스토리지) ──
+      - key: TURSO_URL
+        value: "https://copy-perp-nothink.aws-ap-northeast-1.turso.io"
+      - key: TURSO_TOKEN
+        sync: false

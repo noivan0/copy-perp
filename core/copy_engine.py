@@ -26,8 +26,6 @@ import uuid
 import json
 from typing import Optional
 
-import aiosqlite
-
 from pacifica.client import PacificaClient, BUILDER_CODE, BUILDER_FEE_RATE
 from core.alerting import get_alert_manager
 from db.database import (
@@ -111,7 +109,7 @@ def _parse_side(event_side) -> Optional[str]:  # type-checked
 
 
 class CopyEngine:
-    def __init__(self, db: aiosqlite.Connection, mock_mode: bool = False):
+    def __init__(self, db, mock_mode: bool = False):  # db: TursoDb or aiosqlite.Connection
         self.db = db
         self.mock_mode = mock_mode
         # 팔로워 포지션 추적: {follower: {symbol: {entry_price, size, side}}}
@@ -122,6 +120,8 @@ class CopyEngine:
         # R11: 동일 심볼 동시 방향 추적 버퍼 (LONG+SHORT 동시 신호 스킵용)
         # {symbol: {"directions": set(), "ts": float}}
         self._pending_directions: dict[str, dict] = {}
+        # R11: 마지막 이벤트 처리 시간 (queue stall 감지용)
+        self._last_processed_ts: float = 0.0
 
     async def _load_positions_from_db(self) -> None:
         """서버 재시작 시 DB의 follower_positions → self._positions 복원"""
@@ -189,6 +189,7 @@ class CopyEngine:
         """
         try:
             await self._process_fill(event)
+            self._last_processed_ts = time.time()  # R11: 처리 시간 갱신
         except Exception as e:
             logger.error(f"CopyEngine.on_fill 오류: {e}", exc_info=True)
 
@@ -223,6 +224,44 @@ class CopyEngine:
         if not copy_side:
             logger.warning(f"알 수 없는 side: {side_raw}")
             return
+
+        # ── R11: 동일 심볼 LONG+SHORT 동시 신호 스킵 ──────────────────────
+        # open_long + open_short 동시에 오면 헤지 포지션 → 수수료만 이중 발생
+        # 청산 신호(close_long/close_short)는 정상 처리
+        _is_open_signal = side_raw.lower() in ("open_long", "open_short", "bid", "ask") and \
+                          side_raw.lower() not in ("close_long", "close_short")
+        # 실제 close 이벤트는 _parse_side 결과만으로는 open/close 구분 불가 → 원본 side_raw 사용
+        _raw_lower = str(side_raw).lower()
+        _is_open_signal = _raw_lower.startswith("open_") or _raw_lower in ("bid", "ask", "long", "short")
+
+        if _is_open_signal and symbol:
+            _now_ts = time.time()
+            _TTL = 5.0  # 5초 내 동시 신호 감지 윈도우
+            _pdir = self._pending_directions.get(symbol)
+            if _pdir and (_now_ts - _pdir["ts"]) < _TTL:
+                # 이미 같은 심볼에 다른 방향 신호가 등록됨 → 헤지 스킵
+                _existing_sides = _pdir["directions"]
+                _opposite = {"bid", "ask"}
+                if copy_side in _existing_sides:
+                    # 같은 방향 중복 — 정상 진행
+                    pass
+                elif _opposite - {copy_side} & _existing_sides:
+                    # 반대 방향 존재 → 스킵
+                    logger.warning(
+                        f"[CopyEngine] {symbol} 동시 LONG+SHORT 신호 감지 — 헤지 포지션 방지: "
+                        f"기존={_existing_sides} 신규={copy_side} → 스킵"
+                    )
+                    return
+            # 현재 신호 방향 등록
+            if symbol not in self._pending_directions or (_now_ts - self._pending_directions[symbol]["ts"]) >= _TTL:
+                self._pending_directions[symbol] = {"directions": set(), "ts": _now_ts}
+            self._pending_directions[symbol]["directions"].add(copy_side)
+            # 오래된 버퍼 정리 (메모리 누수 방지)
+            if len(self._pending_directions) > 200:
+                _to_del = [k for k, v in list(self._pending_directions.items())
+                           if (_now_ts - v["ts"]) >= _TTL]
+                for k in _to_del:
+                    self._pending_directions.pop(k, None)
 
         # 팔로워 목록 조회
         followers = await get_followers(self.db, trader)
@@ -543,9 +582,11 @@ class CopyEngine:
                 logger.warning(
                     f"[{follower_addr[:8]}] 잔액 부족 — {symbol} {side} {copy_amount}: {err_str[:120]}"
                 )
+                # R11: 잔액 부족은 별도 status로 기록 (단순 failed와 구분)
+                status = "skipped_insufficient"
             else:
                 logger.error(f"[{follower_addr[:8]}] 주문 실패: {e}")
-            status = "failed"
+                status = "failed"
             _error_msg = err_str
             get_alert_manager().order_failed(follower_addr, symbol, side, _error_msg)
 

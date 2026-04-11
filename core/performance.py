@@ -14,8 +14,6 @@ import time
 import logging
 from typing import Optional
 
-import aiosqlite
-
 logger = logging.getLogger(__name__)
 
 # ── SQL 마이그레이션 ──────────────────────────────────────────────────────────
@@ -74,7 +72,7 @@ PERF_MIGRATIONS = [
 ]
 
 
-async def apply_perf_migrations(conn: aiosqlite.Connection) -> None:
+async def apply_perf_migrations(conn) -> None:
     """DB 마이그레이션 — 이미 존재하면 무시"""
     for sql in PERF_MIGRATIONS:
         try:
@@ -87,7 +85,7 @@ async def apply_perf_migrations(conn: aiosqlite.Connection) -> None:
 # ── 핵심 함수 ─────────────────────────────────────────────────────────────────
 
 async def record_follower_snapshot(
-    conn: aiosqlite.Connection,
+    conn,
     follower_address: str,
     base_capital: float = 0.0,
 ) -> dict:
@@ -160,7 +158,7 @@ async def record_follower_snapshot(
 
 
 async def _refresh_performance_cache(
-    conn: aiosqlite.Connection,
+    conn,
     follower_address: str,
     base_capital: float = 0.0,
 ) -> None:
@@ -334,7 +332,7 @@ async def _refresh_performance_cache(
 
 
 async def get_performance_report(
-    conn: aiosqlite.Connection,
+    conn,
     follower_address: str,
     base_capital: float = 0.0,
     days: int = 30,
@@ -469,7 +467,7 @@ async def get_performance_report(
 
 
 async def rank_followers(
-    conn: aiosqlite.Connection,
+    conn,
     limit: int = 20,
 ) -> list:
     """
@@ -526,7 +524,7 @@ async def rank_followers(
     return result
 
 
-async def get_platform_stats_enhanced(conn: aiosqlite.Connection) -> dict:
+async def get_platform_stats_enhanced(conn) -> dict:
     """
     플랫폼 전체 통계 (신뢰도 강화용 대시보드 데이터)
     """

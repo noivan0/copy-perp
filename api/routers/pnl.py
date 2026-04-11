@@ -41,7 +41,6 @@ async def get_pnl_summary(
         raise HTTPException(status_code=422, detail={"error": "Invalid Solana address. Must be a 32-44 char base58 string.", "code": "INVALID_ADDRESS"})
     db = _get_db()
     try:
-        import aiosqlite
         from datetime import datetime, timezone, timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
