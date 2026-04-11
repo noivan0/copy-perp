@@ -130,6 +130,11 @@ class CopyEngine:
                     "entry_price": r["entry_price"],
                     "size": r["size"],
                     "side": r["side"],
+                    # R10: SL/TP/high_price/strategy 복원 (재시작 후 StopLossMonitor 정확도)
+                    "stop_loss_price": r.get("stop_loss_price", 0) or 0,
+                    "take_profit_price": r.get("take_profit_price", 0) or 0,
+                    "high_price": r.get("high_price") or r["entry_price"],
+                    "strategy": r.get("strategy", "passive") or "passive",
                 }
             logger.info(f"[PnL] DB에서 포지션 복원 완료: {len(rows)}건")
         except Exception as e:
