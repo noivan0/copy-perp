@@ -302,6 +302,22 @@ class OnboardRequest(BaseModel):
     referrer_address: Optional[str] = None
     traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 프리셋 기본
     privy_user_id: Optional[str] = None        # Privy 유저 ID (did:privy:xxx)
+    stop_loss_pct: Optional[float] = None      # 커스텀 SL% (프리셋 override, 0.1~99)
+    take_profit_pct: Optional[float] = None    # 커스텀 TP% (프리셋 override, 0.1~500)
+
+    @field_validator("stop_loss_pct")
+    @classmethod
+    def validate_stop_loss_pct(cls, v):
+        if v is not None and not (0.1 <= v <= 99):
+            raise ValueError("stop_loss_pct must be between 0.1 and 99")
+        return v
+
+    @field_validator("take_profit_pct")
+    @classmethod
+    def validate_take_profit_pct(cls, v):
+        if v is not None and not (0.1 <= v <= 500):
+            raise ValueError("take_profit_pct must be between 0.1 and 500")
+        return v
 
     @field_validator("risk_mode")
     @classmethod
