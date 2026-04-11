@@ -255,7 +255,9 @@ async def get_followers(conn, trader_address: str) -> list:
         "SELECT * FROM followers WHERE trader_address = ? AND active = 1",
         (trader_address,)
     ) as cur:
-        return await cur.fetchall()
+        rows = await cur.fetchall()
+        # sqlite3.Row / aiosqlite.Row 모두 dict로 변환 (.get() 안전 보장)
+        return [dict(r) for r in rows]
 
 
 async def record_copy_trade(conn, trade: dict) -> None:
