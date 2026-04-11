@@ -43,7 +43,10 @@ HARD_FILTER = dict(
 # 보조 함수
 # ────────────────────────────────────────────
 def _norm(v: float, lo: float, hi: float, invert: bool = False) -> float:
-    """0~100 정규화, 항상 클램핑 보장"""
+    """0~100 정규화, 항상 클램핑 보장. NaN/Inf 입력 시 중립값(50) 반환."""
+    import math as _math
+    if _math.isnan(v) or _math.isinf(v):
+        return 50.0
     if hi == lo:
         return 50.0
     s = (max(lo, min(hi, v)) - lo) / (hi - lo) * 100
@@ -214,10 +217,11 @@ def _score_profitability(p30: float, roi30: float, p7: float,
 
     # Profit Factor (개별 거래 데이터 있을 때)
     pf = stats.get("profit_factor", 0)
-    if pf > 0:
+    if pf and pf > 0:
         pf_capped = min(pf, 5.0)
-        pf_score = _norm(math.log(pf_capped + 0.01),
-                         math.log(0.5), math.log(5.0))
+        # log 인수 보장: pf_capped > 0 이므로 안전 (+ 0.01은 pf=0 방어용이지만 이미 pf>0 체크)
+        pf_score = _norm(math.log(max(pf_capped, 1e-9) + 0.01),
+                         math.log(0.5 + 0.01), math.log(5.0 + 0.01))
         if pf > 100:
             warnings.append(f"PF {pf:.0f} — outlier suspected")
         elif pf > 2.0:

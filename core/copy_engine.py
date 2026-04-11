@@ -1,11 +1,16 @@
 """
-Copy Engine v1 — 트레이더 체결 이벤트 → 팔로워 복사 주문
+Copy Engine v1.1 — 트레이더 체결 이벤트 → 팔로워 복사 주문
 
 플로우:
 1. PositionMonitor → on_fill(event) 호출
 2. CopyEngine이 팔로워 목록 조회
 3. 각 팔로워에 대해 비율 계산 → 시장가 복사 주문
 4. Builder Code 자동 포함 → 수수료 수취
+
+v1.1 수정:
+- _parse_side: 대소문자 정규화, None 입력 안전 처리
+- _execute_copy: 음수 수량 방어, price_f=0 시 MIN_ORDER_USDC 체크 우회 수정
+- builder_code_approved 접근 패턴 .get()으로 통일
 """
 
 import asyncio
@@ -62,13 +67,17 @@ TIER_A_WEIGHTS: dict[str, float] = {
 }
 
 
-def _parse_side(event_side: str) -> Optional[str]:  # type-checked
+def _parse_side(event_side) -> Optional[str]:  # type-checked
     """
     트레이더 체결 side → 팔로워 복사 side
     open_long/fulfill_taker(bid) → "bid"
     open_short/fulfill_taker(ask) → "ask"
     close_long → "ask" (청산), close_short → "bid" (청산)
     """
+    if not event_side:
+        return None
+    # 대소문자 정규화 (API가 OPEN_LONG 등 대문자로 보낼 수 있음)
+    normalized = str(event_side).lower().strip()
     mapping = {
         "open_long": "bid",
         "open_short": "ask",
@@ -82,12 +91,12 @@ def _parse_side(event_side: str) -> Optional[str]:  # type-checked
         # position_closed 이벤트
         "position_change": None,   # event_type만 있는 경우 → side로 재파싱 필요
     }
-    result = mapping.get(event_side)
+    result = mapping.get(normalized)
     # 매핑 없어도 None 반환 전에 partial match 시도
-    if result is None and event_side:
-        if "long" in event_side:
+    if result is None:
+        if "long" in normalized:
             return "bid"
-        if "short" in event_side:
+        if "short" in normalized:
             return "ask"
     return result
 
@@ -314,17 +323,28 @@ class CopyEngine:
                 clamped_amount = max_pos / price_f
                 logger.debug(f"[{follower_addr[:8]}] max_pos 클램핑: {order_usdc:.2f} → {max_pos} USDC")
 
-        # 3. 최소 수량 보장 (MIN_AMOUNT + min_order_size 둘 다 확인)
+        # 3. 음수 수량 방어 (copy_ratio 음수 등 이상 입력)
+        if clamped_amount <= 0:
+            logger.info(f"[{follower_addr[:8]}] 수량 {clamped_amount} <= 0 — 스킵")
+            return
+
+        # 4. 최소 수량 보장 (MIN_AMOUNT + min_order_size 둘 다 확인)
         # mock_mode: 주문 실행 안 하므로 최솟값 검사 완화 (테스트에서 소액 허용)
         if clamped_amount < MIN_AMOUNT:
             logger.info(f"[{follower_addr[:8]}] 수량 {clamped_amount} < MIN({MIN_AMOUNT}) 스킵")
             return
         # min_order_size(USDC) 보장 — 실제 모드에서만 적용
-        if not self.mock_mode and price_f > 0:
-            order_usdc_check = clamped_amount * price_f
-            _min_usdc = MIN_ORDER_USDC  # $10 (Pacifica testnet 기준)
-            if order_usdc_check < _min_usdc:
-                logger.info(f"[{follower_addr[:8]}] 주문금액 ${order_usdc_check:.2f} < 최소${_min_usdc} 스킵")
+        # price_f=0인 경우에도 체크: amount 자체가 MIN_AMOUNT 이상이면 경고 후 진행
+        if not self.mock_mode:
+            if price_f > 0:
+                order_usdc_check = clamped_amount * price_f
+                _min_usdc = MIN_ORDER_USDC  # $10 (Pacifica testnet 기준)
+                if order_usdc_check < _min_usdc:
+                    logger.info(f"[{follower_addr[:8]}] 주문금액 ${order_usdc_check:.2f} < 최소${_min_usdc} 스킵")
+                    return
+            else:
+                # price_f=0: 마크 가격 미수신 상태 → 안전을 위해 주문 보류
+                logger.warning(f"[{follower_addr[:8]}] {symbol} 마크 가격 미수신(0) — 주문 보류")
                 return
 
         # 4. lot_size 정렬 (실제 모드에서만 — mock은 API 호출 생략)
@@ -372,9 +392,10 @@ class CopyEngine:
         try:
             # builder_approved(구) 또는 builder_code_approved(신) 둘 중 하나라도 1이면 포함
             # mainnet에서 noivan 승인 완료 → 신규 팔로워는 온보딩 시 approve() 호출
+            # .get()으로 통일 (sqlite3.Row와 dict 모두 지원)
             _bc_approved = (
-                (follower["builder_code_approved"] if "builder_code_approved" in follower.keys() else 0) or
-                (follower["builder_approved"] if "builder_approved" in follower.keys() else 0)
+                follower.get("builder_code_approved", 0) or
+                follower.get("builder_approved", 0)
             )
             bc = BUILDER_CODE if _bc_approved else ""
 

@@ -372,47 +372,68 @@ def score_from_api_data(raw: dict) -> TraderScore:
     Pacifica API 응답 데이터 → TraderMetrics → TraderScore
     API 필드: address, pnl_all_time, pnl_30d, pnl_7d, pnl_1d,
               roi_at, roi_30d, roi_7d, equity, oi, consistency
+
+    ⚠️  주의: win_rate, profit_factor, avg_hold_min 등이 API에 없을 때
+              "중립값"을 주입하면 점수가 왜곡됩니다.
+              None(데이터 없음)과 실제 중립값을 구분하기 위해
+              API 제공 필드만 사용하고, 없는 필드는 하드 필터에서 제외됩니다.
     """
+    def _s(v, default=0.0):
+        """None/빈값 안전 변환"""
+        try:
+            return float(v) if v is not None and v != "" else default
+        except (TypeError, ValueError):
+            return default
+
     addr = raw.get("address", "")
-    alias = raw.get("alias", addr[:8])
+    alias = raw.get("alias") or (addr[:8] if addr else "unknown")
 
     # equity 기반 max_drawdown 추정 (실데이터 없을 때)
-    equity = float(raw.get("equity", 100000) or 100000)
-    pnl_at = float(raw.get("pnl_all_time", 0) or 0)
-    roi_at = float(raw.get("roi_at", 0) or 0)
+    equity = _s(raw.get("equity"), 100000) or 100000.0
+    pnl_at = _s(raw.get("pnl_all_time"), 0.0)
+    roi_at = _s(raw.get("roi_at"), 0.0)
 
-    # Max Drawdown 추정: equity 성장과 PnL 기반
-    # equity_start = equity - pnl_at
-    # max_dd 직접 데이터 없으면 roi 기반 추정
-    if roi_at > 0:
-        # 수익률이 높을수록 드로다운도 더 있었을 것 (rough estimate)
-        estimated_dd = min(abs(roi_at) * 0.3, 45)
+    # Max Drawdown 추정: equity 성장과 PnL 기반 (직접 필드 우선)
+    if raw.get("max_drawdown") is not None:
+        estimated_dd = _s(raw.get("max_drawdown"), 0.0)
+    elif roi_at > 0:
+        estimated_dd = min(abs(roi_at) * 0.3, 45.0)
     else:
-        estimated_dd = min(abs(roi_at) * 0.8, 60)
+        estimated_dd = min(abs(roi_at) * 0.8, 60.0)
 
-    # 거래 활성도 (consistency 필드: 1~5 스케일 추정)
-    consistency = int(raw.get("consistency", 3) or 3)
-    trade_count_est = consistency * 15  # rough proxy
+    # 거래 활성도 (consistency 필드: 1~5 스케일)
+    consistency = int(_s(raw.get("consistency"), 3))
+    # trade_count: API 직접 제공 시 사용, 없으면 consistency 기반 추정 (주석 명시)
+    if raw.get("trade_count_30d") is not None:
+        trade_count_est = int(_s(raw.get("trade_count_30d"), consistency * 15))
+    else:
+        trade_count_est = consistency * 15  # rough proxy (API 미제공 시)
+
+    # ⚠️  API에 없는 필드는 None을 기본값으로: check_hard_filters에서 0으로 처리됨
+    # win_rate, profit_factor를 임의 중립값(55, 1.5)으로 채우지 않음
+    # → 없는 필드는 해당 하드 필터를 우회시킴 (0 < x < threshold 조건에서 필터 미작동)
+    win_rate_val = _s(raw.get("win_rate"), 0.0)      # 0이면 하드 필터 체크 스킵
+    profit_factor_val = _s(raw.get("profit_factor"), 0.0)  # 0이면 하드 필터 체크 스킵
 
     m = TraderMetrics(
         address=addr,
         alias=alias,
-        roi_30d=float(raw.get("roi_30d", 0) or 0),
-        roi_7d=float(raw.get("roi_7d", 0) or 0),
-        pnl_30d=float(raw.get("pnl_30d", 0) or 0),
+        roi_30d=_s(raw.get("roi_30d"), 0.0),
+        roi_7d=_s(raw.get("roi_7d"), 0.0),
+        pnl_30d=_s(raw.get("pnl_30d"), 0.0),
         pnl_all_time=pnl_at,
         max_drawdown=estimated_dd,
         current_equity=equity,
-        avg_leverage=float(raw.get("avg_leverage", 3.0) or 3.0),
-        max_leverage=float(raw.get("max_leverage", 5.0) or 5.0),
-        win_rate=float(raw.get("win_rate", 55) or 55),  # API에 없으면 중간값
+        avg_leverage=_s(raw.get("avg_leverage"), 3.0),
+        max_leverage=_s(raw.get("max_leverage"), 5.0),
+        win_rate=win_rate_val,
         trade_count_30d=trade_count_est,
-        profit_factor=float(raw.get("profit_factor", 1.5) or 1.5),
-        avg_hold_time_min=float(raw.get("avg_hold_min", 120) or 120),
-        avg_position_usdc=float(raw.get("avg_position_usdc", 500) or 500),
-        trading_days=int(raw.get("trading_days", 30) or 30),
-        monthly_positive_rate=float(raw.get("monthly_positive_rate", 60) or 60),
-        open_positions=int(raw.get("open_positions", 0) or 0),
+        profit_factor=profit_factor_val,
+        avg_hold_time_min=_s(raw.get("avg_hold_min"), 120.0),
+        avg_position_usdc=_s(raw.get("avg_position_usdc"), 500.0),
+        trading_days=int(_s(raw.get("trading_days"), 30)),
+        monthly_positive_rate=_s(raw.get("monthly_positive_rate"), 60.0),
+        open_positions=int(_s(raw.get("open_positions"), 0)),
     )
     return compute_trust_score(m)
 
