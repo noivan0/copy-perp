@@ -298,7 +298,14 @@ class OnboardRequest(BaseModel):
     max_position_usdc: Optional[float] = None  # 직접 지정 시 프리셋 override
 
     referrer_address: Optional[str] = None
-    traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 프리셋 기본
+    traders: Optional[list] = None             # 지정 시 해당 트레이더만, None이면 프리셋 기본 (최대 20명)
+
+    @field_validator("traders")
+    @classmethod
+    def validate_traders_count(cls, v):
+        if v is not None and len(v) > 20:
+            raise ValueError(f"traders list exceeds maximum of 20 (got {len(v)})")
+        return v
     privy_user_id: Optional[str] = None        # Privy 유저 ID (did:privy:xxx)
     stop_loss_pct: Optional[float] = None      # 커스텀 SL% (프리셋 override, 0.1~99)
     take_profit_pct: Optional[float] = None    # 커스텀 TP% (프리셋 override, 0.1~500)
