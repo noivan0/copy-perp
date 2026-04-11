@@ -406,6 +406,24 @@ def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
             except Exception:
                 return _cf_request(method, path, body)
 
+    # testnet: PACIFICA_DIRECT=true이면 직접 접근 (IP whitelist 환경)
+    # 아니면 CloudFront SNI 우회 (HMG 웹필터 환경)
+    _direct = os.getenv("PACIFICA_DIRECT", "false").lower() == "true"
+    if _direct:
+        import requests as _req
+        _direct_url = f"{PACIFICA_REST_URL_DIRECT}/{path}"
+        _hdrs = {"User-Agent": "CopyPerp/1.0", "Content-Type": "application/json"}
+        try:
+            if method == "GET":
+                _r = _req.get(_direct_url, headers=_hdrs, timeout=15)
+            else:
+                _r = _req.post(_direct_url, json=body, headers=_hdrs, timeout=15)
+            _r.raise_for_status()
+            _data = _r.json()
+            return _data.get("data", _data) if isinstance(_data, dict) and "data" in _data else _data
+        except Exception as _de:
+            logger.warning(f"[Direct] 직접 접근 실패 → CF 폴백: {_de}")
+
     # testnet: GET는 CloudFront SNI 1차, scrapling 프록시 fallback
     if method == "GET":
         try:

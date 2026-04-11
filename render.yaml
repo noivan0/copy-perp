@@ -33,6 +33,9 @@ services:
       # Render 리버스 프록시 IP 신뢰 (rate limit IP 정확도 향상)
       - key: TRUSTED_PROXY_IPS
         value: "10.0.0.0/8"
+      # testnet 직접 접근 (IP whitelist 등록 후)
+      - key: PACIFICA_DIRECT
+        value: "true"
       # ── Turso 클라우드 DB (영속 스토리지) ──
       - key: TURSO_URL
         value: "https://copy-perp-nothink.aws-ap-northeast-1.turso.io"
