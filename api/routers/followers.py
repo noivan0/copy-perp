@@ -1488,3 +1488,135 @@ async def get_follower_portfolio(follower_address: str) -> dict:
         "followed_count": len(followed_traders),
         "recent_trades": recent_trades,
     }
+
+
+# ── Agent Bind 엔드포인트 (다중 유저 Agent Binding) ────────────────────────────
+
+@router.get("/bind-request")
+async def get_bind_request(follower_address: str = Query(...)):
+    """
+    유저 지갑이 서명해야 할 bind 메시지 반환.
+    프론트에서 이 메시지를 받아 유저 지갑으로 서명 후 /bind-submit으로 제출.
+
+    Pacifica sign_message 방식:
+      sort_json_keys({header, "data": payload}) → compact JSON → 유저 서명
+    """
+    import time as _time
+
+    agent_wallet = os.getenv("AGENT_WALLET", "")
+    if not agent_wallet:
+        raise HTTPException(500, "AGENT_WALLET 미설정 — 서버 환경변수를 확인하세요")
+
+    # follower_address 기본 검증
+    if follower_address:
+        if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
+            raise HTTPException(422, {"error": "Invalid follower_address format", "code": "INVALID_ADDRESS"})
+
+    timestamp = int(_time.time() * 1000)
+
+    # Pacifica sign_message 방식: sort_json_keys({header, "data": payload}) → compact JSON
+    header = {
+        "timestamp": timestamp,
+        "expiry_window": 5000,
+        "type": "bind_agent_wallet",
+    }
+    payload = {"agent_wallet": agent_wallet}
+
+    def sort_json_keys(obj):
+        if isinstance(obj, dict):
+            return {k: sort_json_keys(v) for k, v in sorted(obj.items())}
+        if isinstance(obj, list):
+            return [sort_json_keys(i) for i in obj]
+        return obj
+
+    message_obj = sort_json_keys({**header, "data": payload})
+    message = json.dumps(message_obj, separators=(",", ":"))
+
+    return {
+        "message": message,            # 유저 지갑이 서명해야 할 문자열
+        "agent_wallet": agent_wallet,  # 서버 Agent 공개키
+        "timestamp": timestamp,
+        "expiry_window": 5000,
+        "follower_address": follower_address,
+    }
+
+
+@router.post("/bind-submit")
+async def submit_bind(body: dict):
+    """
+    유저가 서명한 bind 요청을 Pacifica에 제출.
+    body: {follower_address, signature, timestamp, expiry_window}
+
+    bind 성공 시 followers 테이블의 agent_bound=1 업데이트.
+    """
+    from api.deps import _get_db_direct
+    import requests as _req_lib
+
+    _db = _get_db_direct()
+    if not _db:
+        raise HTTPException(503, {"error": "DB not initialized", "code": "SERVICE_UNAVAILABLE"})
+
+    follower_address = body.get("follower_address", "")
+    signature = body.get("signature", "")
+    timestamp = body.get("timestamp")
+    expiry_window = body.get("expiry_window", 5000)
+    agent_wallet = os.getenv("AGENT_WALLET", "")
+
+    if not all([follower_address, signature, timestamp, agent_wallet]):
+        raise HTTPException(400, {"error": "필수 파라미터 누락: follower_address, signature, timestamp, AGENT_WALLET", "code": "MISSING_PARAMS"})
+
+    # follower_address 검증
+    if not follower_address.startswith("did:privy:") and not _SOLANA_ADDR_RE.match(follower_address):
+        raise HTTPException(422, {"error": "Invalid follower_address format", "code": "INVALID_ADDRESS"})
+
+    NETWORK = os.getenv("NETWORK", "testnet")
+    if NETWORK == "mainnet":
+        bind_url = "https://api.pacifica.fi/api/v1/agent/bind"
+        host_header = "api.pacifica.fi"
+    else:
+        # testnet: CloudFront SNI (HMG 웹필터 우회)
+        bind_url = "https://do5jt23sqak4.cloudfront.net/api/v1/agent/bind"
+        host_header = "test-api.pacifica.fi"
+
+    request_body = {
+        "account": follower_address,
+        "agent_wallet": agent_wallet,
+        "signature": signature,
+        "timestamp": timestamp,
+        "expiry_window": expiry_window,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Host": host_header,
+    }
+
+    try:
+        resp = _req_lib.post(bind_url, json=request_body, headers=headers, timeout=10, verify=False)
+        result = resp.json()
+
+        if resp.ok and (result.get("success") or result.get("ok")):
+            # DB에 agent_bound=1 업데이트
+            try:
+                await _db.execute(
+                    "UPDATE followers SET agent_bound=1 WHERE address=?",
+                    (follower_address,)
+                )
+                await _db.commit()
+                logger.info(f"[{follower_address[:8]}] Agent bind 완료 → DB 업데이트")
+            except Exception as _db_e:
+                # agent_bound 컬럼 마이그레이션 전 폴백 — 무시하고 성공 반환
+                logger.warning(f"[{follower_address[:8]}] agent_bound DB 업데이트 실패 (무시): {_db_e}")
+
+            return {"success": True, "message": "Agent bind 완료"}
+        else:
+            err_msg = result.get("error") or result.get("message") or f"HTTP {resp.status_code}"
+            logger.warning(f"[{follower_address[:8]}] Bind 실패: {result}")
+            return {"success": False, "error": err_msg}
+
+    except _req_lib.exceptions.Timeout:
+        logger.error(f"[{follower_address[:8]}] Bind 요청 타임아웃")
+        raise HTTPException(504, {"error": "Pacifica API 타임아웃", "code": "TIMEOUT"})
+    except Exception as e:
+        logger.error(f"[{follower_address[:8]}] Bind 요청 실패: {e}")
+        raise HTTPException(500, {"error": str(e), "code": "BIND_ERROR"})

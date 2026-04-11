@@ -183,8 +183,10 @@ class CopyEngine:
         return None
 
     def _get_client(self, account: str) -> PacificaClient:  # type-checked
+        """팔로워 지갑 주소로 PacificaClient 캐시 반환 (Agent Key로 서명, account만 팔로워로 교체)"""
         if account not in self._client_cache:
-            self._client_cache[account] = PacificaClient(account)
+            # AGENT_PRIVATE_KEY는 서버 공통; account만 팔로워 지갑으로 교체
+            self._client_cache[account] = PacificaClient(account_address=account)
         return self._client_cache[account]
 
     async def on_fill(self, event: dict) -> None:  # type-checked
@@ -322,6 +324,16 @@ class CopyEngine:
             logger.warning(f"[{follower['address'][:8]}] copy_ratio/max_pos 변환 실패: {_e} — 기본값 사용")
             copy_ratio = 0.1
             max_pos = 100.0
+
+        # ── AgentBind 체크: agent_bound=1인 팔로워만 주문 실행 ──────────────
+        # agent_bound 컬럼이 없는 구버전 DB에서는 None → 0으로 처리 (하위 호환)
+        _agent_bound = follower.get("agent_bound", 0)
+        if not self.mock_mode and not _agent_bound:
+            logger.debug(
+                f"[{follower_addr[:8]}] Agent 미바인딩 — 주문 스킵 "
+                f"(프론트에서 Agent Binding 완료 후 copy 시작)"
+            )
+            return
 
         # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
         # R10: per-follower+symbol lock (기존 per-follower는 다른 심볼도 블록하는 과도한 직렬화)

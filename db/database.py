@@ -233,6 +233,8 @@ async def init_db(db_path: str = DB_PATH):
         # 인덱스만 별도 추가 시도 (이미 있으면 무시됨)
         "CREATE INDEX IF NOT EXISTS idx_crs_history_address ON trader_crs_history(address, computed_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_crs_history_date ON trader_crs_history(computed_at DESC)",
+        # AgentBind (multi-user): followers 테이블에 agent_bound 컬럼 추가
+        "ALTER TABLE followers ADD COLUMN agent_bound INTEGER DEFAULT 0",
     ]
     import logging as _db_log
     _db_logger = _db_log.getLogger(__name__)
