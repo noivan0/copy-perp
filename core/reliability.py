@@ -303,10 +303,11 @@ def _score_risk(eq: float, oi: float, roi30: float, stats: dict) -> tuple[float,
     # OI/Equity 비율 (레버리지 proxy)
     oi_ratio = oi / eq if eq > 0 else 0
 
-    # P0 Fix: OI=0 → 포지션 없음 → risk 판단 불가 → 중립(50)
+    # OI=0 → 포지션 없음 → 리스크 판단 불가 → 중립(75)
+    # 50(이전)에서 75로 상향: "데이터 없음"은 "위험"이 아니므로 더 중립에 가깝게
     if oi == 0:
-        oi_score = 50.0  # 중립: 위험하지도 않지만 활동 데이터 없음
-        warnings.append("OI=0 — no open positions (neutral risk)")
+        oi_score = 75.0  # 데이터 불충분 — 중립값
+        warnings.append("OI=0 — no position data (neutral risk)")
     elif oi_ratio > 3.0:
         oi_score = 0.0
         warnings.append(f"OI/Equity {oi_ratio:.1f}x — extreme leverage")
@@ -799,6 +800,16 @@ def compute_crs(raw: dict, trades: list[dict] | None = None) -> CRSResult:
     r_score, r_warn = _score_risk(eq, oi, roi30, stats)
     # R8: raw 전달 → pnl_1d 등 추가 지표 활용
     c_score, c_warn = _score_consistency(cons, p30, p7, stats, raw)
+    # CRITICAL-2: win_rate null → consistency + roi_30d 기반 추정값 채우기
+    # Pacifica leaderboard가 win_rate 미제공 시 실측 대체값 사용
+    if stats and not stats.get("win_rate"):
+        # consistency 3(기본) 기준 ±0.05씩, roi 양수면 최대 0.75까지 보정
+        estimated_wr = 0.50 + (cons - 3) * 0.05
+        if roi30 > 0:
+            estimated_wr = min(0.75, estimated_wr + roi30 / 2000.0)
+        estimated_wr = max(0.35, min(0.80, round(estimated_wr, 4)))
+        stats["win_rate"] = estimated_wr
+        stats["win_rate_estimated"] = True
     cp_score, cp_warn = _score_copyability(stats, p30)
 
     result.momentum_score      = m_score
