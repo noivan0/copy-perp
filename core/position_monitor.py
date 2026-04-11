@@ -187,8 +187,16 @@ class PositionMonitor:
 
             if abs(curr_size - prev_size) > 1e-8:
                 change_type = "open" if abs(curr_size) > abs(prev_size) else "reduce"
-                # 순 변화량이 양수면 롱 증가, 음수면 숏 증가
-                side = "open_long" if curr_size > prev_size else "open_short"
+                # side 판단:
+                #  - open: curr_size > prev_size → open_long / open_short
+                #  - reduce: 포지션 감소 → close_long(롱 축소) / close_short(숏 축소)
+                #    롱 감소: curr_size < prev_size, 둘 다 양수 → close_long
+                #    숏 감소: curr_size > prev_size, 둘 다 음수 → close_short
+                if change_type == "reduce":
+                    # 이전 포지션 방향으로 청산 side 결정
+                    side = "close_long" if prev_size > 0 else "close_short"
+                else:
+                    side = "open_long" if curr_size > prev_size else "open_short"
 
                 fill_event = {
                     "account": self.trader,
@@ -201,7 +209,7 @@ class PositionMonitor:
                     "created_at": int(time.time() * 1000),
                     "change_type": change_type,
                 }
-                logger.info(f"포지션 변화 감지: {symbol} {side} Δ{abs(curr_size-prev_size):.4f}")
+                logger.info(f"포지션 변화 감지: {symbol} {side} Δ{abs(curr_size-prev_size):.4f} (type={change_type})")
                 await self._emit_fill(fill_event)
 
         # 포지션 청산 감지
