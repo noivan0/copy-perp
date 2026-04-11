@@ -20,7 +20,7 @@ import asyncio
 import json
 import logging
 import os
-APP_VERSION = "1.3.8"  # 단일 버전 상수
+APP_VERSION = "1.3.9"  # 단일 버전 상수
 
 # ── 통계 캐시 (30초 TTL) ──
 _STATS_CACHE: dict = {"ts": 0.0, "data": None}

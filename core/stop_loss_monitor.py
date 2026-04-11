@@ -1,9 +1,9 @@
 """
-Stop Loss Monitor — 손절/익절/트레일링 스탑 실시간 모니터링
-────────────────────────────────────────────────────────────
-- 30초마다 열린 포지션 전체 스캔
-- 전략 프리셋에 따라 SL/TP/트레일링 조건 확인
-- 조건 충족 시 → 즉시 시장가 청산 주문 실행
+Stop Loss Monitor — real-time SL/TP/Trailing stop
+──────────────────────────────────────────────────
+- Scans all open positions every 30 seconds
+- Checks SL/TP/trailing conditions per strategy preset
+- Executes market close order when condition is met
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 
 PROXY = "https://api.codetabs.com/v1/proxy/?quest="
 BASE  = "https://api.pacifica.fi/api/v1"
-SCAN_INTERVAL = 30   # 30초마다 스캔
+SCAN_INTERVAL = 30   # scan every 30 seconds
 
 
 def _get_mark_prices() -> dict[str, float]:
-    """현재 마크 가격 일괄 조회 (codetabs 프록시 → /info/prices)"""
+    """Batch fetch current mark prices (codetabs proxy → /info/prices)"""
     url = BASE + "/info/prices"
     try:
         r = requests.get(PROXY + urllib.parse.quote(url), timeout=15)
@@ -42,41 +42,41 @@ def _get_mark_prices() -> dict[str, float]:
                 for m in data
             }
     except Exception as e:
-        logger.warning(f"마크 가격 조회 오류: {e}")
+        logger.warning(f"Mark price fetch error: {e}")
     return {}
 
 
 class StopLossMonitor:
     """
-    열린 포지션 실시간 손절/익절/트레일링 모니터
-    CopyEngine의 on_fill 콜백을 재사용하여 청산 주문 실행
+    Real-time SL/TP/trailing stop monitor
+    Reuses CopyEngine.on_fill callback for close orders
     """
 
     def __init__(self, db: aiosqlite.Connection, copy_engine):
         self.db = db
-        self.engine = copy_engine   # CopyEngine 인스턴스 (청산 주문용)
+        self.engine = copy_engine   # CopyEngine instance (used for close orders)
         self._running = False
 
     async def start(self):
         self._running = True
-        logger.info("StopLossMonitor 시작")
+        logger.info("StopLossMonitor started")
         while self._running:
             try:
                 await self._scan_positions()
             except Exception as e:
-                logger.error(f"StopLossMonitor 오류: {e}")
+                logger.error(f"StopLossMonitor error: {e}")
             await asyncio.sleep(SCAN_INTERVAL)
 
     async def stop(self):
         self._running = False
 
     async def _scan_positions(self):
-        """DB의 열린 포지션 전체 스캔 → 손절 조건 확인
+        """Scan all open positions in DB → check SL/TP conditions
         
-        P0 Fix (Round 6): positions 테이블과 follower_positions 테이블 이중 스캔
-        - CopyEngine은 follower_positions에 저장 (기본)
-        - pnl_tracker는 positions 테이블 사용 (별도)
-        - 두 테이블 UNION하여 누락 없이 스캔
+        P0 Fix (Round 6): dual scan of positions and follower_positions tables
+        - CopyEngine stores in follower_positions (primary)
+        - pnl_tracker uses positions table (secondary)
+        - UNION both tables for complete coverage
         """
         # 현재가 조회
         prices = _get_mark_prices()
@@ -103,7 +103,7 @@ class StopLossMonitor:
             """) as cur:
                 rows += [dict(zip([d[0] for d in cur.description], r)) for r in await cur.fetchall()]
         except Exception as _e:
-            logger.debug(f"[StopLoss] positions 테이블 조회 오류 (무시): {_e}")
+            logger.debug(f"[StopLoss] positions table query error (ignored): {_e}")
 
         # 2차: follower_positions 테이블 (CopyEngine 관리) — positions에 없는 항목만 추가
         try:
@@ -126,7 +126,7 @@ class StopLossMonitor:
                     if key not in existing_keys:
                         rows.append(row_dict)
         except Exception as _e:
-            logger.debug(f"[StopLoss] follower_positions 테이블 조회 오류 (무시): {_e}")
+            logger.debug(f"[StopLoss] follower_positions table query error (ignored): {_e}")
 
         if not rows:
             return
@@ -182,7 +182,7 @@ class StopLossMonitor:
             await self._force_close(t)
 
     async def _force_close(self, pos: dict):
-        """강제 청산 — 반대 방향 시장가 주문"""
+        """Force close — reverse direction market order"""
         follower_addr = pos["follower_address"]
         symbol        = pos["symbol"]
         side          = pos["side"]
@@ -194,7 +194,7 @@ class StopLossMonitor:
         close_side = "ask" if side == "bid" else "bid"
 
         logger.warning(
-            f"[{strategy.upper()}] {follower_addr[:8]} {symbol} 강제청산 | "
+            f"[{strategy.upper()}] {follower_addr[:8]} {symbol} FORCE_CLOSE | "
             f"entry={pos['entry']:.4f} current={pos['current']:.4f} | {reason}"
         )
 
@@ -208,7 +208,7 @@ class StopLossMonitor:
             "account":        pos.get("trader_address", ""),
             "cause":          f"stop_loss:{reason}",
             "created_at":     int(time.time() * 1000),
-            "_force_follower": follower_addr,   # 특정 팔로워만 강제 청산
+            "_force_follower": follower_addr,   # target specific follower for force close
         }
 
         try:
@@ -217,4 +217,4 @@ class StopLossMonitor:
             # force_close_follower 없으면 on_fill 폴백
             await self.engine.on_fill(fake_event)
         except Exception as e:
-            logger.error(f"강제청산 오류 {follower_addr[:8]} {symbol}: {e}")
+            logger.error(f"Force close error {follower_addr[:8]} {symbol}: {e}")
