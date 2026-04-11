@@ -18,16 +18,14 @@ import re
 import time
 from datetime import datetime, timezone
 import json
-import base64
 import logging
 from typing import Optional
 
 import base58 as _base58
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Header, Request, Query
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-from core.strategies import get_strategy, list_strategies, STRATEGY_PRESETS, MAINNET_TRADERS
+from core.strategies import STRATEGY_PRESETS
 
 logger = logging.getLogger(__name__)
 

@@ -86,7 +86,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from db.database import init_db, add_trader, add_follower, get_followers, get_leaderboard
-from pacifica.client import PacificaClient, _CF_HOST, _PACIFICA_HOST
+from pacifica.client import PacificaClient
 from core.copy_engine import CopyEngine
 from core.position_monitor import PositionMonitor, RestPositionMonitor
 from core.stats import get_platform_stats
@@ -185,6 +185,8 @@ async def lifespan(app_):
     _bg_tasks.append(asyncio.create_task(_copy_trades_cleanup_loop(), name="copy_trades_cleanup"))
     # R11: 주요 지표 임계값 모니터링 (active_monitors=0 CRITICAL, queue stall)
     _bg_tasks.append(asyncio.create_task(_threshold_monitor_loop(), name="threshold_monitor"))
+    # 캐시 워밍: leaderboard sync(5초) + ranked 계산(+5초) = 10초 후 /traders/ranked 선제 캐싱
+    _bg_tasks.append(asyncio.create_task(_ranked_cache_warmup(), name="ranked_warmup"))
 
     # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
     try:
@@ -884,6 +886,45 @@ async def _winrate_refresh_loop():
     await asyncio.sleep(30 * 60)  # 30분마다 갱신 (프로덕션 기준)
 
 
+async def _ranked_cache_warmup():
+    """Startup 캐시 워밍: leaderboard sync 완료 후 /traders/ranked 선제 캐싱
+    
+    콜드스타트 시 첫 번째 /traders/ranked 요청이 전체 계산 대기 없이 즉시 응답하도록
+    서버 시작 12초 후 ranked.py와 동일한 계산 경로로 주요 캐시 키 선제 세팅.
+    """
+    await asyncio.sleep(12)  # leaderboard sync(5초) + DB 업데이트 여유(7초)
+    try:
+        from api.routers.ranked import _ranked_cache, _leaderboard_row_to_crs
+        import time as _t
+        logger.info("[CacheWarm] /traders/ranked 선제 캐싱 시작...")
+        if _db:
+            from db.database import get_leaderboard as _get_lb
+            leaders = await _get_lb(_db, 200)
+            if leaders:
+                ranked = [_leaderboard_row_to_crs(dict(r)) for r in leaders]
+                _grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
+                # 주요 캐시 키 선제 워밍: (limit, min_grade.upper(), exclude_disqualified)
+                warmup_keys = [
+                    (20, "C", True),
+                    (50, "C", True),
+                    (20, "D", False),
+                    (50, "D", False),
+                    (100, "D", False),
+                ]
+                for (lmt, mg, excl) in warmup_keys:
+                    threshold = _grade_order.get(mg, 0)
+                    filtered = [t for t in ranked
+                                if not (excl and t.get("disqualified"))
+                                and _grade_order.get(t.get("grade","D"), 0) >= threshold]
+                    filtered.sort(key=lambda x: x.get("crs", 0), reverse=True)
+                    result = {"data": filtered[:lmt], "count": len(filtered),
+                              "total_analyzed": len(ranked), "source": "db"}
+                    _ranked_cache[(lmt, mg, excl)] = (_t.time(), result)
+                logger.info(f"[CacheWarm] /traders/ranked 캐시 워밍 완료 ({len(ranked)}명, {len(warmup_keys)}키)")
+    except Exception as e:
+        logger.warning(f"[CacheWarm] 캐시 워밍 실패 (무시): {e}")
+
+
 async def _threshold_monitor_loop():
     """R11: 주요 지표 임계값 주기적 체크 (60초마다)
     
@@ -1076,7 +1117,17 @@ async def leaderboard_alias(limit: int = 20) -> dict:
     try:
         real_lb = await asyncio.get_event_loop().run_in_executor(None, lambda: _pac.get_leaderboard(limit=limit))
         if isinstance(real_lb, list) and real_lb:
-            return {"data": real_lb, "count": len(real_lb)}
+            # Pacifica leaderboard에는 score 필드 없음 → pnl_30d 기반 score 추가 (UI 정렬용)
+            def _enrich_lb(r: dict) -> dict:
+                eq = float(r.get("equity_current", 0) or 0)
+                pnl30 = float(r.get("pnl_30d", 0) or 0)
+                pnl7 = float(r.get("pnl_7d", 0) or 0)
+                roi30 = pnl30 / eq if eq > 0 else 0
+                roi7 = pnl7 / eq if eq > 0 else 0
+                score = round(roi30 * 0.6 + roi7 * 0.3 + (0.1 if pnl30 > 0 else 0), 4)
+                return {**r, "score": score, "roi_30d": round(roi30 * 100, 2), "roi_7d": round(roi7 * 100, 2)}
+            enriched = sorted([_enrich_lb(r) for r in real_lb], key=lambda x: x["score"], reverse=True)
+            return {"data": enriched, "count": len(enriched)}
     except Exception as e:
         logger.warning(f"[Leaderboard] Pacifica API 조회 실패: {e}")
     if _db:
