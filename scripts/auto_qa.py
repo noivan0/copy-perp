@@ -69,7 +69,7 @@ def run():
     chk("DB 연결", d.get("db_ok",False) if s==200 else False, critical=True)
 
     s2, d2, ms2 = api("/health")
-    chk("데이터 수집 연결", d2.get("data_connected",False) if s2==200 else False, f"source={d2.get('data_source','?')}")
+    chk("데이터 수집 연결", d2.get("data_connected", False) if s2==200 else False, f"source={d2.get('data_source','?')} symbols={d2.get('symbols_cached',0)}")
     chk("모니터 실행", (d2.get("active_monitors",0)>0) if s2==200 else False, f"{d2.get('active_monitors',0)}개")
 
     # 2. 트레이더 데이터 품질
