@@ -41,6 +41,21 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
         d["pnl_30d"] = result.raw.get("pnl_30d")
         d["pnl_7d"]  = result.raw.get("pnl_7d")
         d["roi_30d"] = result.raw.get("roi_30d")
+        # trade_stats: trades/history 없을 때 raw 기반 간이 통계로 채움
+        # (N+1 API 호출 없이 목록에서 기본 필드 제공)
+        if not d.get("trade_stats"):
+            raw_data = result.raw or {}
+            cons = int(raw_data.get("consistency", 0))
+            roi = float(raw_data.get("roi_30d") or 0)
+            # consistency 1~5 스케일 → 간이 win_rate 추정 (데이터 없을 때 표시용)
+            # 실제 trade_stats는 개별 트레이더 상세 조회 (/traders/ranked/{address})에서 제공
+            d["trade_stats"] = {
+                "win_rate": None,        # 실거래 데이터 필요 — 상세 API에서 확인
+                "trade_count": None,     # 실거래 데이터 필요
+                "roi_30d": round(roi, 4) if roi else None,
+                "consistency_score": cons,
+                "data_source": "summary",  # 'summary'=raw기반, 'trades'=실거래기반
+            }
         return d
     except Exception as e:
         logger.warning(f"CRS 계산 오류 {row.get('address', '?')[:12]}: {e}")
