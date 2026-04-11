@@ -389,6 +389,7 @@ RATE_LIMIT_POLICY: dict[str, tuple[int, int]] = {
     "ranked":           (30,  60),   # CRS 랭킹: 분당 30회 (코드-정책 통일, 충분)
     # ── 헬스/모니터링 — k8s probe + DDoS 방어 ────────────────────────────
     "health":           (180, 60),   # 헬스체크: 분당 180회 (k8s probe 허용, Rex 2026-03-18)
+    "health_detailed":  (30,  60),   # 상세 헬스: 분당 30회 (내부 DB 데이터 포함, DDoS 방어)
     "default":          (60,  60),   # 기본: 분당 60회
 }
 
@@ -1362,7 +1363,7 @@ async def health_detailed(request: Request) -> dict:
     """상세 헬스 체크 (rate limit 적용 — DDoS 방어)"""
     # Rate limit: IP당 분당 60회 (health 정책 준용)
     client_ip = _get_client_ip(request)
-    _require_rate_limit(f"health:{client_ip}")
+    _require_rate_limit(f"health_detailed:{client_ip}")
 
     import core.data_collector as _dc_mod
     from core.data_collector import get_price_cache
