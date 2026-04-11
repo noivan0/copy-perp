@@ -11,7 +11,7 @@ services:
     # disk 섹션 제거 — Turso 클라우드 DB 사용으로 영속 Disk 불필요
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.0"
+        value: "3.11.9"
       - key: NETWORK
         value: testnet
       - key: BUILDER_CODE
