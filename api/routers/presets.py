@@ -27,33 +27,24 @@ async def list_presets(capital: float = Query(default=1000.0, ge=1.0, le=100000.
     from core.strategy_presets import list_presets_with_sim
     presets = list_presets_with_sim(capital=capital, db_path=_DB_PATH)
 
-    # ── Ranked API 기반 traders 재계산 (DB grade 컬럼 없음 → CRS 실시간 계산 결과 사용) ──
-    # resolve_traders()가 로컬 mainnet_tracker.db를 참조해 FALLBACK 주소를 반환하는 문제 해결.
-    # DB traders 테이블에 grade 컬럼이 없으므로 /traders/ranked에서 CRS 계산된 결과를 사용.
+    # ── CRS 실시간 계산 기반 traders 재계산 ──────────────────────────────────
+    # DB traders.grade 컬럼이 없으므로 DB rows → CRS 계산 → grade 기반 분류
     try:
-        from api.routers.ranked import get_ranked_traders
+        from api.routers.ranked import _fetch_rows_from_db, _leaderboard_row_to_crs
         from core.strategy_presets import PRESETS
-        from fastapi import Request as _Request
-        import starlette.requests as _sr
 
-        # ranked API 호출 (min_grade=C, exclude_disqualified=True, limit=100)
-        _ranked_result = await get_ranked_traders(
-            request=None,  # request=None 처리됨 (rate limit IP 없으면 스킵)
-            limit=100,
-            min_grade="C",
-            exclude_disqualified=True,
-        )
-        _ranked_data = _ranked_result.get("data", []) if isinstance(_ranked_result, dict) else []
-
-        # grade별 주소 캐시 구성
+        _rows = await _fetch_rows_from_db(200)
         grade_order = {"S": 4, "A": 3, "B": 2, "C": 1}
         live_by_grade: dict = {}
-        for t in _ranked_data:
-            g = t.get("grade", "D")
-            if g in grade_order:
-                live_by_grade.setdefault(g, []).append(t.get("address"))
+        for row in _rows:
+            try:
+                crs_data = _leaderboard_row_to_crs(row)
+                g = crs_data.get("grade", "D")
+                if g in grade_order and not crs_data.get("disqualified", False):
+                    live_by_grade.setdefault(g, []).append(crs_data.get("address"))
+            except Exception:
+                pass
 
-        # 각 프리셋의 traders 필드를 ranked 결과로 교체
         for preset in presets:
             grade_filter = PRESETS.get(preset.get("key",""), {}).get("grade_filter", ["S","A"])
             n = preset.get("n_traders", 2)
@@ -149,22 +140,25 @@ async def apply_preset(
     preset  = PRESETS[name]
     traders = resolve_traders(name, db_path=_DB_PATH)
 
-    # Live DB 기반 traders 재계산 (FALLBACK 주소 대신 실제 DB 트레이더 사용)
+    # CRS 실시간 계산 기반 traders 재계산 (DB grade 컬럼 없음)
     try:
-        from api.deps import _get_db_direct
-        _db_apply = _get_db_direct()
-        if _db_apply:
-            grade_filter = preset.get("grade_filter", ["S","A"])
-            n_traders = preset.get("n_traders", 2)
-            placeholders = ",".join("?" * len(grade_filter))
-            async with _db_apply.execute(
-                f"SELECT address FROM traders WHERE active=1 AND grade IN ({placeholders}) ORDER BY pnl_30d DESC NULLS LAST LIMIT ?",
-                (*grade_filter, n_traders),
-            ) as cur:
-                rows = await cur.fetchall()
-            live_addrs = [row["address"] for row in rows]
-            if live_addrs:
-                traders = live_addrs
+        from api.routers.ranked import _fetch_rows_from_db, _leaderboard_row_to_crs
+        grade_filter = preset.get("grade_filter", ["S","A"])
+        n_traders = preset.get("n_traders", 2)
+        _rows = await _fetch_rows_from_db(200)
+        live_addrs = []
+        for row in _rows:
+            try:
+                crs_data = _leaderboard_row_to_crs(row)
+                g = crs_data.get("grade", "D")
+                if g in grade_filter and not crs_data.get("disqualified", False):
+                    live_addrs.append(crs_data.get("address"))
+                    if len(live_addrs) >= n_traders:
+                        break
+            except Exception:
+                pass
+        if live_addrs:
+            traders = live_addrs
     except Exception as _e:
         logger.warning(f"apply/{name} live traders 재계산 실패 (FALLBACK 유지): {_e}")
 
