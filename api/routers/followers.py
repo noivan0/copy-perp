@@ -1408,21 +1408,33 @@ async def get_follower_portfolio(follower_address: str) -> dict:
     ) as cur:
         total_volume = (await cur.fetchone())[0] or 0.0
 
-    # 팔로우 중인 트레이더 목록 (SL/TP 포함)
-    async with _db.execute(
-        """SELECT f.trader_address, f.copy_ratio, f.max_position_usdc, f.created_at,
+    # 팔로우 중인 트레이더 목록 (SL/TP — 컬럼 없을 때 방어)
+    try:
+        _portfolio_sql = """SELECT f.trader_address, f.copy_ratio, f.max_position_usdc, f.created_at,
                   t.win_rate, t.pnl_30d, t.roi_30d,
                   f.stop_loss_pct, f.take_profit_pct
            FROM followers f
            LEFT JOIN traders t ON f.trader_address = t.address
-           WHERE f.address=? AND f.active=1""",
-        (follower_address,)
-    ) as cur:
-        rows = await cur.fetchall()
+           WHERE f.address=? AND f.active=1"""
+        async with _db.execute(_portfolio_sql, (follower_address,)) as cur:
+            rows = await cur.fetchall()
+        _has_sl_cols = True
+    except Exception:
+        # stop_loss_pct/take_profit_pct 컬럼 미생성 시 fallback (마이그레이션 전)
+        _has_sl_cols = False
+        async with _db.execute(
+            """SELECT f.trader_address, f.copy_ratio, f.max_position_usdc, f.created_at,
+                      t.win_rate, t.pnl_30d, t.roi_30d
+               FROM followers f
+               LEFT JOIN traders t ON f.trader_address = t.address
+               WHERE f.address=? AND f.active=1""",
+            (follower_address,)
+        ) as cur:
+            rows = await cur.fetchall()
 
     followed_traders = []
     for r in rows:
-        followed_traders.append({
+        entry = {
             "trader_address": r[0],
             "copy_ratio": r[1],
             "max_position_usdc": r[2],
@@ -1430,9 +1442,11 @@ async def get_follower_portfolio(follower_address: str) -> dict:
             "trader_win_rate": r[4],
             "trader_pnl_30d": r[5],
             "trader_roi_30d": r[6],
-            "stop_loss_pct": r[7],
-            "take_profit_pct": r[8],
-        })
+        }
+        if _has_sl_cols:
+            entry["stop_loss_pct"] = r[7]
+            entry["take_profit_pct"] = r[8]
+        followed_traders.append(entry)
 
     # 최근 거래 5건
     async with _db.execute(
