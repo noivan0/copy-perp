@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+APP_VERSION = "1.2.3"  # 단일 버전 상수
 import sys
 import time as _time_module
 import uuid
@@ -771,7 +772,6 @@ async def leaderboard_alias(limit: int = 20) -> dict:
     return {"data": [], "count": 0}
 
 
-APP_VERSION = "1.2.3"
 _STARTUP_AT = int(__import__("time").time())
 
 @app.get("/healthz")
@@ -1395,6 +1395,7 @@ async def _auto_approve_builder(address: str):
         logger.info(f"[Builder] 자동 승인: {address[:16]}... → ok={result.get('ok')}")
     except Exception as e:
         logger.debug(f"[Builder] 자동 승인 실패 (무시): {e}")
+
 
 
 # ── 프론트엔드 정적 파일 (마지막에 마운트) ────────────
