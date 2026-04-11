@@ -251,7 +251,7 @@ async def get_pnl_history(
                 "losses": len(records) - wins,
                 "win_rate_pct": round(wins / len(records) * 100, 1) if records else 0,
                 "total_net_pnl": round(total_net, 4),
-                "profit_factor": round(gross_profit / gross_loss, 3) if gross_loss > 0 else 9.99,
+                "profit_factor": round(gross_profit / gross_loss, 3) if gross_loss > 0 else (None if not records else 9.99),
                 "avg_roi_pct": round(
                     sum(r["roi_pct"] for r in records if r["roi_pct"]) / len(records), 2
                 ) if records else 0,
