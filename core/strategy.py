@@ -172,6 +172,10 @@ def select_traders_for_strategy(config: StrategyConfig) -> list[dict]:
     mainnet_stats에서 전략 기준에 맞는 트레이더 자동 선택
     기준: CARP ≥ min_carp, Kelly ≥ min_kelly, PF ≥ min_pf, cnt ≥ min_cnt
     정렬: CARP × Kelly (복합 점수) 내림차순
+
+    ⚠️ 주의: 이 함수는 동기 sqlite3를 사용하므로 async context에서 직접 호출하면 이벤트 루프를 블로킹합니다.
+    async context에서 사용 시 반드시 executor 래핑:
+        await asyncio.get_event_loop().run_in_executor(None, select_traders_for_strategy, config)
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -202,6 +206,13 @@ def select_traders_for_strategy(config: StrategyConfig) -> list[dict]:
     except Exception as e:
         logger.warning(f"트레이더 선택 오류: {e}")
         return []
+
+
+async def select_traders_for_strategy_async(config: StrategyConfig) -> list[dict]:
+    """select_traders_for_strategy의 async 래퍼 — async context에서 블로킹 방지"""
+    import asyncio as _asyncio
+    loop = _asyncio.get_event_loop()
+    return await loop.run_in_executor(None, select_traders_for_strategy, config)
 
 
 def calc_kelly_ratio(config: StrategyConfig, trader: dict) -> float:

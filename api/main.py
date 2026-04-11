@@ -164,7 +164,7 @@ async def lifespan(app_):
 _DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
 app = FastAPI(
     title="Copy Perp API",
-    version="1.1.0",
+    version=APP_VERSION,
     docs_url="/docs" if _DEBUG else None,
     redoc_url="/redoc" if _DEBUG else None,
     lifespan=lifespan,
@@ -743,7 +743,7 @@ def root():
     frontend_index = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "index.html")
     if os.path.exists(frontend_index):
         return FileResponse(frontend_index)
-    return {"status": "ok", "service": "Copy Perp", "version": "1.2.0", "docs": "/docs"}
+    return {"status": "ok", "service": "Copy Perp", "version": APP_VERSION, "docs": "/docs"}
 
 
 @app.get("/leaderboard")
@@ -771,11 +771,12 @@ async def leaderboard_alias(limit: int = 20) -> dict:
     return {"data": [], "count": 0}
 
 
+APP_VERSION = "1.2.3"
 _STARTUP_AT = int(__import__("time").time())
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok", "startup_at": _STARTUP_AT}
+    return {"status": "ok", "startup_at": _STARTUP_AT, "version": APP_VERSION}
 
 @app.get("/health")
 def health(request: Request) -> dict:
@@ -832,7 +833,7 @@ def health(request: Request) -> dict:
         "privy_configured": bool(os.getenv("PRIVY_APP_ID", "")),
         "builder_fee_rate": os.getenv("BUILDER_FEE_RATE", "0.001"),
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
-        "version": "1.2.0",
+        "version": APP_VERSION,
         "pacifica_ratelimit": _get_ratelimit_status_safe(),
     }
 
@@ -1160,7 +1161,7 @@ async def get_stats(request: Request) -> dict:
         stats["builder_fee_count"] = 0
     # 응답 표준화
     stats["ok"] = True
-    stats["version"] = "1.2.3"
+    stats["version"] = APP_VERSION
     stats["network"] = os.getenv("NETWORK", "testnet")
     return stats
 

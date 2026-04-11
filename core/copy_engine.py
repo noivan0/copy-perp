@@ -177,6 +177,17 @@ class CopyEngine:
         trader = event.get("account") or event.get("trader_address", "")
         cause = event.get("cause", "normal")
 
+        # amount/price float 변환 안전 처리
+        try:
+            _amount_f = float(amount)
+        except (TypeError, ValueError):
+            logger.warning(f"[CopyEngine] amount 변환 실패: {amount!r} — 이벤트 스킵")
+            return
+        try:
+            _price_f = float(price) if price else 0.0
+        except (TypeError, ValueError):
+            _price_f = 0.0
+
         # 청산 이벤트는 복사 안 함
         if cause == "liquidation":
             logger.info(f"청산 이벤트 스킵: {trader}")
@@ -197,7 +208,7 @@ class CopyEngine:
         tasks = [
             self._copy_to_follower(
                 follower, symbol, copy_side, amount, trader,
-                symbol_price=float(price) if price else 0.0
+                symbol_price=_price_f
             )
             for follower in followers
         ]
@@ -217,8 +228,13 @@ class CopyEngine:
         symbol_price: float = 0.0,
     ) -> None:
         follower_addr = follower["address"]
-        copy_ratio = float(follower["copy_ratio"])
-        max_pos = float(follower["max_position_usdc"])
+        try:
+            copy_ratio = float(follower["copy_ratio"])
+            max_pos = float(follower["max_position_usdc"])
+        except (TypeError, ValueError) as _e:
+            logger.warning(f"[{follower['address'][:8]}] copy_ratio/max_pos 변환 실패: {_e} — 기본값 사용")
+            copy_ratio = 0.1
+            max_pos = 100.0
 
         # ── 동시 주문 중복 방지 (Lock 획득) ─────────────
         if follower_addr not in self._follower_locks:
