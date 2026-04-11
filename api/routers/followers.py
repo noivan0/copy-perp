@@ -734,6 +734,8 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
                 _db, follower, trader_addr,
                 copy_ratio=resolved_copy_ratio,
                 max_position_usdc=resolved_max_pos_usdc,
+                stop_loss_pct=body.stop_loss_pct,
+                take_profit_pct=body.take_profit_pct,
             )
             # builder_code 승인 — noivan 플랫폼 레벨 승인 완료이므로 항상 1
             await _db.execute(
