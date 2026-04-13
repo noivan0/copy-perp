@@ -126,7 +126,7 @@ async def backtest_portfolio(
         results = []
         for addr in addrs:
             async with db.execute(
-                "SELECT alias, pnl_30d, pnl_7d, pnl_1d, equity FROM traders WHERE address=?", (addr,)
+                "SELECT address, alias, pnl_30d, pnl_7d, pnl_1d, equity FROM traders WHERE address=?", (addr,)
             ) as cur:
                 row = await cur.fetchone()
             if row:
