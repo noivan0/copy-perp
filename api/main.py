@@ -24,7 +24,7 @@ APP_VERSION = "1.4.0"  # 단일 버전 상수
 
 # ── 통계 캐시 (30초 TTL) ──
 _STATS_CACHE: dict = {"ts": 0.0, "data": None}
-_STATS_CACHE_TTL: int = 30
+_STATS_CACHE_TTL: int = 60
 
 import sys
 import time as _time_module
@@ -1292,22 +1292,18 @@ async def health(request: Request) -> dict:
         db_size_bytes = -1
 
     network_env = os.getenv("NETWORK", "testnet")
+    # Perf fix: /health 응답시간 개선 — sqlite3 동기 connect 제거
+    # 트레이더 수는 _STATS_CACHE(30초 TTL)에서 읽음 (DB 직접 쿼리 불필요)
     mainnet_traders_count: Optional[int] = None
     testnet_traders_count: Optional[int] = None
     try:
-        import sqlite3 as _sqlite3
-        _db_path2 = os.getenv("DB_PATH", "copy_perp.db")
-
-        def _count_active_traders():
-            with _sqlite3.connect(_db_path2) as _sc:
-                _row = _sc.execute("SELECT COUNT(*) FROM traders WHERE active=1").fetchone()
-                return _row[0] if _row else 0
-
-        active_cnt = await asyncio.get_event_loop().run_in_executor(None, _count_active_traders)
-        if network_env == "mainnet":
-            mainnet_traders_count = active_cnt
-        else:
-            testnet_traders_count = active_cnt
+        _cached_stats = _STATS_CACHE.get("data")
+        active_cnt = (_cached_stats or {}).get("active_traders")
+        if active_cnt is not None:
+            if network_env == "mainnet":
+                mainnet_traders_count = active_cnt
+            else:
+                testnet_traders_count = active_cnt
     except Exception as e:
         logger.debug(f"무시된 예외: {e}")
 
@@ -1552,6 +1548,9 @@ async def unfollow_trader(trader_address: str, request: Request, follower_addres
 
 
 # ── 거래 내역 ─────────────────────────────────────────
+_TRADES_CACHE: dict = {}
+_TRADES_CACHE_TTL: int = 10  # 10초 — 최신성 유지하면서 동시 요청 병목 방지
+
 @app.get("/trades")
 async def list_trades(
     request: Request,
@@ -1567,6 +1566,13 @@ async def list_trades(
     # Rate limit: IP당 분당 60회
     client_ip = _get_client_ip(request)
     _require_rate_limit(f"trades:{client_ip}", request=request)
+
+    # 인메모리 캐시 (필터 없는 기본 조회만)
+    _cache_key = (limit, offset, follower, trader, status)
+    _cached = _TRADES_CACHE.get(_cache_key)
+    _now_cache = _time_module.time()
+    if _cached and (_now_cache - _cached[0]) < _TRADES_CACHE_TTL:
+        return {**_cached[1], "_cached": True}
 
     # 입력 검증
     if limit < 1 or limit > 500:
