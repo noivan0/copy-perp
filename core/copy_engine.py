@@ -66,18 +66,17 @@ MAX_ORDER_USDC = 5000.0 # 단일 주문 최대 금액 (안전장치)
 MAX_SLIPPAGE = "1.0"    # 1% 슬리피지 허용
 MIN_AMOUNT = 0.0001     # 최소 수량 (소수점 정밀도)
 
-# 메인넷 확정 Tier A/S 트레이더 + 가중치 (2026-03-19 신뢰도 기반)
+# 메인넷 확정 Tier A 트레이더 + 가중치 (2026-04-13 CRS 실시간 기반 업데이트)
+# EcX5xSDT: 구버전 S등급 → 현재 B등급(crs=55.8) 하락으로 제외
+# A91uNeZW가 현재 최고 CRS(77.8)
 TIER_A_WEIGHTS: dict[str, float] = {
-    # S등급
-    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu": 0.30,   # trust 74.5, ROI 82.5%
-    # A등급 — 신뢰도 순
-    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep":  0.12,   # trust 58.2, ROI 58.9%
-    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq":  0.12,   # trust 61.9, ROI 58.8%
-    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y":  0.12,   # trust 61.0, ROI 51.5%
-    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe":  0.10,   # trust 60.8, ROI 47.4%
-    "E1vabqxiuUfBQKaH8L3P1tDvxG5mMj7nRkC2sQwYzXe9":  0.08,   # trust 58.2, ROI 47.6%
-    "5BPd5WYVvDE2tXg3aKj9mPqR7nLhB4cF8vZsWuYeC1Nd":  0.08,   # trust 59.9, ROI 43.6%
-    "9XCVb4SQVADNkLmP2rTgB5jHuF3wEzXc8nQsYvD7eAi":   0.08,   # trust 58.7, ROI 43.5%
+    # A등급 — CRS 순 (2026-04-13 기준)
+    "A91uNeZWYC8tAYeaxHyMbnzFw7hYu44omtv52KmeJ9Kw": 0.25,   # CRS 77.8, PnL30d $31K, ROI 25.3%
+    "DjzEd1FLFVHrLQSmBWrabpYpWEiJsw1TAvw7ESLQSNy6": 0.20,   # CRS 75.6, PnL30d $19K, ROI 16.5%
+    "jayEHbBuEQxMT9bMUqQGMBXxJgJ8RvEhEFJVoS8ftfCT": 0.20,   # CRS 74.2, PnL30d $303K, ROI 38.4%
+    "42R7zgNn3Y1nkQEE6ajFLJSJHMxVUYWUVKUkdtC9WdHo": 0.15,   # CRS 71.2, PnL30d $14K, ROI 9.0%
+    "GLCX6Prt7rw6RM3n5eoMJbuyMXy5DQ59p4Z4FkVFpTPG": 0.10,   # CRS 69.4, PnL30d $19K, ROI 15.3%
+    "DVPWebmpGvVFjLBGKZbHBK1JJBkLcZ7YKBQ5feCsLXSg": 0.10,   # CRS 65.1, PnL30d $17K, ROI 14.9%
 }
 
 

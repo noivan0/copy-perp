@@ -36,18 +36,19 @@ BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")
 AGENT_WALLET     = os.getenv("AGENT_WALLET", "")
 
 # ── 메인넷 확정 트레이더 목록 (2026-03-19 실측, 신뢰도 점수 순) ──────────
-TRADER_S = [
-    "EcX5xSDT45Nvhi2gMTjTnhF3KT2w4sPF54esEZS3hwZu",  # S등급 | ROI 82.5% | trust 74.5
-]
+# ── 트레이더 목록 (2026-04-13 mainnet CRS 실시간 기반 업데이트) ──────────────
+# EcX5xSDT: 구버전 S등급 → 현재 B등급(crs=55.8)으로 하락. 최신 A등급으로 교체.
+# 최신 A등급 상위: A91uNeZW(77.8), DjzEd1FL(75.6), jayEHbBu(74.2)
+TRADER_S: list[str] = []   # S등급 없음 (2026-04-13 기준)
 TRADER_A = [
-    "A6VY4ZBUohgSLkwMuDwDvAnzgiXFB1eTDzaixyitPJep",   # A등급 | ROI 58.9%
-    "4UBH19qUbXEaqyz9fKrFHuvj8BPMoM87H71s1YPKyGYq",   # A등급 | ROI 58.8%
-    "7gV81bz99MUBVb2aLYxW7MG1RMDdRdJYTPyC2syjba8y",   # A등급 | ROI 51.5%
-    "3rXoG6i55P7D1Q3tYsB7Unds8nBtKh7vH5VUyMDpWkSe",   # A등급 | ROI 47.4%
-    "E1vabqxiuUfBQKaH8L3P1tDvxG5mMj7nRkC2sQwYzXe9",   # A등급 | ROI 47.6%
-    "5BPd5WYVvDE2tXg3aKj9mPqR7nLhB4cF8vZsWuYeC1Nd",   # A등급 | ROI 43.6%
-    "9XCVb4SQVADNkLmP2rTgB5jHuF3wEzXc8nQsYvD7eAi",    # A등급 | ROI 43.5%
-    "DThxt2yhDvJvNkG8mBpQ4rCsLfE3aWzXuY9tP5jH2Ve",    # A등급 | ROI 36.6%
+    "A91uNeZWYC8tAYeaxHyMbnzFw7hYu44omtv52KmeJ9Kw",   # A등급 | CRS 77.8 | PnL30d $31K | ROI 25.3%
+    "DjzEd1FLFVHrLQSmBWrabpYpWEiJsw1TAvw7ESLQSNy6",   # A등급 | CRS 75.6 | PnL30d $19K | ROI 16.5%
+    "jayEHbBuEQxMT9bMUqQGMBXxJgJ8RvEhEFJVoS8ftfCT",   # A등급 | CRS 74.2 | PnL30d $303K | ROI 38.4%
+    "42R7zgNn3Y1nkQEE6ajFLJSJHMxVUYWUVKUkdtC9WdHo",   # A등급 | CRS 71.2 | PnL30d $14K | ROI 9.0%
+    "GLCX6Prt7rw6RM3n5eoMJbuyMXy5DQ59p4Z4FkVFpTPG",   # A등급 | CRS 69.4 | PnL30d $19K | ROI 15.3%
+    "9F229rq4sK9NRNRML4JdtnFbFX3W95b7WBdTzRcVRGFa",   # A등급 | CRS 68.6 | PnL30d $4.5K | ROI 1.8%
+    "AuQbtVLAySyKFtbRmXxkXG3Xo9xBrjH6yLBjPiCjLY3",    # A등급 | CRS 66.6 | PnL30d $7.3K | ROI 1.8%
+    "DVPWebmpGvVFjLBGKZbHBK1JJBkLcZ7YKBQ5feCsLXSg",   # A등급 | CRS 65.1 | PnL30d $17K | ROI 14.9%
 ]
 
 # ── 시나리오 프리셋 4종 (2026-03-19 메인넷 실측 기반 최종 확정) ─────────────
