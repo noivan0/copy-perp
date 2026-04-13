@@ -35,11 +35,29 @@ import warnings
 # ── 프로덕션 로깅 설정 ────────────────────────────────────────────────────────
 class _JSONFormatter(logging.Formatter):
     """구조화된 JSON 로그 포매터 (프로덕션 환경용)"""
+    # 민감 정보 마스킹 패턴 (컴파일 캐시)
+    import re as _re_module
+    _REDACT_PATTERNS = [
+        # private_key, secret, password 필드값
+        _re_module.compile(r'(private[_\-]?key["\s:=]+)[^\s,"\'}{]+', _re_module.IGNORECASE),
+        _re_module.compile(r'(secret["\s:=]+)[^\s,"\'}{]+', _re_module.IGNORECASE),
+        _re_module.compile(r'(password["\s:=]+)[^\s,"\'}{]+', _re_module.IGNORECASE),
+        _re_module.compile(r'(token["\s:=]+)[^\s,"\'}{]{20,}', _re_module.IGNORECASE),
+        # base58 형식의 긴 키 (43자 이상 base58 — Solana 개인키/서명)
+        _re_module.compile(r'([1-9A-HJ-NP-Za-km-z]{43,88})'),
+    ]
+
     def format(self, record: logging.LogRecord) -> str:
         msg = record.getMessage()
-        # 민감 정보 마스킹: private_key 패턴 제거
-        import re
-        msg = re.sub(r'(private_key["\s:=]+)[^\s,"\'}{]+', r'\1[REDACTED]', msg, flags=re.IGNORECASE)
+        for pat in self._REDACT_PATTERNS:
+            # 그룹이 있는 패턴은 그룹1 보존, 나머지 REDACTED
+            try:
+                if pat.groups:
+                    msg = pat.sub(r'\1[REDACTED]', msg)
+                else:
+                    msg = pat.sub('[REDACTED]', msg)
+            except Exception:
+                pass
         return json.dumps({
             "ts":    _time_module.strftime("%Y-%m-%dT%H:%M:%SZ", _time_module.gmtime()),
             "level": record.levelname,
@@ -77,6 +95,8 @@ from dotenv import load_dotenv
 # .env를 명시적 경로로 로드 (uvicorn 실행 위치와 무관하게 동작)
 _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(_env_path, override=True)
+
+import secrets as _secrets_mod
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.exceptions import RequestValidationError
@@ -302,6 +322,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # G-01: HSTS (Render는 HTTPS 처리, 브라우저에 캐싱)
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
@@ -786,7 +808,7 @@ async def _winrate_refresh_loop():
                     continue
                 try:
                     # PacificaClient의 CF 요청 함수 재사용 (chunked 파싱 포함)
-                    _path_wr = f"trades/history?account={a}&limit=200"
+                    _path_wr = f"trades/history?account={addr}&limit=200"
                     _use_direct = os.getenv("PACIFICA_DIRECT","false").lower()=="true"
                     if _use_direct:
                         import requests as _req2
@@ -895,7 +917,7 @@ async def _winrate_refresh_loop():
             await asyncio.sleep(300)
             continue
 
-    await asyncio.sleep(30 * 60)  # 30분마다 갱신 (프로덕션 기준)
+        await asyncio.sleep(30 * 60)  # 30분마다 갱신 (프로덕션 기준)
 
 
 async def _ranked_cache_warmup():
@@ -1315,8 +1337,13 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
     client_ip = _get_client_ip(request)
     _require_rate_limit(f"signals:{client_ip}")
-    # top_n 범위 방어 (음수 or 과도한 값)
-    top_n = max(1, min(top_n, 50))
+    # I-01 fix: top_n 음수 → 422 반환 (클라이언트 버그 탐지 가능하게)
+    if top_n < 1:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": f"top_n must be >= 1, got {top_n}", "code": "INVALID_PARAM"}
+        )
+    top_n = min(top_n, 50)
     items = list(_get_pc().values())
 
     # 위험 마켓 필터: funding 극단 + 유동성 이상 마켓 제외
@@ -2041,7 +2068,8 @@ async def admin_reset_followers(request: Request) -> dict:
     if not admin_key:
         raise HTTPException(403, detail={"error": "Admin endpoint disabled", "code": "NOT_CONFIGURED"})
     req_key = request.headers.get("X-Admin-Key", "")
-    if req_key != admin_key:
+    # secrets.compare_digest로 타이밍 공격 방지
+    if not _secrets_mod.compare_digest(req_key.encode(), admin_key.encode()):
         raise HTTPException(403, detail={"error": "Invalid admin key", "code": "FORBIDDEN"})
 
     from api.deps import _get_db_direct
@@ -2078,7 +2106,8 @@ async def admin_sync_leaderboard(request: Request) -> dict:
         )
     
     provided_key = request.headers.get("X-Admin-Key", "")
-    if not provided_key or provided_key != admin_key:
+    # secrets.compare_digest로 타이밍 공격 방지
+    if not provided_key or not _secrets_mod.compare_digest(provided_key.encode(), admin_key.encode()):
         raise HTTPException(
             status_code=401,
             detail={"error": "Invalid or missing X-Admin-Key header", "code": "UNAUTHORIZED"}

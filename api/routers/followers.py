@@ -275,11 +275,9 @@ _verify_privy_jwt._cache = {"keys": [], "ts": 0.0}  # type: ignore[attr-defined]
 class OnboardRequest(BaseModel):
     """팔로워 온보딩 요청"""
     follower_address: str                       # 팔로워 Solana 지갑 주소
-    # ⚠️ DEPRECATED: private_key를 HTTP body로 전송하는 것은 보안 위험입니다.
-    # 프로덕션에서는 client_signature(Privy embedded wallet 서명)를 사용하세요.
-    # 이 필드는 향후 제거될 예정입니다 (use client_signature instead).
-    private_key: Optional[str] = None          # DEPRECATED: base58 개인키 (Builder Code 서명용)
-    client_signature: Optional[str] = None     # Privy embedded wallet 서명 (base58) — private_key 대체
+    # REMOVED: private_key 필드 완전 제거 (SECURITY: 개인키를 HTTP body로 전송 금지)
+    # 프로덕션에서는 반드시 client_signature(Privy embedded wallet 서명)를 사용하세요.
+    client_signature: Optional[str] = None     # Privy embedded wallet 서명 (base58)
 
     # ── 전략 선택 ─────────────────────────────────────────────────────
     # strategy 지정 시 해당 프리셋이 copy_ratio / max_position_usdc / 기타를 자동 적용.
@@ -677,17 +675,6 @@ async def onboard_follower(  # -> dict (FastAPI infers response type)
             # Privy embedded wallet이 프론트에서 직접 서명한 경우 (우선)
             signature = body.client_signature
             logger.info(f"Privy 클라이언트 서명 사용: {follower[:12]}...")
-        elif body.private_key:
-            # ⚠️ DEPRECATED: private_key HTTP body 전송 — 보안 경고
-            # 프로덕션에서는 client_signature를 사용해야 합니다
-            logger.warning(
-                f"[SECURITY] private_key field used in /followers/onboard request "
-                f"from follower={follower[:12]}... — "
-                f"DEPRECATED: Use client_signature (Privy embedded wallet) instead. "
-                f"Sending private keys over HTTP is a security risk."
-            )
-            # 서버 측 개인키로 서명 (데모/백엔드 용도 — DEPRECATED)
-            signature = _sign_builder_approval(body.private_key, payload_to_sign)
         else:
             # 서명 없음 — Builder Code 승인 보류 (Pacifica 팀 등록 후 자동 처리)
             logger.info("서명 미제공 — Builder Code 스킵 (팔로우는 정상 진행)")
@@ -930,8 +917,11 @@ async def list_followers(follower_address: Optional[str] = None) -> dict:
         ) as cur:
             rows = await cur.fetchall()
     else:
-        # follower_address 미제공 시 빈 목록 반환 (전체 조회 불허)
-        return {"data": [], "count": 0, "note": "follower_address parameter is required"}
+        # I-03 fix: follower_address 미제공 시 400 반환 (200 + note 패턴은 클라이언트 버그 숨김)
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "follower_address query parameter is required", "code": "MISSING_PARAM"}
+        )
     return {"data": [dict(r) for r in rows], "count": len(rows)}
 
 

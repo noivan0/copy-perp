@@ -92,9 +92,19 @@ MIGRATIONS = [
 
 
 def get_column_names(conn: sqlite3.Connection, table: str) -> set:
-    """테이블의 현재 컬럼 이름 집합 반환"""
+    """테이블의 현재 컬럼 이름 집합 반환
+    SECURITY: table명은 반드시 내부 상수여야 함 — 외부 입력으로 받지 말 것.
+    PRAGMA는 파라미터 바인딩 미지원 → 허용 테이블 목록으로 화이트리스트 방어.
+    """
+    _ALLOWED_TABLES = frozenset({
+        "traders", "followers", "copy_trades", "fee_records",
+        "follower_positions", "mainnet_stats", "crs_snapshots",
+        "db_version", "pnl_records", "positions",
+    })
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"get_column_names: 허용되지 않은 테이블명: {table!r}")
     try:
-        cursor = conn.execute(f"PRAGMA table_info({table})")
+        cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608 — whitelist validated
         return {row[1] for row in cursor.fetchall()}
     except Exception:
         return set()

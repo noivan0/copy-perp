@@ -132,6 +132,10 @@ CREATE TABLE IF NOT EXISTS follower_positions (
     size             REAL NOT NULL,
     mark_price       REAL DEFAULT 0,
     unrealized_pnl   REAL DEFAULT 0,
+    stop_loss_price  REAL DEFAULT 0,
+    take_profit_price REAL DEFAULT 0,
+    high_price       REAL DEFAULT 0,
+    strategy         TEXT DEFAULT 'passive',
     opened_at        INTEGER NOT NULL,
     updated_at       INTEGER NOT NULL,
     PRIMARY KEY (follower_address, symbol)

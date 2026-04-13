@@ -170,7 +170,8 @@ async def get_ranked_traders(
         )
 
     # ── 60초 캐시 확인 ───────────────────────────────────
-    _cache_key = (limit, min_grade.upper(), exclude_disqualified)
+    # G-04 fix: sort_by 포함 (정렬 다른 요청이 같은 캐시 반환하는 버그 수정)
+    _cache_key = (limit, min_grade.upper(), exclude_disqualified, sort_by)
     _cached = _ranked_cache.get(_cache_key)
     if _cached and (_time_mod.time() - _cached[0]) < _RANKED_CACHE_TTL:
         _cache_age = round(_time_mod.time() - _cached[0], 1)
