@@ -289,7 +289,26 @@ async def get_ranked_summary():
 
 @router.post("/sync-mainnet")
 async def sync_mainnet_traders(request: Request):
-    """Mainnet 리더보드를 DB에 동기화 (IP당 분당 2회)"""
+    """Mainnet 리더보드를 DB에 동기화.
+
+    보안: ADMIN_API_KEY 인증 필수 (미설정 시 503, 불일치 시 403).
+    추가: IP당 분당 2회 RL.
+    """
+    import os as _os2
+    # BUG-R2-1 수정: ADMIN_API_KEY 인증 추가
+    admin_key = _os2.getenv("ADMIN_API_KEY", "")
+    if not admin_key:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Sync endpoint disabled (ADMIN_API_KEY not configured)", "code": "NOT_CONFIGURED"}
+        )
+    provided_key = request.headers.get("X-Admin-Key", "")
+    if not provided_key or provided_key != admin_key:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Invalid or missing X-Admin-Key", "code": "UNAUTHORIZED"}
+        )
+
     from api.utils import check_rate_limit as _crl
     client_ip = _get_client_ip(request)
     if not _check_rate_limit(f"sync_mainnet:{client_ip}", max_calls=2, window_sec=60):

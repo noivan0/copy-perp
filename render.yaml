@@ -36,6 +36,9 @@ services:
         value: "https://copy-perp-frontend.vercel.app,https://copy-perp.onrender.com,http://localhost:3000"
       - key: DEBUG
         value: "false"
+      # C-01: JWT 필수화 (true=프로덕션 필수, false=개발 전용)
+      - key: REQUIRE_AUTH
+        value: "true"
       # Render 리버스 프록시 IP 신뢰 (rate limit IP 정확도 향상)
       - key: TRUSTED_PROXY_IPS
         value: "10.0.0.0/8"

@@ -245,17 +245,16 @@ def _verify_privy_jwt(token: str) -> Optional[str]:
             )
         elif PRIVY_APP_SECRET:
             # alg 불일치 → App Secret으로 재시도
-            try:
-                payload = _jwt.decode(
-                    token, PRIVY_APP_SECRET, algorithms=["HS256"],
-                    audience=PRIVY_APP_ID, options={"verify_exp": True},
-                )
-            except Exception:
-                # 마지막 수단: 서명 미검증 (개발/테스트 환경)
-                payload = _jwt.decode(token, options={"verify_signature": False})
+            payload = _jwt.decode(
+                token, PRIVY_APP_SECRET, algorithms=["HS256"],
+                audience=PRIVY_APP_ID, options={"verify_exp": True},
+            )
         else:
-            # 서명 미검증 파싱 (개발 환경)
-            payload = _jwt.decode(token, options={"verify_signature": False})
+            # PRIVY 미설정 시 → 서명 검증 불가 → 거부
+            # SECURITY FIX: verify_signature=False 폴백 제거
+            # 프로덕션에서 PRIVY_APP_ID / PRIVY_APP_SECRET 미설정 시 토큰 무조건 거부
+            logger.warning("[SECURITY] Privy 미설정 환경에서 JWT 검증 시도 — 거부")
+            return None
 
         sub = payload.get("sub", "")
         if sub.startswith("did:privy:"):
@@ -1165,12 +1164,19 @@ async def remove_follower(
         else:
             logger.warning(f"[SECURITY] DELETE /followers — invalid Privy JWT provided, proceeding without auth")
     elif not _jwt_token and follower_address:
+        import os as _os_unfollow
+        _require_auth_unfollow = _os_unfollow.getenv("REQUIRE_AUTH", "true").lower() in ("true", "1", "yes")
+        if _require_auth_unfollow:
+            # C-01 fix: REQUIRE_AUTH=true 환경에서 JWT 없는 unfollow 차단
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Authentication required to unfollow", "code": "AUTH_REQUIRED"}
+            )
         # JWT 없이 follower_address 쿼리 파라미터로만 요청 — 보안 감사 로그
         logger.warning(
             f"[SECURITY] DELETE /followers/{trader_address[:12]} "
             f"without auth token. follower={follower_address[:12] if follower_address else 'N/A'} "
-            f"from ip={_client_ip}. "
-            f"TODO: Require Privy JWT in v2."
+            f"from ip={_client_ip}. (REQUIRE_AUTH=false 환경)"
         )
 
     if follower_address:

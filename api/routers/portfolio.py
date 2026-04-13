@@ -50,8 +50,14 @@ async def get_optimal_portfolio(
     min_grade: str = Query("B", description="최소 등급: S/A/B/C")
 ):
     """AutoResearch 결과 기반 최적 포트폴리오 배분"""
+    # BUG-R2-2 수정: min_grade 유효값 검증 (422 반환)
     grade_min_crs = {"S": 80, "A": 70, "B": 50, "C": 30}
-    min_crs = grade_min_crs.get(min_grade.upper(), 50)
+    if min_grade.upper() not in grade_min_crs:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": f"Invalid min_grade '{min_grade}'. Must be one of: S, A, B, C", "code": "INVALID_PARAM"}
+        )
+    min_crs = grade_min_crs[min_grade.upper()]
 
     qualified = await _get_qualified_traders(min_crs)
     if not qualified:
