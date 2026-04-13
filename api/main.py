@@ -1448,6 +1448,12 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
             for m in excluded_risk[:5]
         ]
         result["risk_market_count"] = len(excluded_risk)
+
+    # 캐시 저장 (top_n=5 기본값만)
+    if top_n == 5:
+        _signals_cache["ts"] = _time_module.time()
+        _signals_cache["data"] = result
+
     return result
 
 
