@@ -1163,30 +1163,46 @@ def root():
 
 @app.get("/leaderboard")
 async def leaderboard_alias(limit: int = 20) -> dict:
-    """/traders의 alias — 프론트 호환성"""
+    """/traders의 alias — 프론트 호환성
+    
+    PERF 개선: _leaderboard_cache (백그라운드 30초 주기 갱신) 우선 사용.
+    캐시 히트 시 <10ms, 캐시 미스 시에만 Pacifica API 직접 호출.
+    """
     from db.database import get_leaderboard as _get_lb
+
+    def _enrich_lb(r: dict) -> dict:
+        """score + roi 필드 추가 (UI 정렬용)"""
+        eq = float(r.get("equity_current", 0) or 0)
+        pnl30 = float(r.get("pnl_30d", 0) or 0)
+        pnl7 = float(r.get("pnl_7d", 0) or 0)
+        roi30 = pnl30 / eq if eq > 0 else 0
+        roi7 = pnl7 / eq if eq > 0 else 0
+        score = round(roi30 * 0.6 + roi7 * 0.3 + (0.1 if pnl30 > 0 else 0), 4)
+        return {**r, "score": score, "roi_30d": round(roi30 * 100, 2), "roi_7d": round(roi7 * 100, 2)}
+
+    # PERF-1: 메모리 캐시 우선 사용 (백그라운드 loop가 30초마다 갱신)
+    _cache_age = _time_module.time() - _leaderboard_cache["ts"] if _leaderboard_cache["ts"] else None
+    if _leaderboard_cache["data"] and _cache_age is not None and _cache_age < 120:
+        cached_data = _leaderboard_cache["data"][:limit]
+        enriched = sorted([_enrich_lb(r) for r in cached_data], key=lambda x: x["score"], reverse=True)
+        return {"data": enriched, "count": len(enriched), "cached": True, "cache_age_sec": round(_cache_age, 1)}
+
+    # 캐시 없거나 오래됨 → Pacifica API 직접 호출
     from pacifica.client import PacificaClient
     _pac = PacificaClient()
     try:
         real_lb = await asyncio.get_event_loop().run_in_executor(None, lambda: _pac.get_leaderboard(limit=limit))
         if isinstance(real_lb, list) and real_lb:
-            # Pacifica leaderboard에는 score 필드 없음 → pnl_30d 기반 score 추가 (UI 정렬용)
-            def _enrich_lb(r: dict) -> dict:
-                eq = float(r.get("equity_current", 0) or 0)
-                pnl30 = float(r.get("pnl_30d", 0) or 0)
-                pnl7 = float(r.get("pnl_7d", 0) or 0)
-                roi30 = pnl30 / eq if eq > 0 else 0
-                roi7 = pnl7 / eq if eq > 0 else 0
-                score = round(roi30 * 0.6 + roi7 * 0.3 + (0.1 if pnl30 > 0 else 0), 4)
-                return {**r, "score": score, "roi_30d": round(roi30 * 100, 2), "roi_7d": round(roi7 * 100, 2)}
             enriched = sorted([_enrich_lb(r) for r in real_lb], key=lambda x: x["score"], reverse=True)
-            return {"data": enriched, "count": len(enriched)}
+            return {"data": enriched, "count": len(enriched), "cached": False}
     except Exception as e:
         logger.warning(f"[Leaderboard] Pacifica API 조회 실패: {e}")
+
+    # DB fallback
     if _db:
         try:
             leaders = await _get_lb(_db, limit)
-            return {"data": [dict(r) for r in leaders], "count": len(leaders)}
+            return {"data": [dict(r) for r in leaders], "count": len(leaders), "cached": False, "source": "db"}
         except Exception as e:
             logger.error(f"[Leaderboard] DB 조회 실패: {e}")
             raise HTTPException(
@@ -1347,6 +1363,10 @@ def get_markets(request: Request, symbol: Optional[str] = None) -> dict:
     return {"data": items, "count": len(items)}
 
 
+# /signals 인메모리 캐시 (10초 TTL — price_cache 갱신 주기와 동기화)
+_signals_cache: dict = {"ts": 0.0, "data": None}
+_SIGNALS_CACHE_TTL = 10  # 초
+
 @app.get("/signals")
 def get_signals(request: Request, top_n: int = 5) -> dict:
     """실시간 시그널 — 펀딩비 극단 + Oracle-Mark 괴리"""
@@ -1359,6 +1379,12 @@ def get_signals(request: Request, top_n: int = 5) -> dict:
             detail={"error": f"top_n must be >= 1, got {top_n}", "code": "INVALID_PARAM"}
         )
     top_n = min(top_n, 50)
+
+    # Perf: 10초 캐시 (top_n=5 기본값은 캐싱, 다른 값은 직접 계산)
+    _now_sig = _time_module.time()
+    if top_n == 5 and _signals_cache["data"] and (_now_sig - _signals_cache["ts"]) < _SIGNALS_CACHE_TTL:
+        return {**_signals_cache["data"], "cached": True}
+
     items = list(_get_pc().values())
 
     # 위험 마켓 필터: funding 극단 + 유동성 이상 마켓 제외
@@ -1679,7 +1705,7 @@ async def list_trades(
         _wr = 0.0
         _fee_all = 0.0
 
-    return {
+    _result = {
         "data": data,
         "count": len(data),
         "summary": {
@@ -1689,10 +1715,17 @@ async def list_trades(
             "realized_pnl_usdc": round(_pnl_all, 4),
             "total_pnl_usdc": round(_pnl_all, 4),
             "total_volume_usdc": round(_vol_all, 2),
-            "total_fee_usdc": round(_fee_all, 6),  # P2 Fix (Round 7): fee 합계 추가
+            "total_fee_usdc": round(_fee_all, 6),
             "win_rate_pct": _wr,
         },
     }
+    _TRADES_CACHE[_cache_key] = (_time_module.time(), _result)
+    # 캐시 크기 제한 (메모리 누수 방지)
+    if len(_TRADES_CACHE) > 50:
+        oldest = sorted(_TRADES_CACHE.items(), key=lambda x: x[1][0])
+        for k, _ in oldest[:25]:
+            _TRADES_CACHE.pop(k, None)
+    return _result
 
 
 # ── 통계 ──────────────────────────────────────────────
