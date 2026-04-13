@@ -197,17 +197,34 @@ async def lifespan(app_):
 
     # ── background 태스크 추적 (graceful shutdown에서 취소) ────────
     _bg_tasks: list[asyncio.Task] = []
-    _bg_tasks.append(asyncio.create_task(_dc_start(interval=30), name="dc_start"))
-    _bg_tasks.append(asyncio.create_task(_sync_leaderboard_loop(), name="sync_leaderboard"))
-    _bg_tasks.append(asyncio.create_task(_restore_monitors_from_db(), name="restore_monitors"))
-    _bg_tasks.append(asyncio.create_task(_auto_monitor_top_traders(), name="auto_monitor"))
-    _bg_tasks.append(asyncio.create_task(_winrate_refresh_loop(), name="winrate_refresh"))
+
+    def _task_done_callback(task: asyncio.Task) -> None:
+        """태스크 비정상 종료 감지 — silently dropped 방지 (R6 prod audit)"""
+        if task.cancelled():
+            return  # 정상 종료 (graceful shutdown)
+        exc = task.exception() if not task.cancelled() else None
+        if exc:
+            logger.critical(
+                f"[BG-TASK] {task.get_name()} 비정상 종료: {exc!r}",
+                exc_info=exc,
+            )
+
+    def _tracked_task(coro, *, name: str) -> asyncio.Task:
+        t = asyncio.create_task(coro, name=name)
+        t.add_done_callback(_task_done_callback)
+        return t
+
+    _bg_tasks.append(_tracked_task(_dc_start(interval=30), name="dc_start"))
+    _bg_tasks.append(_tracked_task(_sync_leaderboard_loop(), name="sync_leaderboard"))
+    _bg_tasks.append(_tracked_task(_restore_monitors_from_db(), name="restore_monitors"))
+    _bg_tasks.append(_tracked_task(_auto_monitor_top_traders(), name="auto_monitor"))
+    _bg_tasks.append(_tracked_task(_winrate_refresh_loop(), name="winrate_refresh"))
     # R11: copy_trades 레코드 자동 정리 (90일 이상 오래된 레코드 주 1회 삭제)
-    _bg_tasks.append(asyncio.create_task(_copy_trades_cleanup_loop(), name="copy_trades_cleanup"))
+    _bg_tasks.append(_tracked_task(_copy_trades_cleanup_loop(), name="copy_trades_cleanup"))
     # R11: 주요 지표 임계값 모니터링 (active_monitors=0 CRITICAL, queue stall)
-    _bg_tasks.append(asyncio.create_task(_threshold_monitor_loop(), name="threshold_monitor"))
+    _bg_tasks.append(_tracked_task(_threshold_monitor_loop(), name="threshold_monitor"))
     # 캐시 워밍: leaderboard sync(5초) + ranked 계산(+5초) = 10초 후 /traders/ranked 선제 캐싱
-    _bg_tasks.append(asyncio.create_task(_ranked_cache_warmup(), name="ranked_warmup"))
+    _bg_tasks.append(_tracked_task(_ranked_cache_warmup(), name="ranked_warmup"))
 
     # ── StopLossMonitor 시작 (손절/익절/트레일링) ────────────────
     try:
