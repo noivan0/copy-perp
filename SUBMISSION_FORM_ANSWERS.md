@@ -47,7 +47,7 @@ Copy Perp fills that gap. When a top-ranked trader opens a position on Pacifica,
 Perp's engine automatically replicates it for followers — proportionally, instantly, 
 with their funds staying in their own wallets at all times.
 
-Trader selection isn't manual guesswork. Our CRS (Copy Reliability Score) ranks 133+ 
+Trader selection isn't manual guesswork. Our CRS (Copy Reliability Score) ranks 208 
 monitored traders across 5 algorithmic metrics — momentum, profitability, risk, 
 consistency, and copyability — producing S/A/B/C tiers. Backtested against 30 days of 
 Pacifica mainnet data, CRS-selected portfolios returned +82.7% versus -3.2% for random 
@@ -75,7 +75,7 @@ active management, and DeFi users who won't accept CEX custody risk.
 • 30-second onboarding — Privy social login (Google/Discord) auto-generates a Solana 
   wallet; no seed phrase required for first-time DeFi users
 
-• Real-time Copy Engine — REST-based 30-second position polling across 133 monitored 
+• Real-time Copy Engine — REST-based 30-second position polling across 208 monitored 
   traders, 69 live symbols; sub-600ms order replication latency
 
 • Builder Code fee capture — every copy order embeds builder_code=noivan; 0.1% of 

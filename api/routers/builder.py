@@ -174,7 +174,7 @@ async def revoke_builder_code(body: RevokeReq):
 
 
 _builder_stats_cache: dict = {"data": None, "ts": 0.0}
-_BUILDER_STATS_TTL = 60.0  # 60초 캐시
+_BUILDER_STATS_TTL = 300.0  # 300초(5분) 캐시 — BUG-002: ~2s 응답 개선
 
 @router.get("/stats")
 async def builder_stats():

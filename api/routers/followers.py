@@ -53,33 +53,36 @@ TRADER_A = [
 
 # ── 시나리오 프리셋 4종 (2026-03-19 메인넷 실측 기반 최종 확정) ─────────────
 # ROI 순서 보장: conservative(7.8%) < default(13.4%) < balanced(18.3%) < aggressive(33.6%)
+# TRADER_S 공석 방어: S등급 없으면 TRADER_A 상위로 자동 대체
+_ALL_TRADERS = (TRADER_S + TRADER_A) if TRADER_S else TRADER_A
+
 RISK_PRESETS = {
     "default": {
-        "traders": TRADER_S + TRADER_A[:1],          # S 1명 + A ROI 1위
+        "traders": _ALL_TRADERS[:1],                 # 최상위 1명 (S없으면 A CRS 1위)
         "copy_ratio": 0.10,
         "max_position_usdc": 300.0,
-        "description": "Default: 1 S-grade + top A-grade. Est. +13.4%/mo",
+        "description": "Default: top 1 trader (A-grade CRS 1위). Est. +13.4%/mo",
         "expected_monthly_roi_pct": 13.4,
     },
     "conservative": {
-        "traders": TRADER_S[:1],                     # S 1명만
+        "traders": _ALL_TRADERS[:1],                 # 최상위 1명만
         "copy_ratio": 0.10,
         "max_position_usdc": 100.0,
         "description": "Conservative: top 1 highest-reliability trader. Est. +7.8%/mo",
         "expected_monthly_roi_pct": 7.8,
     },
     "balanced": {
-        "traders": TRADER_S + TRADER_A[:3],          # S 1명 + A 상위 3명
+        "traders": _ALL_TRADERS[:4],                 # 상위 4명
         "copy_ratio": 0.07,
         "max_position_usdc": 300.0,
-        "description": "Balanced: 1 S-grade + top 3 A-grade. Est. +18.3%/mo",
+        "description": "Balanced: top 4 A-grade traders. Est. +18.3%/mo",
         "expected_monthly_roi_pct": 18.3,
     },
     "aggressive": {
-        "traders": TRADER_S + TRADER_A,              # S 1명 + A 전체 8명
+        "traders": _ALL_TRADERS,                     # 전체 (현재 A등급 8명)
         "copy_ratio": 0.07,
         "max_position_usdc": 500.0,
-        "description": "Aggressive: all S+A grade (9 traders). Est. +33.6%/mo",
+        "description": "Aggressive: all A-grade traders (8명). Est. +33.6%/mo",
         "expected_monthly_roi_pct": 33.6,
     },
 }
@@ -1106,11 +1109,11 @@ async def remove_follower(
     follower_address 제공 시: 해당 팔로워-트레이더 쌍만 해지
     미제공 시: trader_address를 follower로 간주 (backward compat)
 
-    ⚠️ 보안 주의 (Round 4):
-    follower_address가 쿼리 파라미터로만 전달 — 현재 누구나 타인 해지 가능.
+    ⚠️ 보안 주의:
+    follower_address가 쿼리 파라미터로만 전달.
     강화된 rate limit (분당 10회) 적용.
-    Privy JWT 있을 경우 소유권 검증 수행.
-    TODO: Privy JWT 필수화 (v2 계획)
+    REQUIRE_AUTH=true 시 JWT 없으면 401 반환 (구현 완료).
+    JWT 있을 경우 follower_address 소유권 검증 수행.
     """
     from api.deps import _get_db_direct
     from api.main import _check_rate_limit
