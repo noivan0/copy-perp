@@ -2,11 +2,11 @@
 
 > **Pacifica Hackathon 2026 | Track 3: Social & Gamification**
 
-[![Testnet Live](https://img.shields.io/badge/Testnet-LIVE%20%E2%9C%85-brightgreen)](https://test-app.pacifica.fi)
+[![Mainnet Live](https://img.shields.io/badge/Mainnet-LIVE%20%E2%9C%85-brightgreen)](https://copy-perp-frontend.vercel.app)
 [![Orders Confirmed](https://img.shields.io/badge/Live%20Orders-Confirmed-blue)](https://test-app.pacifica.fi)
-[![Traders Monitored](https://img.shields.io/badge/Traders%20Monitored-133-purple)](https://github.com/noivan0/copy-perp)
+[![Traders Monitored](https://img.shields.io/badge/Traders%20Monitored-208-purple)](https://github.com/noivan0/copy-perp)
 [![Builder Code](https://img.shields.io/badge/Builder%20Code-noivan-orange)](https://pacifica.gitbook.io/docs/builder-program)
-[![Tests](https://img.shields.io/badge/Tests-54%2F54%20PASS-brightgreen)](https://github.com/noivan0/copy-perp)
+[![Tests](https://img.shields.io/badge/Tests-Core%20PASS-brightgreen)](https://github.com/noivan0/copy-perp)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/noivan0/copy-perp)
 [![Deploy Frontend](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/noivan0/copy-perp-web&env=NEXT_PUBLIC_PRIVY_APP_ID,NEXT_PUBLIC_API_URL&project-name=copy-perp-web)
@@ -14,15 +14,13 @@
 
 **Copy the best perpetual traders on Pacifica — automatically, in 30 seconds, with your funds staying in your wallet.**
 
-> 🔑 **Three things no perp DEX has done before:** non-custodial copy trading + algorithmic trader selection (CRS) + on-chain fee capture via Builder Code. All live on Pacifica testnet today.
+> 🔑 **Three things no perp DEX has done before:** non-custodial copy trading + algorithmic trader selection (CRS) + on-chain fee capture via Builder Code. All live on Pacifica mainnet today.
 
 ---
 
 ## 🎬 Demo Video
 
-> 📹 **[Watch Demo — 7 min](YOUR_DEMO_VIDEO_URL)**
->
-> *(Link will be updated after recording)*
+> 📹 **Demo video** — see `docs/demo_video.mp4` (included in repository)
 
 ---
 
@@ -30,9 +28,9 @@
 
 > 🚀 **[Try Copy Perp Live](https://copy-perp.onrender.com)**
 >
-> 📖 **[API Docs (Swagger)](https://copy-perp.onrender.com/docs)** | **[ReDoc](https://copy-perp.onrender.com/redoc)**
+> 📖 **[API Docs](https://copy-perp.onrender.com/health)** (Swagger disabled in production for security)
 >
-> *(Pacifica testnet — no real funds required)*
+> *(Pacifica mainnet — real trading data, Privy wallet required)*
 
 ---
 
@@ -53,7 +51,7 @@ Perpetual DEXs have the trading. They don't have the copy trading.
 
 **1. Non-custodial by design** — Your funds never leave your wallet. Copy Perp sends signals, not custody.
 
-**2. Algorithm beats gut feel** — Our CRS (Copy Reliability Score) filters 133 traders across 5 metrics. Backtested +82.7% vs -3.2% random following over 30 days.
+**2. Algorithm beats gut feel** — Our CRS (Copy Reliability Score) filters 208 traders across 5 metrics. Backtested +82.7% vs -3.2% random following over 30 days.
 
 **3. Revenue from day one** — Every copy order embeds `builder_code=noivan`. Pacifica routes 0.1% of follower volume to us automatically, on-chain, transparently.
 
@@ -83,7 +81,7 @@ Perpetual DEXs have the trading. They don't have the copy trading.
 │           ▼                                         │
 │  ┌─────────────────────┐                            │
 │  │   Position Monitor  │  REST 30s polling          │
-│  │  (133 traders live) │  DataCollector 5s 가격     │
+│  │  (208 traders live) │  DataCollector 5s 가격     │
 │  └──────────┬──────────┘                            │
 │             │ position change event                 │
 │             ▼                                       │
@@ -300,7 +298,7 @@ python3 -m pytest tests/ --ignore=tests/test_mainnet.py --ignore=tests/test_real
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `NETWORK` | `testnet` 또는 `mainnet` | `testnet` |
+| `NETWORK` | `testnet` 또는 `mainnet` | `mainnet` |
 | `TESTNET_REST_URL` | Testnet REST 엔드포인트 | `https://test-api.pacifica.fi/api/v1` |
 | `TESTNET_CF_URL` | HMG 우회용 CloudFront SNI | `https://do5jt23sqak4.cloudfront.net` |
 | `MAINNET_REST_URL` | Mainnet REST 엔드포인트 | `https://api.pacifica.fi/api/v1` |
