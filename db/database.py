@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS traders (
     win_rate    REAL DEFAULT 0,
     win_count   INTEGER DEFAULT 0,
     lose_count  INTEGER DEFAULT 0,
+    total_trades INTEGER DEFAULT 0,
     last_synced INTEGER DEFAULT 0,
     total_pnl   REAL DEFAULT 0,
     followers   INTEGER DEFAULT 0,
@@ -62,7 +63,7 @@ CREATE TABLE IF NOT EXISTS traders (
     oi_current  REAL DEFAULT 0,
     roi_30d     REAL DEFAULT 0,
     sharpe      REAL DEFAULT 0,
-    tier        INTEGER DEFAULT 0
+    tier        TEXT DEFAULT 'C'  -- CRS 등급: S/A/B/C/D
 );
 
 CREATE TABLE IF NOT EXISTS followers (
@@ -90,12 +91,14 @@ CREATE TABLE IF NOT EXISTS copy_trades (
     amount              TEXT,
     price               TEXT,
     client_order_id     TEXT UNIQUE,
-    status              TEXT DEFAULT 'pending',  -- pending/filled/failed/skipped_insufficient
+    status              TEXT DEFAULT 'pending',  -- pending/filled/failed/skipped_insufficient/skipped_no_key
     pnl                 REAL,
     entry_price         REAL,   -- 진입가 (청산 PnL 계산용)
     exec_price          REAL,   -- 체결가 (실제 주문 체결 가격)
     created_at          INTEGER,
-    filled_at           INTEGER
+    filled_at           INTEGER,
+    error_msg           TEXT,            -- 실패 시 오류 메시지
+    fee_usdc            REAL DEFAULT 0   -- Builder Code 수수료 (USDC)
 );
 
 CREATE TABLE IF NOT EXISTS fee_records (

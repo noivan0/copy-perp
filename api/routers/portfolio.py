@@ -16,6 +16,13 @@ from core.reliability import compute_crs
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
+import time as _portfolio_time
+
+_portfolio_cache: dict = {}  # key -> (ts, data)
+_PORTFOLIO_TTL = 30.0  # 30초 캐시
+
+
+
 _SOLANA_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 def _is_valid_solana_address(address: str) -> bool:
@@ -59,6 +66,14 @@ async def get_optimal_portfolio(
         )
     min_crs = grade_min_crs[min_grade.upper()]
 
+    # 캐시 확인 (30초 TTL)
+    _cache_key = f"optimal:{max_traders}:{min_grade.upper()}"
+    _now = _portfolio_time.time()
+    if _cache_key in _portfolio_cache:
+        _ts, _data = _portfolio_cache[_cache_key]
+        if _now - _ts < _PORTFOLIO_TTL:
+            return {**_data, "cached": True}
+
     qualified = await _get_qualified_traders(min_crs)
     if not qualified:
         return {"traders": [], "weights": {}, "message": "No traders meeting criteria"}
@@ -93,13 +108,16 @@ async def get_optimal_portfolio(
     # 예상 가중 Sharpe (CRS 기반 근사)
     expected_sharpe = sum(t["crs"] * t["weight_pct"] / 100 for t in traders_out) / 10
 
-    return {
+    _result = {
         "traders": traders_out,
         "weights": weights,
         "method": "crs_weighted",
         "expected_sharpe": round(expected_sharpe, 2),
         "total_traders_analyzed": len(qualified),
+        "cached": False,
     }
+    _portfolio_cache[_cache_key] = (_portfolio_time.time(), _result)
+    return _result
 
 
 @router.get("/backtest")

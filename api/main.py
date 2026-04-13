@@ -710,8 +710,11 @@ async def _sync_leaderboard_loop():
     _BACKOFF_MAX = 300  # 최대 5분
     while True:
         try:
-            lb = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: client.get_leaderboard(100)
+            lb = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, lambda: client.get_leaderboard(100)
+                ),
+                timeout=30.0  # 30초 타임아웃
             )
             for t in lb:
                 addr = t.get("address", "")
@@ -1061,7 +1064,8 @@ async def _restore_monitors_from_db():
                 try:
                     monitor = RestPositionMonitor(trader_addr, _engine.on_fill)
                     _monitors[trader_addr] = monitor
-                    asyncio.create_task(monitor.start())
+                    t = asyncio.create_task(monitor.start(), name=f"monitor-{trader_addr[:12]}")
+                    t.add_done_callback(lambda x: x.exception() if not x.cancelled() and x.exception() else None)
                     restored += 1
                     logger.info(f"[Restore] monitor 복원: {trader_addr[:16]}...")
                 except Exception as e:
@@ -1091,7 +1095,8 @@ async def _auto_monitor_top_traders():
             try:
                 monitor = RestPositionMonitor(addr, _engine.on_fill)
                 _monitors[addr] = monitor
-                asyncio.create_task(monitor.start())
+                t = asyncio.create_task(monitor.start(), name=f"monitor-{addr[:12]}")
+                t.add_done_callback(lambda x: x.exception() if not x.cancelled() and x.exception() else None)
                 logger.info(f"[Auto] 모니터링 시작: {addr[:16]}...")
             except Exception as e:
                 logger.warning(f"[Auto] 모니터 시작 실패 {addr[:12]}: {e}")

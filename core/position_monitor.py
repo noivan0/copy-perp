@@ -341,8 +341,9 @@ class RestPositionMonitor(PositionMonitor):
 
         while self._running:
             try:
-                positions = await asyncio.get_event_loop().run_in_executor(
-                    None, client.get_positions
+                positions = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(None, client.get_positions),
+                    timeout=20.0  # 20초 타임아웃 — 네트워크 hang 방지
                 )
                 await self._handle_positions(positions)
                 # 성공 시 카운터 및 backoff 초기화

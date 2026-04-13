@@ -54,12 +54,16 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
             detail={"error": "limit must be between 1 and 100", "code": "INVALID_LIMIT"}
         )
 
-    # 인메모리 캐시 (TTL 120초)
+    # 인메모리 캐시 (TTL 120초) — 전체 풀 캐시 후 슬라이싱 (limit별 별도 캐시 제거)
     import time as _time_mod
-    _cache_key = (limit, offset)
-    _cached = _TRADERS_CACHE.get(_cache_key)
-    if _cached and (_time_mod.time() - _cached[0]) < _TRADERS_CACHE_TTL:
-        return {**_cached[1], "_cached": True}
+    _POOL_KEY = "all"
+    _cached_pool = _TRADERS_CACHE.get(_POOL_KEY)
+    if _cached_pool and (_time_mod.time() - _cached_pool[0]) < _TRADERS_CACHE_TTL:
+        _all_data = _cached_pool[1].get("data", [])
+        _sliced = _all_data[offset:offset+limit]
+        return {"data": _sliced, "source": _cached_pool[1].get("source","cache"),
+                "count": len(_sliced), "_cached": True}
+    _cache_key = (limit, offset)  # legacy fallback key (미사용)
 
     if mock:
         sorted_traders = sorted(MOCK_TRADERS, key=lambda x: x["total_pnl"], reverse=True)
@@ -87,14 +91,17 @@ async def list_traders(request: Request, limit: int = Query(50, ge=1, le=100, de
                         "roi": round(roi, 4),
                         "total_trades": total_trades}
             _result = {"data": [_enrich(dict(r)) for r in leaders], "source": "db", "count": len(leaders)}
-            _TRADERS_CACHE[_cache_key] = (_time_mod.time(), _result)
+            _TRADERS_CACHE[_POOL_KEY] = (_time_mod.time(), _result)  # 풀 캐시 저장
             return _result
     except Exception as e:
         logger.warning(f"[{req_id}] 트레이더 DB 조회 실패: {e}")
 
-    # DB 비어있으면 실제 Pacifica 리더보드 시도
+    # DB 비어있으면 실제 Pacifica 리더보드 시도 (비동기 executor로 블로킹 방지)
     try:
-        real_lb = _pacifica.get_leaderboard(limit=limit)
+        import asyncio as _asyncio
+        real_lb = await _asyncio.get_event_loop().run_in_executor(
+            None, lambda: _pacifica.get_leaderboard(limit=limit)
+        )
         if real_lb:
             return {"data": real_lb, "source": "pacifica_live", "count": len(real_lb)}
     except Exception as e:

@@ -587,8 +587,16 @@ class CopyEngine:
                 except Exception as first_err:
                     err_str = str(first_err)
                     if "has not approved builder code" in err_str and bc:
-                        # Builder Code 미승인 → 없이 재시도 (수수료 없이 주문 실행)
-                        logger.info(f"[{follower_addr[:8]}] Builder Code 미승인 → 없이 재시도")
+                        # Builder Code 미승인 → DB 업데이트 (다음번엔 처음부터 BC 없이 시도)
+                        logger.info(f"[{follower_addr[:8]}] Builder Code 미승인 → 없이 재시도 + DB 업데이트")
+                        try:
+                            await self.db.execute(
+                                "UPDATE followers SET builder_code_approved=0, builder_approved=0 WHERE address=?",
+                                (follower_addr,)
+                            )
+                            await self.db.commit()
+                        except Exception as _dbe:
+                            logger.debug(f"[{follower_addr[:8]}] bca DB 업데이트 실패 (무시): {_dbe}")
                         result = retry_sync(
                             client.market_order,
                             symbol=symbol,
@@ -604,11 +612,14 @@ class CopyEngine:
                         )
                     else:
                         raise
-                if result.get("data"):
+                # filled 판단: data 키 OR order_id 있으면 체결 성공
+                # Pacifica API가 {'order_id': 123} 형태로 반환하는 경우도 있음
+                _has_data = result.get("data") or result.get("order_id") or result.get("orderId")
+                if _has_data:
                     status = "filled"
                 else:
                     status = "failed"
-                    _error_msg = f"Order response missing data: {str(result)[:120]}"
+                    _error_msg = f"Order response missing data/order_id: {str(result)[:120]}"
                     logger.warning(f"[{follower_addr[:8]}] {symbol} 주문 응답 data 없음: {result}")
                 logger.info(f"[{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
                 if status == "filled":
@@ -942,18 +953,21 @@ class CopyEngine:
                 bc = follower.get("builder_code_approved", 0)
                 builder = BUILDER_CODE if bc else None
                 client = self._get_client(follower_addr)
-                resp = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: client.market_order(
-                        symbol=symbol,
-                        side=close_side,
-                        amount=copy_amount,
-                        slippage_percent=MAX_SLIPPAGE,
-                        builder_code=builder,
-                        client_order_id=client_order_id,
-                    )
+                resp = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: client.market_order(
+                            symbol=symbol,
+                            side=close_side,
+                            amount=copy_amount,
+                            slippage_percent=MAX_SLIPPAGE,
+                            builder_code=builder,
+                            client_order_id=client_order_id,
+                        )
+                    ),
+                    timeout=30.0  # 30초 타임아웃 — force_close 네트워크 hang 방지
                 )
-                status = "filled" if resp.get("data") else "failed"
+                status = "filled" if (resp.get("data") or resp.get("order_id") or resp.get("orderId")) else "failed"
             except Exception as e:
                 status = "failed"
                 logger.error(f"[FORCE_CLOSE] 주문 오류: {e}")

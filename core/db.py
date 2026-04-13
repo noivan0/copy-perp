@@ -313,7 +313,14 @@ async def _get_aiosqlite_db():
             os.makedirs(db_dir, exist_ok=True)
         _aiosqlite_db = await aiosqlite.connect(_DB_PATH)
         _aiosqlite_db.row_factory = aiosqlite.Row
-        logger.info(f"[DB] aiosqlite 연결: {_DB_PATH}")
+        # 성능/동시성 최적화 PRAGMA
+        await _aiosqlite_db.execute("PRAGMA journal_mode=WAL")
+        await _aiosqlite_db.execute("PRAGMA synchronous=NORMAL")
+        await _aiosqlite_db.execute("PRAGMA busy_timeout=10000")
+        await _aiosqlite_db.execute("PRAGMA cache_size=-8000")   # 8MB 캐시
+        await _aiosqlite_db.execute("PRAGMA temp_store=MEMORY")
+        await _aiosqlite_db.execute("PRAGMA mmap_size=134217728") # 128MB mmap
+        logger.info(f"[DB] aiosqlite 연결 (WAL+최적화): {_DB_PATH}")
     return _aiosqlite_db
 
 
