@@ -10,7 +10,7 @@ GET /portfolio/equity-curve  - equity curve 조회
 import logging
 import re
 from typing import Optional
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request
 from core.reliability import compute_crs
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ async def _get_qualified_traders(min_crs: float = 50.0) -> list:
 
 @router.get("/optimal")
 async def get_optimal_portfolio(
+    request: Request,
     max_traders: int = Query(5, ge=2, le=10),
     min_grade: str = Query("B", description="최소 등급: S/A/B/C")
 ):
@@ -197,7 +198,7 @@ async def get_follower_performance(
         raise
     except Exception as e:
         logger.error(f"performance 조회 실패 {addr[:12]}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "INTERNAL_SERVER_ERROR"})
 
 
 @router.get("/equity-curve")
@@ -253,4 +254,4 @@ async def get_equity_curve(
         raise
     except Exception as e:
         logger.error(f"equity-curve 조회 실패 {address[:12]}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "INTERNAL_SERVER_ERROR"})
