@@ -255,6 +255,8 @@ app = FastAPI(
     version=APP_VERSION,
     docs_url="/docs" if _DEBUG else None,
     redoc_url="/redoc" if _DEBUG else None,
+    # G-02 fix: 프로덕션에서 openapi.json 노출 차단 (내부 API 구조 보호)
+    openapi_url="/openapi.json" if _DEBUG else None,
     lifespan=lifespan,
 )
 

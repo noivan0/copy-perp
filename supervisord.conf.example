@@ -1,0 +1,70 @@
+# supervisord.conf.example — 이 파일을 복사하여 supervisord.conf 생성
+# cp supervisord.conf.example supervisord.conf
+# 그 후 SECRETS 주석 항목을 실제 값으로 채워서 사용
+# ⚠️ supervisord.conf는 .gitignore에 추가되어 있음 — 절대 git push 금지
+
+[supervisord]
+nodaemon=false
+logfile=/tmp/copy-perp-supervisord.log
+pidfile=/tmp/copy-perp-supervisord.pid
+
+[unix_http_server]
+file=/tmp/copy-perp-supervisor.sock
+
+[supervisorctl]
+serverurl=unix:///tmp/copy-perp-supervisor.sock
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[program:copy-perp]
+command=python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8001 --log-level warning --workers 1
+directory=/path/to/copy-perp
+autostart=true
+autorestart=true
+startretries=5
+startsecs=5
+stopwaitsecs=30
+stdout_logfile=/tmp/copy-perp.log
+stderr_logfile=/tmp/copy-perp-err.log
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=5MB
+environment=PYTHONUNBUFFERED="1",NETWORK="mainnet",
+    ACCOUNT_ADDRESS="YOUR_ACCOUNT_ADDRESS",
+    AGENT_WALLET="YOUR_AGENT_WALLET_PUBKEY",
+    AGENT_PRIVATE_KEY="YOUR_AGENT_PRIVATE_KEY",
+    BUILDER_CODE="noivan",
+    BUILDER_FEE_RATE="0.001",
+    PRIVY_APP_ID="YOUR_PRIVY_APP_ID",
+    PRIVY_APP_SECRET="YOUR_PRIVY_APP_SECRET",
+    PRIVY_JWKS_URL="https://auth.privy.io/api/v1/apps/YOUR_PRIVY_APP_ID/jwks.json",
+    TURSO_URL="YOUR_TURSO_URL",
+    TURSO_TOKEN="YOUR_TURSO_TOKEN"
+
+[program:mainnet-tracker]
+command=python3 scripts/mainnet_continuous_collector.py --loop
+directory=/path/to/copy-perp
+autostart=true
+autorestart=true
+startretries=10
+startsecs=5
+stopwaitsecs=30
+stdout_logfile=/tmp/mainnet-tracker.log
+stderr_logfile=/tmp/mainnet-tracker-err.log
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=5MB
+environment=PYTHONUNBUFFERED="1",NETWORK="mainnet"
+
+[program:pt-engine]
+command=python3 papertrading/pt_engine.py
+directory=/path/to/copy-perp
+autostart=true
+autorestart=true
+startretries=10
+startsecs=10
+stopwaitsecs=30
+stdout_logfile=/tmp/pt_engine.log
+stderr_logfile=/tmp/pt_engine_err.log
+stdout_logfile_maxbytes=30MB
+stderr_logfile_maxbytes=5MB
+environment=PYTHONUNBUFFERED="1"

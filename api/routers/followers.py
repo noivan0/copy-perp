@@ -476,13 +476,22 @@ def _approve_builder_code_api(account: str, signature: str, timestamp: int,
 
 def _require_auth(follower_address: str, privy_token: Optional[str]) -> Optional[str]:
     """
-    Privy JWT 선택적 검증.
-    토큰이 있을 때만 검증 — 없으면 스킵 (선택적 인증).
-    토큰이 있고 유효하지 않으면 HTTPException(401) 발생.
+    Privy JWT 인증.
+    - REQUIRE_AUTH=true (기본): JWT 필수 — 없으면 401 반환
+    - REQUIRE_AUTH=false: 선택적 인증 (개발/테스트 환경용)
+    토큰이 있고 유효하지 않으면 항상 HTTPException(401) 발생.
     반환: privy_user_id 또는 None
     """
+    import os as _os
+    _require_auth_flag = _os.getenv("REQUIRE_AUTH", "true").lower() in ("true", "1", "yes")
     if not privy_token:
-        return None  # 토큰 없으면 스킵
+        if _require_auth_flag:
+            # C-01 fix: 프로덕션에서 JWT 필수화
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Authentication required. Please connect your wallet.", "code": "AUTH_REQUIRED"}
+            )
+        return None  # REQUIRE_AUTH=false 환경에서만 스킵
 
     user_id = _verify_privy_jwt(privy_token)
     if user_id is None:
