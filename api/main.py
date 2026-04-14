@@ -1832,7 +1832,7 @@ async def get_stats(request: Request) -> dict:
 
 # ── 메트릭 / 이벤트 로그 ──────────────────────────────
 @app.get("/metrics")
-async def get_metrics():
+async def get_metrics(request: Request):
     """Prometheus 텍스트 형식 메트릭
     P2 Fix (Round 4): 실제 DB 집계 추가
     - copy_trades 건수 (today/total/failed)
@@ -1840,6 +1840,10 @@ async def get_metrics():
     - 오늘 빌더피 합계
     - 최근 24h PnL
     """
+    # Rate limit: IP당 분당 30회 (Prometheus scraper 허용)
+    _client_ip_m = _get_client_ip(request)
+    _require_rate_limit(f"metrics:{_client_ip_m}", request=request)
+
     from fastapi.responses import PlainTextResponse
     try:
         db = await get_db()
@@ -1958,8 +1962,9 @@ async def get_metrics():
 
 
 @app.get("/events")
-def get_events(limit: int = 50, level: Optional[str] = None) -> dict:
+def get_events(request: Request, limit: int = 50, level: Optional[str] = None) -> dict:
     """최근 시스템 이벤트 로그"""
+    _require_rate_limit(f"events:{_get_client_ip(request)}", request=request)
     am = get_alert_manager()
     events = am.get_recent_events(limit=limit, level=level)
     return {
