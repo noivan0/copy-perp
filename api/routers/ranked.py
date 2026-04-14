@@ -148,7 +148,7 @@ async def _fetch_rows_from_api(limit: int = 200) -> list:
 @router.get("")
 async def get_ranked_traders(
     request: Request,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),  # 프론트 limit=200 요청 지원
     min_grade: str = Query("C", description="최소 등급 필터: S/A/B/C/D"),
     exclude_disqualified: bool = Query(True, description="하드 필터 제외 트레이더 숨김"),
     sort_by: str = Query("crs", description="정렬 기준: crs|roi_30d|pnl_30d|risk_score|win_rate"),
