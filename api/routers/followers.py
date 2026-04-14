@@ -1314,7 +1314,7 @@ async def get_paper_trading():
         await db.close()
 
     except Exception as e:
-        return {"status": "error", "message": str(e), "comparison": []}
+        logger.error(f"comparison 오류: {e}"); return {"status": "error", "message": "Internal error", "comparison": []}
 
     # 비교 테이블 구성
     comparison = []
@@ -1669,4 +1669,4 @@ async def submit_bind(body: dict):
         raise  # 이미 처리된 HTTPException 그대로 전파
     except Exception as e:
         logger.error(f"[{follower_address[:8]}] Bind 요청 실패: {e}")
-        raise HTTPException(500, {"error": str(e), "code": "BIND_ERROR"})
+        logger.error(f"bind 오류: {e}", exc_info=True); raise HTTPException(500, {"error": "Bind failed — please retry", "code": "BIND_ERROR"})

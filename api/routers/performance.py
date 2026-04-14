@@ -94,7 +94,7 @@ async def get_follower_ranking(limit: int = Query(20, ge=1, le=100)):
         return {"ranking": ranking, "count": len(ranking), "note": "Address masked for privacy"}
     except Exception as e:
         logger.exception("ranking 오류")
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/platform/stats")
@@ -141,7 +141,7 @@ async def get_platform_performance_stats():
         }
     except Exception as e:
         logger.exception("platform stats 오류")
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}")
@@ -185,7 +185,7 @@ async def get_performance_report(
         }
     except Exception as e:
         logger.exception(f"performance report 오류: {follower_address}")
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}/positions")
@@ -224,7 +224,7 @@ async def get_open_positions(follower_address: str):
             "positions": rows,
         }
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}/pnl")
@@ -266,7 +266,7 @@ async def get_pnl_history(
             "records": records,
         }
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}/equity")
@@ -302,7 +302,7 @@ async def get_equity_chart(
             "chart": chart,
         }
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}/daily")
@@ -357,7 +357,7 @@ async def get_daily_stats(
             "days": rows,
         }
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.get("/{follower_address}/trades")
@@ -417,7 +417,7 @@ async def get_trade_history(
             "trades": trades,
         }
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})
 
 
 @router.post("/{follower_address}/snapshot")
@@ -443,4 +443,4 @@ async def trigger_snapshot(
         }
     except Exception as e:
         logger.exception(f"snapshot 오류: {follower_address}")
-        raise HTTPException(500, detail=str(e))
+        logger.error(f"performance 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal server error", "code": "INTERNAL_ERROR"})

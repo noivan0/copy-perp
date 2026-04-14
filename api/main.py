@@ -2173,7 +2173,7 @@ async def admin_reset_followers(request: Request) -> dict:
         return {"success": True, "message": "followers and copy_trades cleared"}
     except Exception as e:
         logger.error(f"[ADMIN] reset-followers 오류: {e}")
-        raise HTTPException(500, detail={"error": str(e)})
+        logger.error(f"[ADMIN] 오류: {e}", exc_info=True); raise HTTPException(500, detail={"error": "Internal error", "code": "INTERNAL_ERROR"})
 
 
 @app.post("/admin/sync")
@@ -2263,7 +2263,7 @@ async def admin_sync_leaderboard(request: Request) -> dict:
     except Exception as e:
         raise HTTPException(
             status_code=502,
-            detail={"error": f"Sync failed: {str(e)}", "code": "SYNC_FAILED"}
+            detail={"error": "Sync failed — check server logs", "code": "SYNC_FAILED"}
         )
 
 

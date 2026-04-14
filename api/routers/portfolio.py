@@ -151,7 +151,7 @@ async def backtest_portfolio(
             if row:
                 results.append(dict(row))
     except Exception as e:
-        return {"error": str(e)}
+        logger.error(f"portfolio 오류: {e}"); return {"error": "Internal server error", "code": "DB_ERROR"}
 
     if not results:
         return {"error": "Trader not found in DB"}

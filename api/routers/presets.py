@@ -239,7 +239,7 @@ async def apply_preset(
         # HTTPException(401/429 등)은 그대로 re-raise (500 래핑 금지)
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": f"Onboarding failed: {str(e)}"})
+        logger.error(f"preset onboard 오류: {e}", exc_info=True); raise HTTPException(status_code=500, detail={"error": "Onboarding failed — please retry", "code": "ONBOARD_ERROR"})
 
     # 시뮬 PnL 첨부
     capital = body.capital_usdc or 1000.0

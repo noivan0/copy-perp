@@ -49,7 +49,7 @@ def get_tracker_report(days: int = Query(30, ge=1, le=365)):
         report = get_accumulated_report(db_path=db_path, days=days)
         return {"ok": True, "data": report, "days": days}
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": str(e), "code": "TRACKER_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "TRACKER_ERROR"})
 
 
 # ── GET /tracker/snapshots ───────────────────────────────────────
@@ -89,7 +89,7 @@ def get_snapshots(
         return {"ok": True, "data": data, "count": len(data)}
     except Exception as e:
         conn.close()
-        raise HTTPException(status_code=500, detail={"error": str(e), "code": "DB_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "DB_ERROR"})
 
 
 # ── GET /tracker/sim-pnl ─────────────────────────────────────────
@@ -147,7 +147,7 @@ def get_sim_pnl(
         }
     except Exception as e:
         conn.close()
-        raise HTTPException(status_code=500, detail={"error": str(e), "code": "DB_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "DB_ERROR"})
 
 
 # ── GET /tracker/trust-metrics ───────────────────────────────────
@@ -202,4 +202,4 @@ def get_trust_metrics(
         }
     except Exception as e:
         conn.close()
-        raise HTTPException(status_code=500, detail={"error": str(e), "code": "DB_ERROR"})
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "code": "DB_ERROR"})
