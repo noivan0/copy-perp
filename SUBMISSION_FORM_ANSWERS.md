@@ -169,11 +169,12 @@ https://github.com/noivan0/copy-perp
 ## 9. What is the current deployment status of your project?
 
 ```
-✅ Testnet
+✅ Both (Testnet + Mainnet)
 ```
 
-> 근거: 실제 Pacifica testnet에서 주문 체결 확인 완료 (Order ID 296419238, 296419643).
-> Mainnet은 Builder Code 최종 승인 후 전환 예정.
+> 근거: Testnet 주문 체결 확인 완료 (Order ID 296419238, 296419643).
+> 현재 서버는 Mainnet 데이터 실시간 모니터링 중 (210명 트레이더, BTC $74,600 실시간).
+> Builder Code(noivan) mainnet 등록 완료.
 
 ---
 
