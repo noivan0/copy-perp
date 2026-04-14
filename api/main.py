@@ -553,6 +553,24 @@ def _get_ratelimit_status_safe() -> dict:
         return {}
 
 
+def _get_circuit_breaker_stats() -> dict:
+    """Circuit Breaker 상태 요약 (/health, /metrics 노출용)"""
+    try:
+        from core.circuit_breaker import get_all_stats
+        all_stats = get_all_stats()
+        # 간략 요약만 반환 (전체 stats는 /health/detailed에서)
+        return {
+            name: {
+                "state":         s["state"],
+                "failure_count": s["failure_count"],
+                "retry_after":   s.get("retry_after_sec", 0),
+            }
+            for name, s in all_stats.items()
+        }
+    except Exception:
+        return {}
+
+
 def _check_rate_limit(key: str, max_calls: int = 10, window_sec: int = 60) -> bool:  # noqa: E501
     """True = 허용, False = 차단. Sliding window 방식."""
     now = _time_m.time()
@@ -1349,6 +1367,7 @@ async def health(request: Request) -> dict:
         "env_degraded": bool(os.getenv("_ENV_DEGRADED")),
         "version": APP_VERSION,
         "pacifica_ratelimit": _get_ratelimit_status_safe(),
+        "circuit_breakers": _get_circuit_breaker_stats(),
     }
 
 

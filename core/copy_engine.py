@@ -34,10 +34,23 @@ from db.database import (
     delete_follower_position, get_all_follower_positions,
 )
 from core.retry import retry_sync, classify_error
+from core.circuit_breaker import get_breaker, CircuitOpenError, CircuitBreakerConfig
 try:
     from core.data_collector import get_price_cache
 except ImportError:
     def get_price_cache(): return {}
+
+# Pacifica API Circuit Breaker — 연속 5회 실패 시 30초 OPEN
+_pacifica_breaker = get_breaker(
+    "pacifica",
+    CircuitBreakerConfig(
+        failure_threshold=5,
+        recovery_timeout=30.0,
+        half_open_success_threshold=2,
+        slow_call_threshold=10.0,
+        slow_call_warning_count=3,
+    )
+)
 try:
     from core.strategy import (
         calc_stop_price, should_stop,
@@ -568,50 +581,80 @@ class CopyEngine:
                 status = "filled" if random.random() > 0.2 else "failed"
                 logger.info(f"[MOCK][{follower_addr[:8]}] {symbol} {side} {copy_amount} → {status}")
             else:
-                client = self._get_client(follower_addr)
-                # builder_code 포함으로 먼저 시도, "has not approved" 시 없이 재시도
-                try:
-                    result = retry_sync(
-                        client.market_order,
-                        symbol=symbol,
-                        side=side,
-                        amount=copy_amount,
-                        slippage_percent=MAX_SLIPPAGE,
-                        builder_code=bc,
-                        client_order_id=client_order_id,
-                        max_retries=2,
-                        base_delay=0.5,
-                        alert_on_final_fail=False,
-                        label=f"{follower_addr[:8]}/{symbol}",
+                # ── Circuit Breaker: Pacifica API 장애 격리 ──────────────
+                if _pacifica_breaker.is_open:
+                    ra = _pacifica_breaker.retry_after()
+                    logger.warning(
+                        f"[CircuitBreaker/pacifica] OPEN — 주문 스킵 "
+                        f"({follower_addr[:8]} {symbol}). retry_after={ra:.1f}s"
                     )
-                except Exception as first_err:
-                    err_str = str(first_err)
-                    if "has not approved builder code" in err_str and bc:
-                        # Builder Code 미승인 → DB 업데이트 (다음번엔 처음부터 BC 없이 시도)
-                        logger.info(f"[{follower_addr[:8]}] Builder Code 미승인 → 없이 재시도 + DB 업데이트")
-                        try:
-                            await self.db.execute(
-                                "UPDATE followers SET builder_code_approved=0, builder_approved=0 WHERE address=?",
-                                (follower_addr,)
+                    get_alert_manager().order_failed(
+                        follower_addr, symbol, side,
+                        f"Circuit breaker OPEN (retry after {ra:.0f}s)",
+                        reason="api_error",
+                    )
+                    status = "failed"
+                    result = {}
+                else:
+                    client = self._get_client(follower_addr)
+                    # builder_code 포함으로 먼저 시도, "has not approved" 시 없이 재시도
+                    try:
+                        async with _pacifica_breaker.call():
+                            result = await asyncio.get_event_loop().run_in_executor(
+                                None,
+                                lambda: retry_sync(
+                                    client.market_order,
+                                    symbol=symbol,
+                                    side=side,
+                                    amount=copy_amount,
+                                    slippage_percent=MAX_SLIPPAGE,
+                                    builder_code=bc,
+                                    client_order_id=client_order_id,
+                                    max_retries=2,
+                                    base_delay=0.5,
+                                    alert_on_final_fail=False,
+                                    label=f"{follower_addr[:8]}/{symbol}",
+                                )
                             )
-                            await self.db.commit()
-                        except Exception as _dbe:
-                            logger.debug(f"[{follower_addr[:8]}] bca DB 업데이트 실패 (무시): {_dbe}")
-                        result = retry_sync(
-                            client.market_order,
-                            symbol=symbol,
-                            side=side,
-                            amount=copy_amount,
-                            slippage_percent=MAX_SLIPPAGE,
-                            builder_code=None,
-                            client_order_id=client_order_id,
-                            max_retries=2,
-                            base_delay=0.5,
-                            alert_on_final_fail=True,
-                            label=f"{follower_addr[:8]}/{symbol}",
+                    except CircuitOpenError as coe:
+                        logger.warning(f"[CircuitBreaker] {coe}")
+                        get_alert_manager().order_failed(
+                            follower_addr, symbol, side, str(coe), reason="api_error"
                         )
-                    else:
-                        raise
+                        status = "failed"
+                        result = {}
+                    except Exception as first_err:
+                        err_str = str(first_err)
+                        if "has not approved builder code" in err_str and bc:
+                            # Builder Code 미승인 → DB 업데이트 (다음번엔 처음부터 BC 없이 시도)
+                            logger.info(f"[{follower_addr[:8]}] Builder Code 미승인 → 없이 재시도 + DB 업데이트")
+                            try:
+                                await self.db.execute(
+                                    "UPDATE followers SET builder_code_approved=0, builder_approved=0 WHERE address=?",
+                                    (follower_addr,)
+                                )
+                                await self.db.commit()
+                            except Exception as _dbe:
+                                logger.debug(f"[{follower_addr[:8]}] bca DB 업데이트 실패 (무시): {_dbe}")
+                            async with _pacifica_breaker.call():
+                                result = await asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    lambda: retry_sync(
+                                        client.market_order,
+                                        symbol=symbol,
+                                        side=side,
+                                        amount=copy_amount,
+                                        slippage_percent=MAX_SLIPPAGE,
+                                        builder_code=None,
+                                        client_order_id=client_order_id,
+                                        max_retries=2,
+                                        base_delay=0.5,
+                                        alert_on_final_fail=True,
+                                        label=f"{follower_addr[:8]}/{symbol}",
+                                    )
+                                )
+                        else:
+                            raise
                 # filled 판단: data 키 OR order_id 있으면 체결 성공
                 # Pacifica API가 {'order_id': 123} 형태로 반환하는 경우도 있음
                 _has_data = result.get("data") or result.get("order_id") or result.get("orderId")
@@ -949,28 +992,41 @@ class CopyEngine:
         )
 
         if not self.mock_mode:
-            try:
-                bc = follower.get("builder_code_approved", 0)
-                builder = BUILDER_CODE if bc else None
-                client = self._get_client(follower_addr)
-                resp = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: client.market_order(
-                            symbol=symbol,
-                            side=close_side,
-                            amount=copy_amount,
-                            slippage_percent=MAX_SLIPPAGE,
-                            builder_code=builder,
-                            client_order_id=client_order_id,
-                        )
-                    ),
-                    timeout=30.0  # 30초 타임아웃 — force_close 네트워크 hang 방지
+            # Circuit Breaker: OPEN이면 force_close도 스킵
+            if _pacifica_breaker.is_open:
+                ra = _pacifica_breaker.retry_after()
+                logger.warning(
+                    f"[FORCE_CLOSE][CircuitBreaker] OPEN — 청산 스킵 "
+                    f"({follower_addr[:8]} {symbol}). retry_after={ra:.1f}s"
                 )
-                status = "filled" if (resp.get("data") or resp.get("order_id") or resp.get("orderId")) else "failed"
-            except Exception as e:
                 status = "failed"
-                logger.error(f"[FORCE_CLOSE] 주문 오류: {e}")
+            else:
+                try:
+                    bc = follower.get("builder_code_approved", 0)
+                    builder = BUILDER_CODE if bc else None
+                    client = self._get_client(follower_addr)
+                    async with _pacifica_breaker.call():
+                        resp = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None,
+                                lambda: client.market_order(
+                                    symbol=symbol,
+                                    side=close_side,
+                                    amount=copy_amount,
+                                    slippage_percent=MAX_SLIPPAGE,
+                                    builder_code=builder,
+                                    client_order_id=client_order_id,
+                                )
+                            ),
+                            timeout=30.0  # 30초 타임아웃 — force_close 네트워크 hang 방지
+                        )
+                    status = "filled" if (resp.get("data") or resp.get("order_id") or resp.get("orderId")) else "failed"
+                except CircuitOpenError as coe:
+                    status = "failed"
+                    logger.warning(f"[FORCE_CLOSE][CircuitBreaker] {coe}")
+                except Exception as e:
+                    status = "failed"
+                    logger.error(f"[FORCE_CLOSE] 주문 오류: {e}")
         else:
             status = "filled"
 
