@@ -48,6 +48,7 @@ PACIFICA_REST_URL_DIRECT = (
 WS_URL = os.getenv("PACIFICA_WS_URL", "wss://test-ws.pacifica.fi/ws")
 ACCOUNT_ADDRESS    = os.getenv("ACCOUNT_ADDRESS", "")    # 거래 주체 지갑 (자산 보유, 베타코드 등록)
 AGENT_PRIVATE_KEY  = os.getenv("AGENT_PRIVATE_KEY", "")  # API Key 개인키 (서명 전용)
+PACIFICA_API_KEY   = os.getenv("PACIFICA_API_KEY", "")   # Mainnet REST API Key
 AGENT_WALLET_PUBKEY = os.getenv("AGENT_WALLET", "")      # API Key 공개키 (서명 검증용, 지갑 아님)
 BUILDER_CODE = os.getenv("BUILDER_CODE", "noivan")
 BUILDER_FEE_RATE = os.getenv("BUILDER_FEE_RATE", "0.001")  # 기본 0.1%
@@ -224,12 +225,14 @@ def _cf_request(method: str, path: str, body: Optional[dict] = None) -> dict:
     s = socket.create_connection((_CF_HOST, 443), timeout=15)
     ss = ctx.wrap_socket(s, server_hostname=_CF_HOST)
 
+    _api_key_header = f"x-api-key: {PACIFICA_API_KEY}\r\n" if PACIFICA_API_KEY else ""
     headers = (
         f"{method} {url_path} HTTP/1.1\r\n"
         f"Host: {_PACIFICA_HOST}\r\n"
         f"Content-Type: application/json\r\n"
         f"Accept: application/json\r\n"
         f"User-Agent: CopyPerp/1.0\r\n"
+        + _api_key_header
     )
     if body_bytes:
         headers += f"Content-Length: {len(body_bytes)}\r\n"
@@ -442,14 +445,17 @@ def _request(method: str, path: str, body: Optional[dict] = None) -> dict:
     # CF SNI 우회: Host 헤더로 라우팅
     try:
         import requests as _req_fb
+        _post_headers = {
+            "Host": "test-api.pacifica.fi",
+            "Content-Type": "application/json",
+            "User-Agent": "CopyPerp/1.0",
+        }
+        if PACIFICA_API_KEY:
+            _post_headers["x-api-key"] = PACIFICA_API_KEY
         _fb_resp = _req_fb.post(
             f"https://do5jt23sqak4.cloudfront.net/api/v1/{path}",
             json=body,
-            headers={
-                "Host": "test-api.pacifica.fi",
-                "Content-Type": "application/json",
-                "User-Agent": "CopyPerp/1.0",
-            },
+            headers=_post_headers,
             timeout=10,
             verify=False,
         )
