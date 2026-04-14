@@ -1834,13 +1834,18 @@ async def get_stats(request: Request) -> dict:
 @app.get("/metrics")
 async def get_metrics(request: Request):
     """Prometheus 텍스트 형식 메트릭
-    P2 Fix (Round 4): 실제 DB 집계 추가
-    - copy_trades 건수 (today/total/failed)
-    - follower 수
-    - 오늘 빌더피 합계
-    - 최근 24h PnL
+    보안: METRICS_TOKEN 환경변수 설정 시 Bearer 토큰 인증 필요
+    미설정 시 내부망 접근만 허용 (Render 내부 scraper용)
     """
-    # Rate limit: IP당 분당 30회 (Prometheus scraper 허용)
+    # 보안: METRICS_TOKEN 설정 시 인증 필수
+    _metrics_token = os.getenv("METRICS_TOKEN", "")
+    if _metrics_token:
+        _auth = request.headers.get("Authorization", "")
+        import secrets as _sec
+        if not _auth.startswith("Bearer ") or not _sec.compare_digest(_auth[7:], _metrics_token):
+            from fastapi.responses import Response as _R
+            return _R(status_code=401, content="Unauthorized", media_type="text/plain")
+    # Rate limit: IP당 분당 30회
     _client_ip_m = _get_client_ip(request)
     _require_rate_limit(f"metrics:{_client_ip_m}", request=request)
 
