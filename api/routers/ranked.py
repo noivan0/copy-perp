@@ -92,17 +92,19 @@ def _leaderboard_row_to_crs(row: dict) -> dict:
         return d
     except Exception as e:
         logger.warning(f"CRS 계산 오류 {row.get('address', '?')[:12]}: {e}")
+        import logging as _log
+        _log.getLogger(__name__).warning(f"CRS 계산 오류 ({row.get('address','?')[:12]}): {e}")
         return {
             "address": row.get("address", ""),
             "alias": row.get("alias", ""),
             "crs": 0.0,
             "grade": "D",
             "disqualified": True,
-            "disq_reason": f"Calculation error: {e}",
+            "disq_reason": "Calculation error",
             "recommended_copy_ratio": 0.0,
             "copy_ratio_pct": 0.0,
             "tier_label": "❌ Disqualified",
-            "warnings": [str(e)],
+            "warnings": ["Calculation error — please retry"],
         }
 
 

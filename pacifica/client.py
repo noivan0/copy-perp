@@ -103,9 +103,10 @@ _MARKET_INFO_TTL = 6 * 3600  # 6시간
 MAINNET_IP = os.getenv("PACIFICA_MAINNET_IP", "54.230.62.105")
 MAINNET_HOST = "api.pacifica.fi"
 
-# NOTE: SSL 검증 비활성화 — HMG 웹필터 우회 위해 CloudFront IP 직접 접근 시 필요.
-# PACIFICA_VERIFY_SSL=true 설정 시 정식 SSL 검증 활성화 (프로덕션 외부 환경 권장).
-_VERIFY_SSL = os.getenv("PACIFICA_VERIFY_SSL", "false").lower() in ("true", "1", "yes")
+# NOTE: SSL 검증 — 프로덕션(Render/외부 환경) 기본값 true.
+# HMG 방화벽 우회 환경(PACIFICA_DIRECT=true)에서만 PACIFICA_VERIFY_SSL=false 사용.
+# Render mainnet 환경: PACIFICA_VERIFY_SSL=true (기본값)
+_VERIFY_SSL = os.getenv("PACIFICA_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
 _ssl_ctx = ssl.create_default_context()
 if not _VERIFY_SSL:
     _ssl_ctx.check_hostname = False

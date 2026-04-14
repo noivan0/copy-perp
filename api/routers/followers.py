@@ -1627,7 +1627,8 @@ async def submit_bind(body: dict):
     }
 
     try:
-        resp = _req_lib.post(bind_url, json=request_body, headers=headers, timeout=10, verify=False)
+        _verify_ssl = os.getenv("PACIFICA_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+        resp = _req_lib.post(bind_url, json=request_body, headers=headers, timeout=10, verify=_verify_ssl)
         try:
             result = resp.json()
         except Exception:

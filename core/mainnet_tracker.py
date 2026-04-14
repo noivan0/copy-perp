@@ -70,8 +70,9 @@ def _init_db(db_path):
     return conn
 
 def mainnet_get(path, params=None):
+    _verify_ssl = os.getenv("PACIFICA_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
     try:
-        r = requests.get(f"{CF_URL}/api/v1/{path}", headers=HEADERS, params=params, verify=False, timeout=20)
+        r = requests.get(f"{CF_URL}/api/v1/{path}", headers=HEADERS, params=params, verify=_verify_ssl, timeout=20)
         r.raise_for_status()
         return r.json()
     except Exception as e:

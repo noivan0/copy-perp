@@ -502,11 +502,11 @@ class CopyEngine:
                 lot = float(mkt.get("lot_size", 0) or 0)
                 if lot <= 0:
                     # price_cache miss → /info API 직접 조회 (PacificaClient 불필요)
-                    import requests as _rq, urllib3 as _ul3
-                    _ul3.disable_warnings()
+                    import requests as _rq
                     _iurl = "https://do5jt23sqak4.cloudfront.net/api/v1/info"
                     _ihdr = {"Host": "api.pacifica.fi"}
-                    _ir = _rq.get(_iurl, headers=_ihdr, verify=False, timeout=5)
+                    _verify_ssl_ce = os.getenv("PACIFICA_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+                    _ir = _rq.get(_iurl, headers=_ihdr, verify=_verify_ssl_ce, timeout=5)
                     if _ir.ok:
                         _info = _ir.json().get("data", [])
                         for _m in _info:

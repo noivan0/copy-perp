@@ -38,7 +38,8 @@ async def proxy(path: str, request: Request):
     }
     headers["host"] = PACIFICA_BASE.replace("https://", "").replace("http://", "")
 
-    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+    _verify_ssl = os.getenv("PACIFICA_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
+    async with httpx.AsyncClient(verify=_verify_ssl, timeout=30) as client:
         resp = await client.request(
             method=request.method,
             url=target_url,
