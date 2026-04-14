@@ -180,12 +180,12 @@ https://github.com/noivan0/copy-perp
 ## 10. Is there a live app, dashboard, or UI we can access?
 
 ```
-⚠️ [배포 URL — Dev팀장 배포 완료 후 기입]
-예: https://copy-perp.vercel.app
+Frontend: https://copy-perp-frontend.vercel.app
+Backend API: https://copy-perp.onrender.com
+API Docs: https://copy-perp.onrender.com/docs (disabled in prod — use /health for status)
 ```
 
-> Dev팀장 배포 완료 시 이 칸을 업데이트하세요.
-> 현재 로컬: http://localhost:8001 (FastAPI + 정적 프론트엔드 서빙)
+> ✅ LIVE — 2026-04-11 배포 완료. Frontend Vercel + Backend Render.
 
 ---
 
@@ -307,9 +307,11 @@ In priority order:
 | 항목 | 담당 | 상태 |
 |------|------|------|
 | GitHub repo Public 확인 | 노이반님 | ⏳ |
-| 배포 URL 확보 + Q10 기입 | Dev팀장 | ⏳ |
+| 배포 URL 확보 + Q10 기입 | Dev팀장 | ✅ 완료 (2026-04-14) |
+| git tag v1.0.0-hackathon | Dev팀장 | ✅ 완료 (2026-04-14) |
 | 데모 영상 촬영 (4/14) | 노이반님 | ⏳ |
 | 영상 Google Drive 업로드 + Q11 기입 | 노이반님 | ⏳ |
+| Builder Code approve | 노이반님 | ⏳ python3 scripts/approve_builder_code.py <MAIN_PRIVATE_KEY> |
 | 폼 제출 (마감 4/16) | 노이반님 | ⏳ |
 
 > 폼 링크: https://forms.gle/zYm9ZBH1SoUE9t9o7
